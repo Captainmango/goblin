@@ -1,4 +1,7 @@
 # runner.py
+from claude_agent_sdk import ResultMessage
+from claude_agent_sdk import AssistantMessage
+from claude_agent_sdk import query
 import json
 import os
 import subprocess
@@ -73,16 +76,30 @@ class WorkflowRunner:
     async def run_step(self, step: dict, context: dict):
         prompt = step["prompt"].format(**context)
         options = ClaudeAgentOptions(
-            model="anthropic/MiniMax-M2.1",
             allowed_tools=step.get("allowed_tools", []),
             hooks=self._build_hooks(step),
+            env={"CLAUDECODE": ""},
         )
 
-        async with ClaudeSDKClient(options=options) as client:
-            result = []
-            async for message in client.query(prompt=prompt):
-                result.append(message)
-            return result
+        result = []
+
+        # Agentic loop: streams messages as Claude works
+        async for message in query(
+            prompt=prompt,
+            options=options
+        ):
+            print(message)
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if hasattr(block, "text"):
+                        print(block.text)
+                        result.append(block.text)  # Claude's reasoning
+                    elif hasattr(block, "name"):
+                        result.append(f"Tool: {block.name}")  # Tool being called
+            elif isinstance(message, ResultMessage):
+                result.append(f"Done: {message.subtype}") 
+
+        return result
 
     async def run(self, context: dict = {}):
         results = {}
