@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../spec/v1.json
+
+workflow:
+  name: my_workflow
+  steps:
+    - id: step_one
+      prompt: "Do something"
+    - id: next
+      prompt: "No, really do something"

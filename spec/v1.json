@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gremlin/spec/v1.json",
+  "title": "Gremlin Workflow Definition",
+  "description": "Schema for .grem.yml workflow files",
+  "type": "object",
+  "required": ["workflow"],
+  "additionalProperties": false,
+  "properties": {
+    "workflow": {
+      "type": "object",
+      "required": ["name", "steps"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique identifier name for the workflow",
+          "examples": ["resolve_jira_epic"]
+        },
+        "vars": {
+          "type": "object",
+          "description": "Workflow-level variables available for {variable} interpolation in step prompts",
+          "additionalProperties": { "type": "string" },
+          "examples": [{ "epic": "PROJ-123", "repo": "my-service" }]
+        },
+        "defaults": {
+          "type": "object",
+          "description": "Default values inherited by all steps unless overridden",
+          "additionalProperties": false,
+          "properties": {
+            "hooks": { "$ref": "#/definitions/hooks" }
+          }
+        },
+        "steps": {
+          "type": "array",
+          "description": "Ordered list of steps to execute in the workflow",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/step" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "hooks": {
+      "type": "object",
+      "description": "Lifecycle hooks that run before or after tool calls",
+      "additionalProperties": false,
+      "properties": {
+        "pre_tool": {
+          "type": "array",
+          "description": "Hook functions to run before each tool call",
+          "items": { "type": "string" },
+          "examples": [["check_prometheus"]]
+        },
+        "post_tool": {
+          "type": "array",
+          "description": "Hook functions to run after each tool call",
+          "items": { "type": "string" },
+          "examples": [["run_lint", "run_tests"]]
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["prompt"] },
+        { "required": ["load_hooks"] }
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this step, referenced by other steps",
+          "examples": ["fetch_tickets", "resolve_ticket", "close_epic"]
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Instruction prompt for the agent. Supports {variable} interpolation from workflow vars.",
+          "examples": [
+            "Fetch all open tickets in epic {epic} using JIRA",
+            "Resolve ticket {ticket_id}: {ticket_summary}"
+          ]
+        },
+        "load_hooks": {
+          "type": "string",
+          "description": "Path to a project root from which to load hooks. Reads {path}/.claude/settings.json (Claude Code hook format) and registers shell commands as subprocess-backed callables in HOOK_REGISTRY under the reserved names 'project_pre_tool' and 'project_post_tool'. Supports {variable} interpolation. Language-agnostic: the commands in settings.json run in a shell with cwd set to the project root.",
+          "examples": ["{clone_dir}"]
+        },
+        "allowed_tools": {
+          "type": "array",
+          "description": "Whitelist of tools the agent may call during this step",
+          "items": { "type": "string" },
+          "examples": [["Bash", "Read", "Write", "mcp__jira__update_ticket"]]
+        },
+        "foreach": {
+          "type": "string",
+          "description": "Template expression resolving to an iterable. The step runs once per item. Use {{ steps.<id>.output.<field> }} syntax.",
+          "examples": ["{{ steps.fetch_tickets.output.tickets }}"]
+        },
+        "depends_on": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ],
+          "description": "Step ID(s) that must complete before this step begins",
+          "examples": ["resolve_ticket", ["fetch_tickets", "resolve_ticket"]]
+        },
+        "condition": {
+          "type": "string",
+          "description": "Template expression that must evaluate to true for this step to run. Use {{ steps.<id>.<field> }} syntax.",
+          "examples": ["{{ steps.resolve_ticket.all_succeeded }}"]
+        },
+        "hooks": { "$ref": "#/definitions/hooks" },
+        "on_failure": {
+          "type": "object",
+          "description": "Behavior when this step fails",
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "What to do when the step fails",
+              "enum": ["skip", "retry", "abort"],
+              "examples": ["skip"]
+            },
+            "notify": {
+              "type": "string",
+              "description": "Hook function to call on failure",
+              "examples": ["slack_notify"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
