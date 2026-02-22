@@ -2,6 +2,7 @@
 from claude_agent_sdk import ResultMessage
 from claude_agent_sdk import AssistantMessage
 from claude_agent_sdk import query
+from claude_agent_sdk import AgentDefinition
 import json
 import os
 import subprocess
@@ -13,6 +14,10 @@ class WorkflowRunner:
     def __init__(self, workflow_path: str):
         with open(workflow_path) as f:
             self.spec = yaml.safe_load(f)["workflow"]
+        self.project_path: str | None = None
+        self.project_settings_path: str | None = None
+        self.project_refs: str = ""
+        self.project_agents: dict[str, AgentDefinition] = {}
 
     def _build_hooks(self, step: dict) -> dict:
         defaults = self.spec.get("defaults", {}).get("hooks", {})
@@ -27,59 +32,101 @@ class WorkflowRunner:
             "PostToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY])],
         }
 
-    def _load_hooks_from(self, path: str):
-        """Read .claude/settings.json from a project root and register its shell hooks.
+    def _load_project(self, path: str):
+        """Load full project configuration from a project root.
 
-        Hook commands are wrapped as subprocess callables and stored in HOOK_REGISTRY
-        under two reserved names: 'project_pre_tool' and 'project_post_tool'.
-        The project's .claude/settings.json follows the Claude Code hooks format:
+        Reads settings, CLAUDE.md references, and agent definitions from the
+        project and stores them as instance state for subsequent prompt steps.
 
-            {
-              "hooks": {
-                "PostToolUse": [
-                  { "matcher": "Write|Edit", "hooks": [{ "type": "command", "command": "npm test" }] }
-                ]
-              }
-            }
+        - Settings: stores path to .claude/settings.json (passed to SDK via settings param)
+        - References: reads CLAUDE.md and .claude/CLAUDE.md, concatenates into project_refs
+        - Agents: scans .claude/agents/*.md, each becomes an AgentDefinition
+        - Hooks: registers subprocess-backed hooks as 'project_pre_tool'/'project_post_tool'
         """
+        self.project_path = path
+
+        # Settings
         settings_path = os.path.join(path, ".claude", "settings.json")
-        if not os.path.isfile(settings_path):
-            print(f"No .claude/settings.json found in {path}, skipping hook load")
-            return
+        if os.path.isfile(settings_path):
+            self.project_settings_path = settings_path
+            print(f"Loaded project settings from {settings_path}")
 
-        with open(settings_path) as f:
-            settings = json.load(f)
+            # Register subprocess-backed hooks from settings
+            with open(settings_path) as f:
+                settings = json.load(f)
+            hooks_config = settings.get("hooks", {})
+            for event_type, registry_name in (("PreToolUse", "project_pre_tool"), ("PostToolUse", "project_post_tool")):
+                commands = [
+                    hook_def["command"]
+                    for matcher_def in hooks_config.get(event_type, [])
+                    for hook_def in matcher_def.get("hooks", [])
+                    if hook_def.get("type") == "command" and hook_def.get("command")
+                ]
+                if not commands:
+                    continue
 
-        hooks_config = settings.get("hooks", {})
+                def make_runner(cmds, cwd):
+                    def run_project_hooks(tool_use):
+                        for cmd in cmds:
+                            result = subprocess.run(cmd, shell=True, cwd=cwd)
+                            if result.returncode != 0:
+                                print(f"Project hook failed (exit {result.returncode}): {cmd}")
+                    return run_project_hooks
 
-        for event_type, registry_name in (("PreToolUse", "project_pre_tool"), ("PostToolUse", "project_post_tool")):
-            commands = [
-                hook_def["command"]
-                for matcher_def in hooks_config.get(event_type, [])
-                for hook_def in matcher_def.get("hooks", [])
-                if hook_def.get("type") == "command" and hook_def.get("command")
-            ]
-            if not commands:
-                continue
+                HOOK_REGISTRY[registry_name] = make_runner(commands, path)
+                print(f"Registered {len(commands)} {event_type} command(s) as '{registry_name}'")
+        else:
+            print(f"No .claude/settings.json found in {path}")
 
-            def make_runner(cmds, cwd):
-                def run_project_hooks(tool_use):
-                    for cmd in cmds:
-                        result = subprocess.run(cmd, shell=True, cwd=cwd)
-                        if result.returncode != 0:
-                            print(f"Project hook failed (exit {result.returncode}): {cmd}")
-                return run_project_hooks
+        # References (CLAUDE.md files)
+        refs = []
+        for ref_path in [
+            os.path.join(path, "CLAUDE.md"),
+            os.path.join(path, ".claude", "CLAUDE.md"),
+        ]:
+            if os.path.isfile(ref_path):
+                with open(ref_path) as f:
+                    refs.append(f.read())
+                print(f"Loaded reference from {ref_path}")
+        self.project_refs = "\n\n".join(refs)
 
-            HOOK_REGISTRY[registry_name] = make_runner(commands, path)
-            print(f"Registered {len(commands)} {event_type} command(s) as '{registry_name}'")
+        # Agent definitions
+        agents_dir = os.path.join(path, ".claude", "agents")
+        if os.path.isdir(agents_dir):
+            for filename in os.listdir(agents_dir):
+                if filename.endswith(".md"):
+                    agent_name = filename.removesuffix(".md")
+                    with open(os.path.join(agents_dir, filename)) as f:
+                        content = f.read()
+                    self.project_agents[agent_name] = AgentDefinition(
+                        description=agent_name,
+                        prompt=content,
+                    )
+                    print(f"Loaded agent definition: {agent_name}")
 
     async def run_step(self, step: dict, context: dict):
         prompt = step["prompt"].format(**context)
-        options = ClaudeAgentOptions(
-            allowed_tools=step.get("allowed_tools", []),
-            hooks=self._build_hooks(step),
-            env={"CLAUDECODE": ""},
-        )
+
+        kwargs: dict = {
+            "allowed_tools": step.get("allowed_tools", []),
+            "hooks": self._build_hooks(step),
+            "env": {"CLAUDECODE": ""},
+        }
+
+        if self.project_path:
+            kwargs["cwd"] = self.project_path
+        if self.project_settings_path:
+            kwargs["settings"] = self.project_settings_path
+        if self.project_refs:
+            kwargs["system_prompt"] = {
+                "type": "preset",
+                "preset": "claude_code",
+                "append": self.project_refs,
+            }
+        if self.project_agents:
+            kwargs["agents"] = self.project_agents
+
+        options = ClaudeAgentOptions(**kwargs)
 
         result = []
 
@@ -106,10 +153,10 @@ class WorkflowRunner:
         for step in self.spec["steps"]:
             step_id = step["id"]
 
-            # load_hooks steps import project hook files rather than running the agent
-            if "load_hooks" in step:
-                path = step["load_hooks"].format(**context)
-                self._load_hooks_from(path)
+            # load_project steps import project config rather than running the agent
+            if "load_project" in step:
+                path = step["load_project"].format(**context)
+                self._load_project(path)
                 results[step_id] = {"status": "loaded", "path": path}
                 continue
 

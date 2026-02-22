@@ -66,7 +66,7 @@
       "additionalProperties": false,
       "oneOf": [
         { "required": ["prompt"] },
-        { "required": ["load_hooks"] }
+        { "required": ["load_project"] }
       ],
       "properties": {
         "id": {
@@ -82,9 +82,9 @@
             "Resolve ticket {ticket_id}: {ticket_summary}"
           ]
         },
-        "load_hooks": {
+        "load_project": {
           "type": "string",
-          "description": "Path to a project root from which to load hooks. Reads {path}/.claude/settings.json (Claude Code hook format) and registers shell commands as subprocess-backed callables in HOOK_REGISTRY under the reserved names 'project_pre_tool' and 'project_post_tool'. Supports {variable} interpolation. Language-agnostic: the commands in settings.json run in a shell with cwd set to the project root.",
+          "description": "Path to a project root from which to load the full project configuration. Loads .claude/settings.json (passed to SDK as settings path), reads CLAUDE.md and .claude/CLAUDE.md as references (appended to system prompt), scans .claude/agents/*.md as agent definitions, and registers shell command hooks as 'project_pre_tool'/'project_post_tool'. Sets cwd to the project path for subsequent prompt steps. Supports {variable} interpolation.",
           "examples": ["{clone_dir}"]
         },
         "allowed_tools": {

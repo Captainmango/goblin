@@ -2,8 +2,14 @@
 
 workflow:
   name: my_workflow
+  vars:
+    repo: https://github.com/parkhub/justpark.git
   steps:
-    - id: step_one
-      prompt: "Do something"
-    - id: next
-      prompt: "No, really do something"
+    - id: clone_repo
+      prompt: "Clone {repo} into /tmp/justpark"
+      allowed_tools: [Bash]
+    - id: load_project
+      load_project: /tmp/justpark
+    - id: do_work
+      prompt: "Read the project README and summarize what this project does"
+      allowed_tools: [Read, Glob]
