@@ -4,9 +4,14 @@
   "title": "Gremlin Workflow Definition",
   "description": "Schema for .grem.yml workflow files",
   "type": "object",
-  "required": ["workflow"],
+  "required": ["version", "workflow"],
   "additionalProperties": false,
   "properties": {
+    "version": {
+      "type": "integer",
+      "description": "Schema version of the workflow definition. Determines which blueprint class the runner uses to execute the workflow.",
+      "examples": [1, 2]
+    },
     "workflow": {
       "type": "object",
       "required": ["name", "steps"],

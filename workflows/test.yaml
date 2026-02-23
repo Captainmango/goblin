@@ -1,12 +1,13 @@
 # yaml-language-server: $schema=../spec/v1.json
 
+version: 2
 workflow:
   name: my_workflow
   vars:
     repo: https://github.com/parkhub/justpark.git
   steps:
     - id: clone_repo
-      prompt: "Clone {repo} into /tmp/justpark"
+      prompt: "Clone https://github.com/parkhub/justpark.git into /tmp/justpark"
       allowed_tools: [Bash]
     - id: load_project
       load_project: /tmp/justpark

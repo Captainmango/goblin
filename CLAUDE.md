@@ -1,12 +1,12 @@
-# Gremlin
+# Goblin
 
-Gremlin is an autonomous coding agent harness that runs high-level workflow definitions called **blueprints** (YAML files). The runner parses a blueprint, orchestrates step execution via the Claude Agent SDK, and applies lifecycle hooks around tool calls.
+Goblin is an autonomous coding agent harness that runs high-level workflow definitions called **blueprints** (YAML files). The runner parses a blueprint, orchestrates step execution via the Claude Agent SDK, and applies lifecycle hooks around tool calls.
 
 ## Project Layout
 
 ```
-gremlin/
-├── gremlin/
+goblin/
+├── goblin/
 │   ├── __init__.py    # Package init (empty)
 │   ├── hooks.py       # Hook registry and @hook decorator
 │   └── runner.py      # WorkflowRunner: parses and executes blueprints
@@ -67,7 +67,7 @@ Steps are either **prompt steps** (run an agent with a prompt) or **load_project
 | `steps[].on_failure.action` | `skip`, `retry`, or `abort` | Schema defined |
 | `steps[].on_failure.notify` | Hook name to call on step failure | Schema defined |
 
-### Runner (`gremlin/runner.py`)
+### Runner (`goblin/runner.py`)
 
 `WorkflowRunner` is the core orchestration class:
 
@@ -85,12 +85,12 @@ Steps are either **prompt steps** (run an agent with a prompt) or **load_project
 - **Agents**: Scans `{path}/.claude/agents/*.md` — each file becomes an `AgentDefinition(description=filename, prompt=file_content)` passed to the SDK.
 - **cwd**: Sets the project path as the working directory for subsequent prompt steps.
 
-### Hook System (`gremlin/hooks.py`)
+### Hook System (`goblin/hooks.py`)
 
 Hooks are registered by name with the `@hook` decorator and stored in `HOOK_REGISTRY`. The runner resolves hook names from the blueprint to callables at execution time.
 
 ```python
-from gremlin.hooks import hook
+from goblin.hooks import hook
 
 @hook("run_tests")
 def run_tests(tool_use):

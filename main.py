@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 import asyncio
-from gremlin.runner import WorkflowRunner
+from goblin.runner import WorkflowRunner
 
 
 async def main():
