@@ -1,2 +1,14 @@
-- [ ] Add prompt step interpolation
-- [ ] Add AgentOptionsConfig to workflow definitions
+- [ ] Working POC locally (do the retiring V4 tech debt epic)
+    - [ ] Add prompt step interpolation
+        - [ ] Context on step should be inserted
+        - [ ] Top level vars are available across all steps
+    - [ ] Add AgentOptionsConfig to workflow definitions
+        - [ ] Make it so we can configure claude code each time
+        - [ ] Lots of options. Maybe only allow a few?
+    - [ ] Make looping work
+        - [ ] Loop over a previous step's output
+        - [ ] Loop up to a specific number
+            - [ ] This will be distinct to the max turns of the LLM.
+    - [ ] Break out the step logic into a step executor
+        - [ ] Should each step have a run method?
+        - [ ] Run logic shouldn't live in the workflow. The workflow should be state and not a doing thing
