@@ -1,5 +1,5 @@
 [project]
-name = "gremlin"
+name = "goblin"
 version = "0.1.0"
 description = "Autonomous agent harness"
 readme = "README.md"

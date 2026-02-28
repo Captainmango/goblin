@@ -52,7 +52,7 @@ class PromptStep(StepProtocol):
         self.on_failure: dict | None = raw.get("on_failure")
         self._blueprint = blueprint
 
-    async def run(self, context: dict) -> list:
+    async def run(self, context: dict) -> Dict:
         prompt = self.prompt_template.format(**context)
 
         kwargs: dict = {
