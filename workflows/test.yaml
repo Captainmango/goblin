@@ -7,10 +7,12 @@ workflow:
     repo: https://github.com/parkhub/justpark.git
   steps:
     - id: clone_repo
-      prompt: "Clone https://github.com/parkhub/justpark.git into /tmp/justpark"
+      prompt: "Clone {repo} into /tmp/justpark"
       allowed_tools: [Bash]
+      on_failure:
+        action: skip
     - id: load_project
       load_project: /tmp/justpark
-    - id: do_work
-      prompt: "Read the project README and summarize what this project does"
+    - id: summarise_project
+      prompt: "Summarise what this project is and how it works. Use CLAUDE.md."
       allowed_tools: [Read, Glob]

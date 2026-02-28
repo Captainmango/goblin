@@ -6,13 +6,16 @@ from typing import Dict, Protocol, TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from goblin.prompts import BASE_SYSTEM_PROMPT
+from goblin.prompts import BASE_SYSTEM_PROMPT, JSON_REPAIR_PROMPT
 
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     query,
 )
+
+
+MAX_PARSE_RETRIES = 3
 
 
 class StepResult(BaseModel):
@@ -48,7 +51,6 @@ class PromptStep(StepProtocol):
         self.hooks_config: dict = raw.get("hooks", {})
         self.condition: str | None = raw.get("condition")
         self.foreach: str | None = raw.get("foreach")
-        self.depends_on: str | list[str] | None = raw.get("depends_on")
         self.on_failure: dict | None = raw.get("on_failure")
         self._blueprint = blueprint
 
@@ -80,8 +82,37 @@ class PromptStep(StepProtocol):
                     if hasattr(block, "text"):
                         text_blocks.append(block.text)
 
-        raw = _extract_json(text_blocks[-1])
-        return StepResult(**raw).model_dump()
+        return await self._parse_response(text_blocks[-1])
+
+    async def _parse_response(self, text: str, retries: int = MAX_PARSE_RETRIES) -> Dict:
+        """Parse agent response JSON, retrying with a repair prompt on failure."""
+        for attempt in range(1 + retries):
+            try:
+                raw = _extract_json(text)
+                return StepResult(**raw).model_dump()
+            except (json.JSONDecodeError, ValueError) as exc:
+                if attempt >= retries:
+                    raise exc
+                print(f"JSON parse failed (attempt {attempt + 1}/{1 + retries}): {exc}")
+                await self._request_json_repair(text)
+
+    async def _request_json_repair(self, broken_text: str) -> str:
+        """Ask the LLM to fix malformed JSON without re-running the step."""
+        repair_prompt = JSON_REPAIR_PROMPT.format(broken_text=broken_text)
+        options = ClaudeAgentOptions(
+            system_prompt=BASE_SYSTEM_PROMPT,
+            allowed_tools=[],
+            env={"CLAUDECODE": ""},
+        )
+
+        text_blocks: list[str] = []
+        async for message in query(prompt=repair_prompt, options=options):
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if hasattr(block, "text"):
+                        text_blocks.append(block.text)
+
+        return text_blocks[-1]
 
 
 class LoadProjectStep(StepProtocol):

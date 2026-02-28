@@ -103,14 +103,6 @@
           "description": "Template expression resolving to an iterable. The step runs once per item. Use {{ steps.<id>.output.<field> }} syntax.",
           "examples": ["{{ steps.fetch_tickets.output.tickets }}"]
         },
-        "depends_on": {
-          "oneOf": [
-            { "type": "string" },
-            { "type": "array", "items": { "type": "string" } }
-          ],
-          "description": "Step ID(s) that must complete before this step begins",
-          "examples": ["resolve_ticket", ["fetch_tickets", "resolve_ticket"]]
-        },
         "condition": {
           "type": "string",
           "description": "Template expression that must evaluate to true for this step to run. Use {{ steps.<id>.<field> }} syntax.",

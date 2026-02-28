@@ -149,6 +149,10 @@ class V1Blueprint(Blueprint):
         return False
 
     async def run(self, context: dict = {}):
+        # Merge blueprint vars with caller context; caller context wins on conflicts
+        blueprint_vars = self.spec.get("vars", {})
+        context = {**blueprint_vars, **context}
+
         results = {}
         for step in self.steps:
             # Check conditions
