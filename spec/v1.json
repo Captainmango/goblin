@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gremlin/spec/v1.json",
-  "title": "GOBLIN Workflow Definition",
+  "title": "GOBLIN Blueprint Definition",
   "description": "Schema for GOBLIN blueprint files",
   "type": "object",
   "required": ["version", "workflow"],
