@@ -3,6 +3,7 @@ and the foreach integration in run()."""
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,7 +19,7 @@ from goblin.blueprint import V1Blueprint
 def _make_blueprint(steps: list[dict], vars: dict | None = None) -> V1Blueprint:
     """Build a V1Blueprint from a minimal spec, patching step parsing to avoid
     importing the real PromptStep/LoadProjectStep (which pull in the SDK)."""
-    spec = {"name": "test_wf", "steps": steps}
+    spec: dict[str, Any] = {"name": "test_wf", "steps": steps}
     if vars:
         spec["vars"] = vars
     return V1Blueprint(spec)

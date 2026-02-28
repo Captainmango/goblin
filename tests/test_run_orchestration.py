@@ -3,6 +3,7 @@ multi-step sequencing, and on_failure handling (skip, retry, abort, notify)."""
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -19,7 +20,7 @@ from goblin.hooks import HOOK_REGISTRY
 def _make_blueprint(
     steps: list[dict], vars: dict | None = None, defaults: dict | None = None
 ) -> V1Blueprint:
-    spec = {"name": "test_wf", "steps": steps}
+    spec: dict[str, Any] = {"name": "test_wf", "steps": steps}
     if vars:
         spec["vars"] = vars
     if defaults:

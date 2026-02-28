@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from jinja2 import Environment
 
@@ -51,20 +51,29 @@ class V1Blueprint(Blueprint):
         return {
             "PreToolUse": [
                 HookMatcher(
-                    hooks=[HOOK_REGISTRY[n] for n in pre_names if n in HOOK_REGISTRY]
+                    hooks=[
+                        HOOK_REGISTRY[n]
+                        for n in (pre_names or [])
+                        if n in HOOK_REGISTRY
+                    ]
                 )
             ],
             "PostToolUse": [
                 HookMatcher(
-                    hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY]
+                    hooks=[
+                        HOOK_REGISTRY[n]
+                        for n in (post_names or [])
+                        if n in HOOK_REGISTRY
+                    ]
                 )
             ],
         }
 
     def _jinja_env(self) -> Environment:
         env = Environment()
-        env.filters["contains"] = filter_contains
-        env.filters["json_value"] = filter_json_value
+        filters = cast(dict[str, Any], env.filters)
+        filters["contains"] = filter_contains
+        filters["json_value"] = filter_json_value
         return env
 
     def _resolve_foreach_count(self, n: int) -> list[dict]:

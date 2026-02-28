@@ -98,6 +98,7 @@ class PromptStep(StepProtocol):
                     raise exc
                 print(f"JSON parse failed (attempt {attempt + 1}/{1 + retries}): {exc}")
                 await self._request_json_repair(text)
+        raise RuntimeError("all parse attempts exhausted")
 
     async def _request_json_repair(self, broken_text: str) -> str:
         """Ask the LLM to fix malformed JSON without re-running the step."""

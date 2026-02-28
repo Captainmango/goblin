@@ -12,6 +12,11 @@ dependencies = [
     "pyyaml>=6.0.3",
 ]
 
+[tool.pyrefly]
+project-includes = ["goblin/**/*.py"]
+
+known-first-party = ["goblin"]
+
 [dependency-groups]
 dev = [
     "dotenv>=0.9.9",

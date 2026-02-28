@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from goblin.blueprint import V1Blueprint
 from goblin.hooks import HOOK_REGISTRY
+from goblin.step import PromptStep
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +34,7 @@ def _clean_registry():
 
 
 def _make_blueprint(steps: list[dict], defaults: dict | None = None) -> V1Blueprint:
-    spec = {"name": "test_wf", "steps": steps}
+    spec: dict[str, Any] = {"name": "test_wf", "steps": steps}
     if defaults is not None:
         spec["defaults"] = defaults
     return V1Blueprint(spec)
@@ -50,6 +53,7 @@ class TestBuildHooksDefaults:
             defaults={"hooks": {"post_tool": ["run_tests"]}},
         )
         step = bp.steps[0]
+        assert isinstance(step, PromptStep)
         hooks = bp._build_hooks(step)
 
         assert "PostToolUse" in hooks
@@ -65,6 +69,7 @@ class TestBuildHooksDefaults:
             defaults={"hooks": {"pre_tool": ["check_prom"]}},
         )
         step = bp.steps[0]
+        assert isinstance(step, PromptStep)
         hooks = bp._build_hooks(step)
 
         pre_matchers = hooks["PreToolUse"]
@@ -80,6 +85,7 @@ class TestBuildHooksStepOverride:
             defaults={"hooks": {"post_tool": ["default_hook"]}},
         )
         step = bp.steps[0]
+        assert isinstance(step, PromptStep)
         hooks = bp._build_hooks(step)
 
         # Step-level overrides defaults entirely — default_hook should NOT be used
@@ -94,6 +100,7 @@ class TestBuildHooksStepOverride:
             defaults={"hooks": {"pre_tool": ["default_pre"]}},
         )
         step = bp.steps[0]
+        assert isinstance(step, PromptStep)
         hooks = bp._build_hooks(step)
 
         pre_matchers = hooks["PreToolUse"]
@@ -104,6 +111,7 @@ class TestBuildHooksNoHooks:
     def test_no_defaults_no_step_hooks(self):
         bp = _make_blueprint([{"id": "s1", "prompt": "do stuff"}])
         step = bp.steps[0]
+        assert isinstance(step, PromptStep)
         hooks = bp._build_hooks(step)
 
         assert "PreToolUse" in hooks
@@ -115,6 +123,7 @@ class TestBuildHooksNoHooks:
             defaults={"hooks": {"post_tool": ["nonexistent_hook"]}},
         )
         step = bp.steps[0]
+        assert isinstance(step, PromptStep)
         # Should not raise — unregistered names are silently skipped
         hooks = bp._build_hooks(step)
         assert "PostToolUse" in hooks

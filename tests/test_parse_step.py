@@ -33,17 +33,23 @@ class TestParseStepPrompt:
 
     def test_prompt_step_stores_template(self):
         bp = _make_blueprint([{"id": "s1", "prompt": "fix {repo}"}])
-        assert bp.steps[0].prompt_template == "fix {repo}"
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        assert step.prompt_template == "fix {repo}"
 
     def test_prompt_step_stores_allowed_tools(self):
         bp = _make_blueprint(
             [{"id": "s1", "prompt": "hi", "allowed_tools": ["Bash", "Read"]}]
         )
-        assert bp.steps[0].allowed_tools == ["Bash", "Read"]
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        assert step.allowed_tools == ["Bash", "Read"]
 
     def test_prompt_step_allowed_tools_default_empty(self):
         bp = _make_blueprint([{"id": "s1", "prompt": "hi"}])
-        assert bp.steps[0].allowed_tools == []
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        assert step.allowed_tools == []
 
     def test_prompt_step_stores_condition(self):
         bp = _make_blueprint(
@@ -69,7 +75,9 @@ class TestParseStepPrompt:
         bp = _make_blueprint(
             [{"id": "s1", "prompt": "hi", "hooks": {"post_tool": ["run_tests"]}}]
         )
-        assert bp.steps[0].hooks_config == {"post_tool": ["run_tests"]}
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        assert step.hooks_config == {"post_tool": ["run_tests"]}
 
 
 class TestParseStepLoadProject:
@@ -83,7 +91,9 @@ class TestParseStepLoadProject:
 
     def test_load_project_step_stores_path_template(self):
         bp = _make_blueprint([{"id": "s1", "load_project": "{clone_dir}"}])
-        assert bp.steps[0].path_template == "{clone_dir}"
+        step = bp.steps[0]
+        assert isinstance(step, LoadProjectStep)
+        assert step.path_template == "{clone_dir}"
 
 
 class TestParseStepInvalid:
