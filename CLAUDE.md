@@ -7,24 +7,50 @@ Goblin is an autonomous coding agent harness that runs high-level workflow defin
 ```
 goblin/
 ├── goblin/
-│   ├── __init__.py    # Package init (empty)
-│   ├── hooks.py       # Hook registry and @hook decorator
-│   └── runner.py      # WorkflowRunner: parses and executes blueprints
+│   ├── __init__.py        # Package init (empty)
+│   ├── blueprint.py       # V1Blueprint: core orchestration class
+│   ├── hooks.py           # Hook registry and @hook decorator
+│   ├── prompts.py         # System prompts (BASE_SYSTEM_PROMPT, JSON_REPAIR_PROMPT)
+│   ├── runner.py          # WorkflowRunner: loads YAML, routes to blueprint version
+│   ├── step.py            # PromptStep, LoadProjectStep, StepProtocol
+│   └── utils/
+│       ├── __init__.py
+│       ├── click_helpers.py   # JsonParamType for CLI
+│       └── jinja_helpers.py   # Jinja2 custom filters (contains, json_value)
 ├── spec/
-│   └── v1.json        # JSON Schema for blueprints (evolving standard)
+│   └── v1.json            # JSON Schema for blueprints (evolving standard)
+├── tests/
+│   ├── __init__.py
+│   ├── test_blueprint_foreach.py
+│   ├── test_build_hooks.py
+│   ├── test_evaluate_condition.py
+│   ├── test_extract_json.py
+│   ├── test_jinja_helpers.py
+│   ├── test_load_project.py
+│   ├── test_parse_step.py
+│   └── test_run_orchestration.py
 ├── workflows/
-│   └── test.yaml      # Example blueprint
-├── main.py            # Entry point
-└── pyproject.toml
+│   └── test.yaml          # Example blueprint
+├── main.py                # CLI entry point (Click)
+├── pyproject.toml
+├── ruff.toml              # Linter/formatter config
+└── Taskfile.yml           # Task runner (lint, format, typecheck)
 ```
 
 ## Tooling
 
 - **Python 3.11+** — specified in `.python-version`
 - **uv** — package manager; use `uv run`, `uv add`, `uv sync` (never pip)
+- **Taskfile** — task runner; use `task lint`, `task format`, `task typecheck`
 - **claude-agent-sdk** — agent orchestration
+- **click** — CLI framework
+- **jinja2** — template expressions in conditions and foreach
+- **pydantic** — response validation (StepResult model)
 - **pyyaml** — YAML parsing for blueprints
-- **dotenv** — dev dependency for loading `.env` in `main.py`
+- **ruff** — linter and formatter (dev)
+- **pyrefly** — type checker (dev)
+- **pytest / pytest-asyncio** — test framework (dev)
+- **dotenv** — dev dependency for loading `.env`
 
 ## Architecture
 
@@ -56,29 +82,52 @@ Steps are either **prompt steps** (run an agent with a prompt) or **load_project
 
 | Field | Description | Status |
 |-------|-------------|--------|
-| `vars` | Workflow-level variables for `{variable}` interpolation | Schema only — not auto-merged into context by runner |
+| `vars` | Workflow-level variables for `{variable}` interpolation | Implemented — merged into context at runtime |
 | `defaults.hooks` | Hook names applied to all steps unless overridden | Implemented |
 | `steps[].prompt` | Agent prompt (mutually exclusive with `load_project`) | Implemented |
 | `steps[].load_project` | Path to project root — loads settings, CLAUDE.md refs, agent definitions, and hooks | Implemented |
 | `steps[].allowed_tools` | List of tool names the agent may use | Implemented |
 | `steps[].foreach` | Integer, Jinja2 expression (must resolve to integer), or file path. Injects `{index}`; file mode also injects `{item}`. | Implemented |
-| `steps[].condition` | `{{ steps.<id>.all_succeeded }}` — skip step if false | Scaffolded — `_evaluate_condition` not yet implemented |
+| `steps[].condition` | Jinja2 expression evaluated against prior step results. Custom filters: `contains`, `json_value`. | Implemented |
 | `steps[].depends_on` | Step ID(s) that must complete first | Schema only — no dependency graph in runner |
-| `steps[].on_failure.action` | `skip`, `retry`, or `abort` | Schema defined |
-| `steps[].on_failure.notify` | Hook name to call on step failure | Schema defined |
+| `steps[].on_failure.action` | `skip`, `retry`, or `abort` | Implemented |
+| `steps[].on_failure.notify` | Hook name to call on step failure | Implemented |
 
 ### Runner (`goblin/runner.py`)
 
-`WorkflowRunner` is the core orchestration class:
+`WorkflowRunner` is a thin entry point:
 
-1. Loads the YAML blueprint on init
-2. For each step: checks for `load_project` or `prompt`, builds hooks, runs the agent
+1. Loads the YAML blueprint
+2. Routes to the appropriate blueprint version class (currently `V1Blueprint`)
+3. Calls `blueprint.run(context)` and returns results
+
+### Blueprint (`goblin/blueprint.py`)
+
+`V1Blueprint` is the core orchestration class:
+
+1. Parses steps from the raw spec via `_parse_step()` (dispatches to `PromptStep` or `LoadProjectStep`)
+2. For each step: evaluates conditions, resolves foreach, builds hooks, runs the step
 3. Hook resolution: step-level hooks **override** (not merge) workflow defaults
 4. Results stored as `results[step_id]` and returned from `run()`
-5. External `context` dict is passed to `run()` by the caller (e.g., `main.py`) and used for `{variable}` interpolation in prompts
+5. External `context` dict is passed to `run()` by the caller and merged with workflow `vars` for `{variable}` interpolation
 6. All agent calls set `env={"CLAUDECODE": ""}` to run in Claude Code mode
 
-**`load_project` steps:** When a step has `load_project` instead of `prompt`, the runner loads the full project configuration from the given path:
+**Key methods:**
+
+- `_resolve()` — Three-mode foreach resolution: integer, Jinja2 expression, or file-backed
+- `_evaluate_condition()` — Evaluate Jinja2 conditions against prior step results
+- `_build_hooks()` — Resolve hook names from defaults/step config to callables
+- `_load_project()` — Load full project configuration from a path
+- `_handle_step_failure()` — Apply on_failure policy (skip, retry, abort)
+
+### Steps (`goblin/step.py`)
+
+`StepProtocol` defines the interface: `id`, `condition`, `foreach`, `on_failure` attributes and `async run(context)`.
+
+- **`PromptStep`** — Runs an agent with a prompt. Parses the response as JSON via `_parse_response()`, with automatic retry/repair (up to 3 attempts via `_request_json_repair()`).
+- **`LoadProjectStep`** — Delegates to `blueprint._load_project()` to load project configuration.
+
+**`load_project` steps:** When a step has `load_project` instead of `prompt`, the blueprint loads the full project configuration from the given path:
 
 - **Settings**: Stores `{path}/.claude/settings.json` path (passed to SDK via `settings` param). Also extracts shell command hooks and registers them in `HOOK_REGISTRY` as `project_pre_tool` / `project_post_tool`.
 - **References**: Reads `{path}/CLAUDE.md` and `{path}/.claude/CLAUDE.md` if they exist, concatenates them, and appends to the system prompt for subsequent steps.
@@ -112,6 +161,6 @@ Hooks attach to `PreToolUse` and `PostToolUse` events on the Claude agent.
 
 - All runner and agent operations are **async**
 - Prompts support `{variable}` interpolation (Python `.format()`) from the `context` dict passed to `run()`
-- Step template expressions use `{{ }}` Jinja-style syntax (not yet implemented)
+- Step template expressions use `{{ }}` Jinja2 syntax for conditions and foreach
 - Hook names in blueprints are strings that must exist in `HOOK_REGISTRY` at runtime
 - Workflow files live in `workflows/`
