@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=../spec/v1.json
 
-version: 1
+version: v1
 workflow:
   name: my_workflow
   vars:

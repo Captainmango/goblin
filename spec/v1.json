@@ -1,16 +1,16 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gremlin/spec/v1.json",
-  "title": "Gremlin Workflow Definition",
-  "description": "Schema for .grem.yml workflow files",
+  "title": "GOBLIN Workflow Definition",
+  "description": "Schema for GOBLIN blueprint files",
   "type": "object",
   "required": ["version", "workflow"],
   "additionalProperties": false,
   "properties": {
     "version": {
-      "type": "integer",
+      "type": "string",
       "description": "Schema version of the workflow definition. Determines which blueprint class the runner uses to execute the workflow.",
-      "examples": [1, 2]
+      "examples": ["v1", "v1.1"]
     },
     "workflow": {
       "type": "object",

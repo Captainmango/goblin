@@ -2,7 +2,7 @@ import yaml
 from goblin.blueprint import Blueprint, V1Blueprint
 
 BLUEPRINT_REGISTRY: dict[int, type] = {
-    1: V1Blueprint,
+    "v1": V1Blueprint,
 }
 
 

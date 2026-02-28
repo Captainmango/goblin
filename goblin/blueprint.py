@@ -7,30 +7,37 @@ from typing import Protocol
 
 from claude_agent_sdk import (
     AgentDefinition,
-    AssistantMessage,
-    ClaudeAgentOptions,
     HookMatcher,
-    ResultMessage,
-    query,
 )
 from goblin.hooks import HOOK_REGISTRY
+from goblin.step import LoadProjectStep, PromptStep, StepProtocol
 
 
 class Blueprint(Protocol):
     async def run(self, context: dict) -> dict: ...
 
 
-class V1Blueprint:
+class V1Blueprint(Blueprint):
     def __init__(self, spec: dict):
         self.spec = spec
         self.project_path: str | None = None
         self.project_settings_path: str | None = None
         self.project_refs: str = ""
         self.project_agents: dict[str, AgentDefinition] = {}
+        self.steps: list[StepProtocol] = [self._parse_step(s) for s in spec["steps"]]
 
-    def _build_hooks(self, step: dict) -> dict:
+    def _parse_step(self, raw: dict) -> StepProtocol:
+        match raw:
+            case {"load_project": str(), **_rest}:
+                return LoadProjectStep(raw, self)
+            case {"prompt": str(), **_rest}:
+                return PromptStep(raw, self)
+            case _:
+                raise ValueError(f"Step '{raw.get('id', '?')}' must have either 'prompt' or 'load_project'")
+
+    def _build_hooks(self, step: PromptStep) -> dict:
         defaults = self.spec.get("defaults", {}).get("hooks", {})
-        step_hooks = step.get("hooks", {})
+        step_hooks = step.hooks_config
 
         # Step-level hooks override defaults entirely if specified
         pre_names = step_hooks.get("pre_tool", defaults.get("pre_tool", []))
@@ -113,80 +120,58 @@ class V1Blueprint:
                     )
                     print(f"Loaded agent definition: {agent_name}")
 
-    async def run_step(self, step: dict, context: dict):
-        prompt = step["prompt"].format(**context)
+    async def _handle_step_failure(self, step: StepProtocol, context: dict, results: dict) -> bool:
+        """Handle a failed step. Returns True to continue the run, False to abort."""
+        on_failure = step.on_failure or {}
+        action = on_failure.get("action", "abort")
+        notify_hook = on_failure.get("notify")
 
-        kwargs: dict = {
-            "allowed_tools": step.get("allowed_tools", []),
-            "hooks": self._build_hooks(step),
-            "env": {"CLAUDECODE": ""},
-        }
+        print(f"Step {step.id} failed")
 
-        if self.project_path:
-            kwargs["cwd"] = self.project_path
-        if self.project_settings_path:
-            kwargs["settings"] = self.project_settings_path
-        if self.project_refs:
-            kwargs["system_prompt"] = {
-                "type": "preset",
-                "preset": "claude_code",
-                "append": self.project_refs,
-            }
-        if self.project_agents:
-            kwargs["agents"] = self.project_agents
+        if notify_hook and notify_hook in HOOK_REGISTRY:
+            HOOK_REGISTRY[notify_hook](results[step.id])
 
-        options = ClaudeAgentOptions(**kwargs)
+        if action == "skip":
+            print(f"Skipping failed step {step.id}, continuing workflow")
+            return True
 
-        result = []
+        if action == "retry":
+            print(f"Retrying step {step.id}")
+            result = await step.run(context)
+            results[step.id] = result
+            if result.get("success", True):
+                return True
+            print(f"Step {step.id} failed again after retry, aborting")
+            return False
 
-        # Agentic loop: streams messages as Claude works
-        async for message in query(
-            prompt=prompt,
-            options=options
-        ):
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if hasattr(block, "text"):
-                        print(block.text)
-                        result.append(block.text)  # Claude's reasoning
-                    elif hasattr(block, "name"):
-                        result.append(f"Tool: {block.name}")  # Tool being called
-            elif isinstance(message, ResultMessage):
-                result.append(f"Done: {message.subtype}")
-
-        return result
+        # abort (default)
+        print(f"Aborting workflow due to step {step.id} failure")
+        return False
 
     async def run(self, context: dict = {}):
         results = {}
-        for step in self.spec["steps"]:
-            step_id = step["id"]
-
-            # load_project steps import project config rather than running the agent
-            if "load_project" in step:
-                path = step["load_project"].format(**context)
-                self._load_project(path)
-                results[step_id] = {"status": "loaded", "path": path}
-                continue
-
+        for step in self.steps:
             # Check conditions
-            if "condition" in step:
-                if not self._evaluate_condition(step["condition"], results):
-                    print(f"Skipping {step_id} — condition not met")
+            if step.condition:
+                if not self._evaluate_condition(step.condition, results):
+                    print(f"Skipping {step.id} — condition not met")
                     continue
 
             # Handle foreach expansion
-            if "foreach" in step:
-                items = self._resolve(step["foreach"], results)
+            if step.foreach:
+                items = self._resolve(step.foreach, results)
                 for item in items:
                     step_context = {**context, **item}
-                    try:
-                        results[step_id] = await self.run_step(step, step_context)
-                    except Exception:
-                        if step.get("on_failure", {}).get("action") == "skip":
-                            print(f"Step {step_id} failed for {item}, skipping")
-                            continue
-                        raise
+                    result = await step.run(step_context)
+                    results[step.id] = result
+                    if not result.get("success", True):
+                        if not await self._handle_step_failure(step, step_context, results):
+                            return results
             else:
-                results[step_id] = await self.run_step(step, context)
+                result = await step.run(context)
+                results[step.id] = result
+                if not result.get("success", True):
+                    if not await self._handle_step_failure(step, context, results):
+                        return results
 
         return results
