@@ -1,7 +1,7 @@
 import yaml
 from goblin.blueprint import Blueprint, V1Blueprint
 
-BLUEPRINT_REGISTRY: dict[int, type] = {
+BLUEPRINT_REGISTRY: dict[str, type] = {
     "v1": V1Blueprint,
 }
 

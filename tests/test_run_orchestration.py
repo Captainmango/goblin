@@ -307,7 +307,7 @@ class TestRunFailureRetry:
         ]
         bp.steps[1].run.return_value = {"success": True, "message": ["done"]}
 
-        results = await bp.run({})
+        _results = await bp.run({})
 
         assert bp.steps[0].run.call_count == 2
         bp.steps[1].run.assert_called_once()
@@ -329,7 +329,7 @@ class TestRunFailureRetry:
             {"success": False, "message": ["fail again"]},
         ]
 
-        results = await bp.run({})
+        _results = await bp.run({})
 
         assert bp.steps[0].run.call_count == 2
         bp.steps[1].run.assert_not_called()

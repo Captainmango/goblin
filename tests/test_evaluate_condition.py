@@ -3,8 +3,6 @@ with custom filters (contains, json_value) and edge cases."""
 
 from __future__ import annotations
 
-import pytest
-
 from goblin.blueprint import V1Blueprint
 
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from goblin.utils.jinja_helpers import filter_contains, filter_json_value
 
 
