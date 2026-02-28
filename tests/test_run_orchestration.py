@@ -15,7 +15,10 @@ from goblin.hooks import HOOK_REGISTRY
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_blueprint(steps: list[dict], vars: dict | None = None, defaults: dict | None = None) -> V1Blueprint:
+
+def _make_blueprint(
+    steps: list[dict], vars: dict | None = None, defaults: dict | None = None
+) -> V1Blueprint:
     spec = {"name": "test_wf", "steps": steps}
     if vars:
         spec["vars"] = vars
@@ -52,13 +55,20 @@ def _clean_registry():
 # Condition skipping in run()
 # ---------------------------------------------------------------------------
 
+
 class TestRunConditionSkipping:
     @pytest.mark.asyncio
     async def test_step_skipped_when_condition_false(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "first", "prompt": "go", "on_failure": {"action": "skip"}},
-            {"id": "second", "prompt": "do", "condition": "{{ steps.first.success }}"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "first", "prompt": "go", "on_failure": {"action": "skip"}},
+                {
+                    "id": "second",
+                    "prompt": "do",
+                    "condition": "{{ steps.first.success }}",
+                },
+            ]
+        )
         bp.steps[0].run.return_value = {"success": False, "message": ["err"]}
         bp.steps[1].run.return_value = {"success": True, "message": ["ok"]}
 
@@ -70,10 +80,16 @@ class TestRunConditionSkipping:
 
     @pytest.mark.asyncio
     async def test_condition_true_allows_step(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "first", "prompt": "go"},
-            {"id": "second", "prompt": "do", "condition": "{{ steps.first.success }}"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "first", "prompt": "go"},
+                {
+                    "id": "second",
+                    "prompt": "do",
+                    "condition": "{{ steps.first.success }}",
+                },
+            ]
+        )
         bp.steps[0].run.return_value = {"success": True, "message": ["ok"]}
         bp.steps[1].run.return_value = {"success": True, "message": ["done"]}
 
@@ -85,11 +101,17 @@ class TestRunConditionSkipping:
 
     @pytest.mark.asyncio
     async def test_condition_false_skips_step(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "first", "prompt": "go"},
-            {"id": "second", "prompt": "do", "condition": "{{ steps.first.do_thing }}"},
-            {"id": "third", "prompt": "finish"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "first", "prompt": "go"},
+                {
+                    "id": "second",
+                    "prompt": "do",
+                    "condition": "{{ steps.first.do_thing }}",
+                },
+                {"id": "third", "prompt": "finish"},
+            ]
+        )
         bp.steps[0].run.return_value = {"success": True, "do_thing": False}
         bp.steps[1].run.return_value = {"success": True}
         bp.steps[2].run.return_value = {"success": True, "message": ["done"]}
@@ -106,6 +128,7 @@ class TestRunConditionSkipping:
 # ---------------------------------------------------------------------------
 # Vars merging
 # ---------------------------------------------------------------------------
+
 
 class TestRunVarsMerging:
     @pytest.mark.asyncio
@@ -153,15 +176,18 @@ class TestRunVarsMerging:
 # Multi-step sequencing
 # ---------------------------------------------------------------------------
 
+
 class TestRunMultiStep:
     @pytest.mark.asyncio
     async def test_steps_run_in_order(self):
         call_order = []
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "a", "prompt": "first"},
-            {"id": "b", "prompt": "second"},
-            {"id": "c", "prompt": "third"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "a", "prompt": "first"},
+                {"id": "b", "prompt": "second"},
+                {"id": "c", "prompt": "third"},
+            ]
+        )
         for i, step in enumerate(bp.steps):
             step.run.side_effect = lambda ctx, idx=i: (
                 call_order.append(idx) or {"success": True, "message": ["ok"]}
@@ -173,10 +199,12 @@ class TestRunMultiStep:
 
     @pytest.mark.asyncio
     async def test_results_accumulate_per_step(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "a", "prompt": "first"},
-            {"id": "b", "prompt": "second"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "a", "prompt": "first"},
+                {"id": "b", "prompt": "second"},
+            ]
+        )
         bp.steps[0].run.return_value = {"success": True, "message": ["alpha"]}
         bp.steps[1].run.return_value = {"success": True, "message": ["beta"]}
 
@@ -190,13 +218,16 @@ class TestRunMultiStep:
 # on_failure — abort (default)
 # ---------------------------------------------------------------------------
 
+
 class TestRunFailureAbort:
     @pytest.mark.asyncio
     async def test_default_action_aborts_on_failure(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "fail_step", "prompt": "break"},
-            {"id": "next_step", "prompt": "never reached"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "fail_step", "prompt": "break"},
+                {"id": "next_step", "prompt": "never reached"},
+            ]
+        )
         bp.steps[0].run.return_value = {"success": False, "message": ["error"]}
         bp.steps[1].run.return_value = {"success": True}
 
@@ -207,10 +238,16 @@ class TestRunFailureAbort:
 
     @pytest.mark.asyncio
     async def test_explicit_abort_stops_workflow(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "fail_step", "prompt": "break", "on_failure": {"action": "abort"}},
-            {"id": "next_step", "prompt": "never reached"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "fail_step",
+                    "prompt": "break",
+                    "on_failure": {"action": "abort"},
+                },
+                {"id": "next_step", "prompt": "never reached"},
+            ]
+        )
         bp.steps[0].run.return_value = {"success": False, "message": ["error"]}
 
         results = await bp.run({})
@@ -223,13 +260,20 @@ class TestRunFailureAbort:
 # on_failure — skip
 # ---------------------------------------------------------------------------
 
+
 class TestRunFailureSkip:
     @pytest.mark.asyncio
     async def test_skip_continues_to_next_step(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "fail_step", "prompt": "break", "on_failure": {"action": "skip"}},
-            {"id": "next_step", "prompt": "continue"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "fail_step",
+                    "prompt": "break",
+                    "on_failure": {"action": "skip"},
+                },
+                {"id": "next_step", "prompt": "continue"},
+            ]
+        )
         bp.steps[0].run.return_value = {"success": False, "message": ["error"]}
         bp.steps[1].run.return_value = {"success": True, "message": ["ok"]}
 
@@ -243,13 +287,20 @@ class TestRunFailureSkip:
 # on_failure — retry
 # ---------------------------------------------------------------------------
 
+
 class TestRunFailureRetry:
     @pytest.mark.asyncio
     async def test_retry_succeeds_on_second_attempt(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "retry_step", "prompt": "try", "on_failure": {"action": "retry"}},
-            {"id": "next_step", "prompt": "after"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "retry_step",
+                    "prompt": "try",
+                    "on_failure": {"action": "retry"},
+                },
+                {"id": "next_step", "prompt": "after"},
+            ]
+        )
         bp.steps[0].run.side_effect = [
             {"success": False, "message": ["fail"]},
             {"success": True, "message": ["ok"]},
@@ -263,10 +314,16 @@ class TestRunFailureRetry:
 
     @pytest.mark.asyncio
     async def test_retry_fails_again_aborts(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "retry_step", "prompt": "try", "on_failure": {"action": "retry"}},
-            {"id": "next_step", "prompt": "never"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "retry_step",
+                    "prompt": "try",
+                    "on_failure": {"action": "retry"},
+                },
+                {"id": "next_step", "prompt": "never"},
+            ]
+        )
         bp.steps[0].run.side_effect = [
             {"success": False, "message": ["fail"]},
             {"success": False, "message": ["fail again"]},
@@ -282,19 +339,22 @@ class TestRunFailureRetry:
 # on_failure — notify
 # ---------------------------------------------------------------------------
 
+
 class TestRunFailureNotify:
     @pytest.mark.asyncio
     async def test_notify_hook_called_on_failure(self):
         notify_mock = MagicMock()
         HOOK_REGISTRY["alert_hook"] = notify_mock
 
-        bp = _make_blueprint_with_mock_steps([
-            {
-                "id": "fail_step",
-                "prompt": "break",
-                "on_failure": {"action": "skip", "notify": "alert_hook"},
-            },
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "fail_step",
+                    "prompt": "break",
+                    "on_failure": {"action": "skip", "notify": "alert_hook"},
+                },
+            ]
+        )
         bp.steps[0].run.return_value = {"success": False, "message": ["error"]}
 
         await bp.run({})
@@ -306,13 +366,15 @@ class TestRunFailureNotify:
 
     @pytest.mark.asyncio
     async def test_notify_with_unregistered_hook_does_not_crash(self):
-        bp = _make_blueprint_with_mock_steps([
-            {
-                "id": "fail_step",
-                "prompt": "break",
-                "on_failure": {"action": "skip", "notify": "nonexistent_hook"},
-            },
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "fail_step",
+                    "prompt": "break",
+                    "on_failure": {"action": "skip", "notify": "nonexistent_hook"},
+                },
+            ]
+        )
         bp.steps[0].run.return_value = {"success": False, "message": ["error"]}
 
         # Should not raise

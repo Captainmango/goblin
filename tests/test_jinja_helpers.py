@@ -11,6 +11,7 @@ from goblin.utils.jinja_helpers import filter_contains, filter_json_value
 # filter_contains
 # ---------------------------------------------------------------------------
 
+
 class TestFilterContains:
     def test_match_in_single_message(self):
         assert filter_contains(["hello world"], "world") is True
@@ -40,6 +41,7 @@ class TestFilterContains:
 # ---------------------------------------------------------------------------
 # filter_json_value
 # ---------------------------------------------------------------------------
+
 
 class TestFilterJsonValue:
     def test_extracts_top_level_key(self):
@@ -88,7 +90,7 @@ class TestFilterJsonValue:
         assert result is None
 
     def test_json_array_skipped(self):
-        result = filter_json_value(['[1, 2, 3]'], "0")
+        result = filter_json_value(["[1, 2, 3]"], "0")
         assert result is None
 
     def test_boolean_value_extracted(self):

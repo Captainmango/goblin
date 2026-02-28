@@ -30,6 +30,7 @@ def _extract_json(text: str) -> dict:
         return json.loads(match.group(1).strip())
     return json.loads(text.strip())
 
+
 if TYPE_CHECKING:
     from goblin.blueprint import V1Blueprint
 
@@ -39,7 +40,7 @@ class StepProtocol(Protocol):
     condition: str | None
     foreach: str | None
     on_failure: dict | None
-    
+
     async def run(self, context: dict) -> Dict: ...
 
 
@@ -84,7 +85,9 @@ class PromptStep(StepProtocol):
 
         return await self._parse_response(text_blocks[-1])
 
-    async def _parse_response(self, text: str, retries: int = MAX_PARSE_RETRIES) -> Dict:
+    async def _parse_response(
+        self, text: str, retries: int = MAX_PARSE_RETRIES
+    ) -> Dict:
         """Parse agent response JSON, retrying with a repair prompt on failure."""
         for attempt in range(1 + retries):
             try:

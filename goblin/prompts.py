@@ -1,5 +1,3 @@
-
-
 BASE_SYSTEM_PROMPT = """
 You are an autonomous agent executing a series of instructions. Always respond with the following JSON 
 ```json

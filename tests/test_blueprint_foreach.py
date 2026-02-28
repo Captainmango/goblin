@@ -14,6 +14,7 @@ from goblin.blueprint import V1Blueprint
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_blueprint(steps: list[dict], vars: dict | None = None) -> V1Blueprint:
     """Build a V1Blueprint from a minimal spec, patching step parsing to avoid
     importing the real PromptStep/LoadProjectStep (which pull in the SDK)."""
@@ -23,7 +24,9 @@ def _make_blueprint(steps: list[dict], vars: dict | None = None) -> V1Blueprint:
     return V1Blueprint(spec)
 
 
-def _make_blueprint_with_mock_steps(steps_raw: list[dict], vars: dict | None = None) -> V1Blueprint:
+def _make_blueprint_with_mock_steps(
+    steps_raw: list[dict], vars: dict | None = None
+) -> V1Blueprint:
     """Build a V1Blueprint but replace the real steps with mock objects so we
     can control step.run() without hitting the Agent SDK."""
     # First build normally, then swap out the parsed steps
@@ -44,6 +47,7 @@ def _make_blueprint_with_mock_steps(steps_raw: list[dict], vars: dict | None = N
 # _jinja_env
 # ---------------------------------------------------------------------------
 
+
 class TestJinjaEnv:
     def test_returns_environment_with_filters(self):
         bp = _make_blueprint([{"id": "s1", "prompt": "hello"}])
@@ -62,6 +66,7 @@ class TestJinjaEnv:
 # ---------------------------------------------------------------------------
 # _resolve_foreach_count
 # ---------------------------------------------------------------------------
+
 
 class TestResolveForeachCount:
     def test_zero(self):
@@ -83,6 +88,7 @@ class TestResolveForeachCount:
 # _resolve — integer mode
 # ---------------------------------------------------------------------------
 
+
 class TestResolveIntegerMode:
     def test_literal_integer_string(self):
         bp = _make_blueprint([{"id": "s1", "prompt": "hi"}])
@@ -102,6 +108,7 @@ class TestResolveIntegerMode:
 # ---------------------------------------------------------------------------
 # _resolve — Jinja mode
 # ---------------------------------------------------------------------------
+
 
 class TestResolveJinjaMode:
     def test_jinja_expression_evaluates_to_integer(self):
@@ -128,6 +135,7 @@ class TestResolveJinjaMode:
 # ---------------------------------------------------------------------------
 # _resolve — file mode
 # ---------------------------------------------------------------------------
+
 
 class TestResolveFileMode:
     def test_reads_lines_from_file(self, tmp_path):
@@ -177,6 +185,7 @@ class TestResolveFileMode:
 # _evaluate_condition — still works with _jinja_env refactor
 # ---------------------------------------------------------------------------
 
+
 class TestEvaluateConditionStillWorks:
     def test_truthy_condition(self):
         bp = _make_blueprint([{"id": "s1", "prompt": "hi"}])
@@ -198,12 +207,15 @@ class TestEvaluateConditionStillWorks:
 # run() — foreach integration (mocking query via step.run)
 # ---------------------------------------------------------------------------
 
+
 class TestRunForeach:
     @pytest.mark.asyncio
     async def test_foreach_integer_runs_step_n_times(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "repeat_step", "prompt": "do thing {index}", "foreach": "3"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "repeat_step", "prompt": "do thing {index}", "foreach": "3"},
+            ]
+        )
         step = bp.steps[0]
         step.run.return_value = {"success": True, "message": ["done"]}
 
@@ -215,9 +227,11 @@ class TestRunForeach:
 
     @pytest.mark.asyncio
     async def test_foreach_iteration_contexts_have_index(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "indexed_step", "prompt": "item {index}", "foreach": "2"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "indexed_step", "prompt": "item {index}", "foreach": "2"},
+            ]
+        )
         step = bp.steps[0]
         step.run.return_value = {"success": True, "message": ["ok"]}
 
@@ -233,9 +247,15 @@ class TestRunForeach:
         items_file = tmp_path / "repos.txt"
         items_file.write_text("repo-a\nrepo-b\n")
 
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "per_repo", "prompt": "process {item}", "foreach": str(items_file)},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "per_repo",
+                    "prompt": "process {item}",
+                    "foreach": str(items_file),
+                },
+            ]
+        )
         step = bp.steps[0]
         step.run.return_value = {"success": True, "message": ["processed"]}
 
@@ -249,9 +269,11 @@ class TestRunForeach:
 
     @pytest.mark.asyncio
     async def test_foreach_zero_iterations_produces_empty_result(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "empty_step", "prompt": "nothing", "foreach": "0"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "empty_step", "prompt": "nothing", "foreach": "0"},
+            ]
+        )
         step = bp.steps[0]
 
         results = await bp.run({})
@@ -262,9 +284,11 @@ class TestRunForeach:
 
     @pytest.mark.asyncio
     async def test_foreach_failure_aborts_workflow(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "failing_step", "prompt": "fail {index}", "foreach": "3"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "failing_step", "prompt": "fail {index}", "foreach": "3"},
+            ]
+        )
         step = bp.steps[0]
         step.run.side_effect = [
             {"success": True, "message": ["ok"]},
@@ -279,14 +303,16 @@ class TestRunForeach:
 
     @pytest.mark.asyncio
     async def test_foreach_failure_with_skip_continues(self):
-        bp = _make_blueprint_with_mock_steps([
-            {
-                "id": "skip_step",
-                "prompt": "try {index}",
-                "foreach": "2",
-                "on_failure": {"action": "skip"},
-            },
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "skip_step",
+                    "prompt": "try {index}",
+                    "foreach": "2",
+                    "on_failure": {"action": "skip"},
+                },
+            ]
+        )
         step = bp.steps[0]
         step.run.side_effect = [
             {"success": False, "message": ["err"]},
@@ -316,9 +342,11 @@ class TestRunForeach:
 
     @pytest.mark.asyncio
     async def test_non_foreach_step_still_works(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "normal_step", "prompt": "just do it"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "normal_step", "prompt": "just do it"},
+            ]
+        )
         step = bp.steps[0]
         step.run.return_value = {"success": True, "message": ["done"]}
 

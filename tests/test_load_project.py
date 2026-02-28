@@ -15,6 +15,7 @@ from goblin.hooks import HOOK_REGISTRY
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_blueprint() -> V1Blueprint:
     return V1Blueprint({"name": "test_wf", "steps": [{"id": "s1", "prompt": "hi"}]})
 
@@ -30,6 +31,7 @@ def _clean_registry():
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
+
 
 class TestLoadProjectSettings:
     def test_stores_settings_path(self, tmp_path):
@@ -59,6 +61,7 @@ class TestLoadProjectSettings:
 # ---------------------------------------------------------------------------
 # References (CLAUDE.md)
 # ---------------------------------------------------------------------------
+
 
 class TestLoadProjectRefs:
     def test_loads_root_claude_md(self, tmp_path):
@@ -101,6 +104,7 @@ class TestLoadProjectRefs:
 # ---------------------------------------------------------------------------
 # Agent definitions
 # ---------------------------------------------------------------------------
+
 
 class TestLoadProjectAgents:
     def test_loads_agent_md_files(self, tmp_path):
@@ -151,6 +155,7 @@ class TestLoadProjectAgents:
 # Shell command hooks from settings
 # ---------------------------------------------------------------------------
 
+
 class TestLoadProjectHooksFromSettings:
     def test_registers_post_tool_hooks(self, tmp_path):
         settings_dir = tmp_path / ".claude"
@@ -158,11 +163,7 @@ class TestLoadProjectHooksFromSettings:
         settings = {
             "hooks": {
                 "PostToolUse": [
-                    {
-                        "hooks": [
-                            {"type": "command", "command": "echo post"}
-                        ]
-                    }
+                    {"hooks": [{"type": "command", "command": "echo post"}]}
                 ]
             }
         }
@@ -178,13 +179,7 @@ class TestLoadProjectHooksFromSettings:
         settings_dir.mkdir()
         settings = {
             "hooks": {
-                "PreToolUse": [
-                    {
-                        "hooks": [
-                            {"type": "command", "command": "echo pre"}
-                        ]
-                    }
-                ]
+                "PreToolUse": [{"hooks": [{"type": "command", "command": "echo pre"}]}]
             }
         }
         (settings_dir / "settings.json").write_text(json.dumps(settings))
@@ -199,13 +194,7 @@ class TestLoadProjectHooksFromSettings:
         settings_dir.mkdir()
         settings = {
             "hooks": {
-                "PostToolUse": [
-                    {
-                        "hooks": [
-                            {"type": "other", "command": "echo nope"}
-                        ]
-                    }
-                ]
+                "PostToolUse": [{"hooks": [{"type": "other", "command": "echo nope"}]}]
             }
         }
         (settings_dir / "settings.json").write_text(json.dumps(settings))

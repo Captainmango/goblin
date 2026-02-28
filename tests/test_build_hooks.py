@@ -12,6 +12,7 @@ from goblin.hooks import HOOK_REGISTRY
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _dummy_hook(tool_use):
     pass
 
@@ -39,6 +40,7 @@ def _make_blueprint(steps: list[dict], defaults: dict | None = None) -> V1Bluepr
 # ---------------------------------------------------------------------------
 # _build_hooks
 # ---------------------------------------------------------------------------
+
 
 class TestBuildHooksDefaults:
     def test_uses_default_hooks_when_step_has_none(self):

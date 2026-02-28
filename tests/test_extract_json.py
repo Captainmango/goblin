@@ -13,6 +13,7 @@ from goblin.step import _extract_json
 # _extract_json
 # ---------------------------------------------------------------------------
 
+
 class TestExtractJson:
     def test_plain_json_string(self):
         result = _extract_json('{"success": true, "message": ["done"]}')

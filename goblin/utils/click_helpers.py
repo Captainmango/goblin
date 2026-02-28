@@ -1,6 +1,7 @@
 import click
 import json
 
+
 class JsonParamType(click.ParamType):
     name = "json"
 
@@ -9,5 +10,6 @@ class JsonParamType(click.ParamType):
             return json.loads(value)
         except json.JSONDecodeError as e:
             self.fail(f"Invalid JSON: {e}", param, ctx)
+
 
 JSON = JsonParamType()

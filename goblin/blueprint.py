@@ -36,7 +36,9 @@ class V1Blueprint(Blueprint):
             case {"prompt": str(), **_rest}:
                 return PromptStep(raw, self)
             case _:
-                raise ValueError(f"Step '{raw.get('id', '?')}' must have either 'prompt' or 'load_project'")
+                raise ValueError(
+                    f"Step '{raw.get('id', '?')}' must have either 'prompt' or 'load_project'"
+                )
 
     def _build_hooks(self, step: PromptStep) -> dict:
         defaults = self.spec.get("defaults", {}).get("hooks", {})
@@ -47,8 +49,16 @@ class V1Blueprint(Blueprint):
         post_names = step_hooks.get("post_tool", defaults.get("post_tool", []))
 
         return {
-            "PreToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in pre_names if n in HOOK_REGISTRY])],
-            "PostToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY])],
+            "PreToolUse": [
+                HookMatcher(
+                    hooks=[HOOK_REGISTRY[n] for n in pre_names if n in HOOK_REGISTRY]
+                )
+            ],
+            "PostToolUse": [
+                HookMatcher(
+                    hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY]
+                )
+            ],
         }
 
     def _jinja_env(self) -> Environment:
@@ -148,7 +158,10 @@ class V1Blueprint(Blueprint):
             with open(settings_path) as f:
                 settings = json.load(f)
             hooks_config = settings.get("hooks", {})
-            for event_type, registry_name in (("PreToolUse", "project_pre_tool"), ("PostToolUse", "project_post_tool")):
+            for event_type, registry_name in (
+                ("PreToolUse", "project_pre_tool"),
+                ("PostToolUse", "project_post_tool"),
+            ):
                 commands = [
                     hook_def["command"]
                     for matcher_def in hooks_config.get(event_type, [])
@@ -163,11 +176,16 @@ class V1Blueprint(Blueprint):
                         for cmd in cmds:
                             result = subprocess.run(cmd, shell=True, cwd=cwd)
                             if result.returncode != 0:
-                                print(f"Project hook failed (exit {result.returncode}): {cmd}")
+                                print(
+                                    f"Project hook failed (exit {result.returncode}): {cmd}"
+                                )
+
                     return run_project_hooks
 
                 HOOK_REGISTRY[registry_name] = make_runner(commands, path)
-                print(f"Registered {len(commands)} {event_type} command(s) as '{registry_name}'")
+                print(
+                    f"Registered {len(commands)} {event_type} command(s) as '{registry_name}'"
+                )
         else:
             print(f"No .claude/settings.json found in {path}")
 
@@ -197,7 +215,9 @@ class V1Blueprint(Blueprint):
                     )
                     print(f"Loaded agent definition: {agent_name}")
 
-    async def _handle_step_failure(self, step: StepProtocol, context: dict, results: dict) -> bool:
+    async def _handle_step_failure(
+        self, step: StepProtocol, context: dict, results: dict
+    ) -> bool:
         """Handle a failed step. Returns True to continue the run, False to abort."""
         on_failure = step.on_failure or {}
         action = on_failure.get("action", "abort")
@@ -247,7 +267,9 @@ class V1Blueprint(Blueprint):
                     result = await step.run(step_context)
                     iteration_results.append(result)
                     if not result.get("success", True):
-                        if not await self._handle_step_failure(step, step_context, results):
+                        if not await self._handle_step_failure(
+                            step, step_context, results
+                        ):
                             results[step.id] = {
                                 "iterations": iteration_results,
                                 "success": False,

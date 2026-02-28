@@ -12,6 +12,7 @@ from goblin.step import PromptStep, LoadProjectStep
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_blueprint(steps: list[dict]) -> V1Blueprint:
     return V1Blueprint({"name": "test_wf", "steps": steps})
 
@@ -19,6 +20,7 @@ def _make_blueprint(steps: list[dict]) -> V1Blueprint:
 # ---------------------------------------------------------------------------
 # _parse_step
 # ---------------------------------------------------------------------------
+
 
 class TestParseStepPrompt:
     def test_prompt_step_creates_prompt_step(self):
@@ -34,7 +36,9 @@ class TestParseStepPrompt:
         assert bp.steps[0].prompt_template == "fix {repo}"
 
     def test_prompt_step_stores_allowed_tools(self):
-        bp = _make_blueprint([{"id": "s1", "prompt": "hi", "allowed_tools": ["Bash", "Read"]}])
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "hi", "allowed_tools": ["Bash", "Read"]}]
+        )
         assert bp.steps[0].allowed_tools == ["Bash", "Read"]
 
     def test_prompt_step_allowed_tools_default_empty(self):
@@ -42,7 +46,9 @@ class TestParseStepPrompt:
         assert bp.steps[0].allowed_tools == []
 
     def test_prompt_step_stores_condition(self):
-        bp = _make_blueprint([{"id": "s1", "prompt": "hi", "condition": "{{ steps.a.success }}"}])
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "hi", "condition": "{{ steps.a.success }}"}]
+        )
         assert bp.steps[0].condition == "{{ steps.a.success }}"
 
     def test_prompt_step_condition_default_none(self):
@@ -54,11 +60,15 @@ class TestParseStepPrompt:
         assert bp.steps[0].foreach == "3"
 
     def test_prompt_step_stores_on_failure(self):
-        bp = _make_blueprint([{"id": "s1", "prompt": "hi", "on_failure": {"action": "skip"}}])
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "hi", "on_failure": {"action": "skip"}}]
+        )
         assert bp.steps[0].on_failure == {"action": "skip"}
 
     def test_prompt_step_stores_hooks_config(self):
-        bp = _make_blueprint([{"id": "s1", "prompt": "hi", "hooks": {"post_tool": ["run_tests"]}}])
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "hi", "hooks": {"post_tool": ["run_tests"]}}]
+        )
         assert bp.steps[0].hooks_config == {"post_tool": ["run_tests"]}
 
 
@@ -84,10 +94,12 @@ class TestParseStepInvalid:
 
 class TestParseMultipleSteps:
     def test_mixed_step_types(self):
-        bp = _make_blueprint([
-            {"id": "load", "load_project": "/proj"},
-            {"id": "run", "prompt": "do stuff"},
-        ])
+        bp = _make_blueprint(
+            [
+                {"id": "load", "load_project": "/proj"},
+                {"id": "run", "prompt": "do stuff"},
+            ]
+        )
         assert isinstance(bp.steps[0], LoadProjectStep)
         assert isinstance(bp.steps[1], PromptStep)
         assert len(bp.steps) == 2
