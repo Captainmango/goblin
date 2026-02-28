@@ -22,7 +22,7 @@ The skill is portable. It does not require Goblin's runtime to be installed. It 
 
 ### The CLI — Running Blueprints
 
-The second half is the **runtime CLI** that actually executes blueprints. It is a Python application invoked via `uv run python main.py <blueprint> [--context '{}']`. The CLI loads a blueprint, validates it against the spec, and orchestrates step execution through the Claude Agent SDK. Each prompt step launches an isolated agent session. Each `load_project` step configures the environment for subsequent prompt steps — loading project settings, CLAUDE.md references, agent definitions, and setting the working directory.
+The second half is the **runtime CLI** that actually executes blueprints. It is a Python application installed locally via `pipx` — either by running the `install.sh` script directly or through the `/install` skill in Claude Code. Once installed, it is invoked as `goblin <blueprint> [--context '{}']`. The CLI loads a blueprint, validates it against the spec, and orchestrates step execution through the Claude Agent SDK. Each prompt step launches an isolated agent session. Each `load_project` step configures the environment for subsequent prompt steps — loading project settings, CLAUDE.md references, agent definitions, and setting the working directory.
 
 The CLI is where the orchestration logic lives: foreach iteration (integer, Jinja2 expression, or file-backed), conditional execution, failure handling (skip, retry, abort), hook wiring, variable interpolation, and structured JSON response parsing with automatic repair.
 
