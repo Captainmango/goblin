@@ -61,7 +61,7 @@ Steps are either **prompt steps** (run an agent with a prompt) or **load_project
 | `steps[].prompt` | Agent prompt (mutually exclusive with `load_project`) | Implemented |
 | `steps[].load_project` | Path to project root — loads settings, CLAUDE.md refs, agent definitions, and hooks | Implemented |
 | `steps[].allowed_tools` | List of tool names the agent may use | Implemented |
-| `steps[].foreach` | `{{ steps.<id>.output.<field> }}` — iterate step once per item | Scaffolded — `_resolve` not yet implemented |
+| `steps[].foreach` | Integer, Jinja2 expression (must resolve to integer), or file path. Injects `{index}`; file mode also injects `{item}`. | Implemented |
 | `steps[].condition` | `{{ steps.<id>.all_succeeded }}` — skip step if false | Scaffolded — `_evaluate_condition` not yet implemented |
 | `steps[].depends_on` | Step ID(s) that must complete first | Schema only — no dependency graph in runner |
 | `steps[].on_failure.action` | `skip`, `retry`, or `abort` | Schema defined |

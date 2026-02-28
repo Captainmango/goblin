@@ -100,8 +100,13 @@
         },
         "foreach": {
           "type": "string",
-          "description": "Template expression resolving to an iterable. The step runs once per item. Use {{ steps.<id>.output.<field> }} syntax.",
-          "examples": ["{{ steps.fetch_tickets.output.tickets }}"]
+          "description": "Controls iteration for the step. Accepts three forms: (1) An integer — runs the step that many times. (2) A Jinja2 expression ({{ }}) that evaluates to an integer against prior step results. (3) A file path — runs the step once per non-empty line. In all modes, {index} (0-based) is injected into context. File mode also injects {item} with the line content.",
+          "examples": [
+            "5",
+            "{{ steps.fetch_tickets.output.count }}",
+            "tickets.txt",
+            "{output_dir}/items.txt"
+          ]
         },
         "condition": {
           "type": "string",

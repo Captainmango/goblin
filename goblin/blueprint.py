@@ -51,6 +51,53 @@ class V1Blueprint(Blueprint):
             "PostToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY])],
         }
 
+    def _jinja_env(self) -> Environment:
+        env = Environment()
+        env.filters["contains"] = filter_contains
+        env.filters["json_value"] = filter_json_value
+        return env
+
+    def _resolve_foreach_count(self, n: int) -> list[dict]:
+        if n < 0:
+            raise ValueError(f"foreach count must be non-negative, got {n}")
+        return [{"index": i} for i in range(n)]
+
+    def _resolve(self, foreach_expr: str, results: dict, context: dict) -> list[dict]:
+        # Jinja mode — expression contains {{ }}
+        if "{{" in foreach_expr:
+            env = self._jinja_env()
+            expr = foreach_expr.strip()
+            if not expr.startswith("{{"):
+                expr = "{{ " + expr + " }}"
+            template = env.from_string(expr)
+            rendered = template.render(steps=results).strip()
+            try:
+                n = int(rendered)
+            except ValueError:
+                raise ValueError(
+                    f"foreach Jinja expression rendered to '{rendered}', which is not a valid integer"
+                )
+            return self._resolve_foreach_count(n)
+
+        # Non-Jinja — interpolate with context, try integer
+        interpolated = foreach_expr.format(**context)
+        try:
+            n = int(interpolated)
+            return self._resolve_foreach_count(n)
+        except ValueError:
+            pass
+
+        # File mode — resolve path and read lines
+        path = interpolated
+        if not os.path.isabs(path) and self.project_path:
+            path = os.path.join(self.project_path, path)
+        path = os.path.abspath(path)
+
+        with open(path) as f:
+            lines = [line.strip() for line in f if line.strip()]
+
+        return [{"index": i, "item": line} for i, line in enumerate(lines)]
+
     def _evaluate_condition(self, condition: str, results: dict) -> bool:
         """Evaluate a Jinja2 condition expression against step results.
 
@@ -63,9 +110,7 @@ class V1Blueprint(Blueprint):
           - json_value(key) — parse messages as JSON dicts and return
             the value at a dot-separated key path (e.g. "data.status")
         """
-        env = Environment()
-        env.filters["contains"] = filter_contains
-        env.filters["json_value"] = filter_json_value
+        env = self._jinja_env()
 
         # Wrap the condition in {{ }} if it isn't already — allows bare
         # expressions like `steps.clone_repo.success` alongside the full
@@ -195,14 +240,23 @@ class V1Blueprint(Blueprint):
 
             # Handle foreach expansion
             if step.foreach:
-                items = self._resolve(step.foreach, results)
+                items = self._resolve(step.foreach, results, context)
+                iteration_results = []
                 for item in items:
                     step_context = {**context, **item}
                     result = await step.run(step_context)
-                    results[step.id] = result
+                    iteration_results.append(result)
                     if not result.get("success", True):
                         if not await self._handle_step_failure(step, step_context, results):
+                            results[step.id] = {
+                                "iterations": iteration_results,
+                                "success": False,
+                            }
                             return results
+                results[step.id] = {
+                    "iterations": iteration_results,
+                    "success": all(r.get("success", True) for r in iteration_results),
+                }
             else:
                 result = await step.run(context)
                 results[step.id] = result
