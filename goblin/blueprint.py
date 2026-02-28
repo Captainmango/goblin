@@ -5,12 +5,15 @@ import os
 import subprocess
 from typing import Protocol
 
+from jinja2 import Environment
+
 from claude_agent_sdk import (
     AgentDefinition,
     HookMatcher,
 )
 from goblin.hooks import HOOK_REGISTRY
 from goblin.step import LoadProjectStep, PromptStep, StepProtocol
+from goblin.utils.jinja_helpers import filter_contains, filter_json_value
 
 
 class Blueprint(Protocol):
@@ -47,6 +50,35 @@ class V1Blueprint(Blueprint):
             "PreToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in pre_names if n in HOOK_REGISTRY])],
             "PostToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY])],
         }
+
+    def _evaluate_condition(self, condition: str, results: dict) -> bool:
+        """Evaluate a Jinja2 condition expression against step results.
+
+        Available in templates:
+          - steps.<id>.success — boolean
+          - steps.<id>.message — list of message strings
+
+        Custom filters:
+          - contains(text) — True if any message contains the substring
+          - json_value(key) — parse messages as JSON dicts and return
+            the value at a dot-separated key path (e.g. "data.status")
+        """
+        env = Environment()
+        env.filters["contains"] = filter_contains
+        env.filters["json_value"] = filter_json_value
+
+        # Wrap the condition in {{ }} if it isn't already — allows bare
+        # expressions like `steps.clone_repo.success` alongside the full
+        # `{{ steps.clone_repo.success }}` syntax.
+        expr = condition.strip()
+        if not expr.startswith("{{"):
+            expr = "{{ " + expr + " }}"
+
+        template = env.from_string(expr)
+        rendered = template.render(steps=results).strip()
+
+        # Jinja renders booleans as "True"/"False"; treat common truthy/falsy values
+        return rendered.lower() not in ("false", "none", "0", "")
 
     def _load_project(self, path: str):
         """Load full project configuration from a project root.

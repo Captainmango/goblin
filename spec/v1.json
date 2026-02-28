@@ -105,8 +105,12 @@
         },
         "condition": {
           "type": "string",
-          "description": "Template expression that must evaluate to true for this step to run. Use {{ steps.<id>.<field> }} syntax.",
-          "examples": ["{{ steps.resolve_ticket.all_succeeded }}"]
+          "description": "Jinja2 expression that must evaluate truthy for this step to run. Access prior step results via steps.<id>.success (bool) or steps.<id>.message (list). Use the 'contains' filter to search messages for a substring, or 'json_value' to parse message strings as JSON and extract a value by dot-path.",
+          "examples": [
+            "{{ steps.clone_repo.success }}",
+            "{{ steps.clone_repo.message | contains('cloned successfully') }}",
+            "{{ steps.clone_repo.message | json_value('data.status') == 'ok' }}"
+          ]
         },
         "hooks": { "$ref": "#/definitions/hooks" },
         "on_failure": {
