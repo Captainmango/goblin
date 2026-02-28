@@ -23,4 +23,6 @@ class WorkflowRunner:
         return blueprint_cls(raw["workflow"])
 
     async def run(self, context: dict = {}) -> dict:
-        return await self.blueprint.run(context)
+        results = await self.blueprint.run(context)
+        print(results)
+        return results

@@ -1,12 +1,19 @@
+from goblin.utils.click_helpers import JSON
+import click
+from typing import Any
 from dotenv import load_dotenv
 import asyncio
 from goblin.runner import WorkflowRunner
 
 
-async def main():
+@click.command()
+@click.argument('blueprint_path', type=str)
+@click.option('--context', type=JSON, required=False, default="{}", help="the context that will be passed to the workflow. Must be a valid, unescaped JSON string")
+def run(blueprint_path: str, context: Any):
     load_dotenv()
-    runner = WorkflowRunner("workflows/test.yaml")
-    await runner.run(context={"epic": "PROJ-123"})
+    runner = WorkflowRunner(blueprint_path)
+    asyncio.run(runner.run(context))
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    run()

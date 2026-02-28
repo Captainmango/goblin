@@ -225,6 +225,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "claude-agent-sdk" },
+    { name = "click" },
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
@@ -237,6 +238,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "claude-agent-sdk", specifier = ">=0.1.39" },
+    { name = "click", specifier = ">=8.3.1" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]

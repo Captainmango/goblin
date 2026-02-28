@@ -97,4 +97,4 @@ class LoadProjectStep(StepProtocol):
     async def run(self, context: dict) -> dict:
         path = self.path_template.format(**context)
         self._blueprint._load_project(path)
-        return {"status": "loaded", "path": path}
+        return {"success": True, "status": "loaded", "path": path}
