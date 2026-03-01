@@ -164,3 +164,11 @@ Hooks attach to `PreToolUse` and `PostToolUse` events on the Claude agent.
 - Step template expressions use `{{ }}` Jinja2 syntax for conditions and foreach
 - Hook names in blueprints are strings that must exist in `HOOK_REGISTRY` at runtime
 - Workflow files live in `workflows/`
+
+## Commands
+
+- Use the Taskfile to know what commands are available for managing the project
+- `task lint` - Run linting for the project
+- `task format` - Run the formatter for the project
+- `task typecheck` - Run typechecking for the project
+- If a command is missing that you feel is necessary, feel free to add it and explain why
