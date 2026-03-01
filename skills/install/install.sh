@@ -31,7 +31,7 @@ fi
 info "Found pipx"
 
 # --- Install with pipx from local project ---
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 info "Installing goblin..."
 pipx install "$SCRIPT_DIR" --force --python python3

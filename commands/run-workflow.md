@@ -1,4 +1,4 @@
-Run a goblin workflow blueprint.
+Run a goblin blueprint
 
 Arguments: $ARGUMENTS
 

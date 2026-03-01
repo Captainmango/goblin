@@ -30,6 +30,14 @@ goblin/
 │   ├── test_load_project.py
 │   ├── test_parse_step.py
 │   └── test_run_orchestration.py
+├── agents/                # Claude Code agents (symlinked into .claude/)
+│   └── blueprint-maker.md
+├── commands/              # Claude Code commands (symlinked into .claude/)
+│   └── run-workflow.md
+├── references/            # Claude Code references (symlinked into .claude/)
+│   └── workflow_creation_guidance.md
+├── skills/                # Claude Code skills (symlinked into .claude/)
+│   └── install/
 ├── workflows/
 │   └── test.yaml          # Example blueprint
 ├── main.py                # CLI entry point (Click)
@@ -169,6 +177,7 @@ Hooks attach to `PreToolUse` and `PostToolUse` events on the Claude agent.
 - Hook names in blueprints are strings that must exist in `HOOK_REGISTRY` at runtime
 - Workflow files live in `workflows/`
 - MCP server secrets use `$VAR` / `${VAR}` syntax resolved from `os.environ` (loaded via `.env` / `load_dotenv()`)
+- **Plugin assets live at the project root, not in `.claude/`.** The top-level `agents/`, `commands/`, `references/`, and `skills/` directories are the source of truth for Claude Code plugin assets. The corresponding `.claude/` subdirectories are **symlinks** pointing to these outer folders — never edit or create files directly in `.claude/agents/`, `.claude/commands/`, `.claude/references/`, or `.claude/skills/`
 
 ## Commands
 
