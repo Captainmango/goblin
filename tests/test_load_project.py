@@ -159,13 +159,7 @@ class TestLoadProjectHooksFromSettings:
     def test_registers_post_tool_hooks(self, tmp_path):
         settings_dir = tmp_path / ".claude"
         settings_dir.mkdir()
-        settings = {
-            "hooks": {
-                "PostToolUse": [
-                    {"hooks": [{"type": "command", "command": "echo post"}]}
-                ]
-            }
-        }
+        settings = {"hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": "echo post"}]}]}}
         (settings_dir / "settings.json").write_text(json.dumps(settings))
 
         bp = _make_blueprint()
@@ -176,11 +170,7 @@ class TestLoadProjectHooksFromSettings:
     def test_registers_pre_tool_hooks(self, tmp_path):
         settings_dir = tmp_path / ".claude"
         settings_dir.mkdir()
-        settings = {
-            "hooks": {
-                "PreToolUse": [{"hooks": [{"type": "command", "command": "echo pre"}]}]
-            }
-        }
+        settings = {"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "echo pre"}]}]}}
         (settings_dir / "settings.json").write_text(json.dumps(settings))
 
         bp = _make_blueprint()
@@ -191,11 +181,7 @@ class TestLoadProjectHooksFromSettings:
     def test_skips_non_command_hooks(self, tmp_path):
         settings_dir = tmp_path / ".claude"
         settings_dir.mkdir()
-        settings = {
-            "hooks": {
-                "PostToolUse": [{"hooks": [{"type": "other", "command": "echo nope"}]}]
-            }
-        }
+        settings = {"hooks": {"PostToolUse": [{"hooks": [{"type": "other", "command": "echo nope"}]}]}}
         (settings_dir / "settings.json").write_text(json.dumps(settings))
 
         bp = _make_blueprint()

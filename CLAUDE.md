@@ -16,6 +16,7 @@ goblin/
 │   └── utils/
 │       ├── __init__.py
 │       ├── click_helpers.py   # JsonParamType for CLI
+│       ├── env.py             # $VAR / ${VAR} env var resolution
 │       └── jinja_helpers.py   # Jinja2 custom filters (contains, json_value)
 ├── spec/
 │   └── v1.json            # JSON Schema for blueprints (evolving standard)
@@ -84,11 +85,13 @@ Steps are either **prompt steps** (run an agent with a prompt) or **load_project
 |-------|-------------|--------|
 | `vars` | Workflow-level variables for `{variable}` interpolation | Implemented — merged into context at runtime |
 | `defaults.hooks` | Hook names applied to all steps unless overridden | Implemented |
+| `defaults.mcp_servers` | Named MCP server configs (stdio/sse/http) available to all steps | Implemented |
 | `steps[].prompt` | Agent prompt (mutually exclusive with `load_project`) | Implemented |
 | `steps[].load_project` | Path to project root — loads settings, CLAUDE.md refs, agent definitions, and hooks | Implemented |
 | `steps[].allowed_tools` | List of tool names the agent may use | Implemented |
 | `steps[].foreach` | Integer, Jinja2 expression (must resolve to integer), or file path. Injects `{index}`; file mode also injects `{item}`. | Implemented |
 | `steps[].condition` | Jinja2 expression evaluated against prior step results. Custom filters: `contains`, `json_value`. | Implemented |
+| `steps[].mcp_servers` | Per-step MCP servers; merges with defaults (step wins on name collision) | Implemented |
 | `steps[].depends_on` | Step ID(s) that must complete first | Schema only — no dependency graph in runner |
 | `steps[].on_failure.action` | `skip`, `retry`, or `abort` | Implemented |
 | `steps[].on_failure.notify` | Hook name to call on step failure | Implemented |
@@ -117,6 +120,7 @@ Steps are either **prompt steps** (run an agent with a prompt) or **load_project
 - `_resolve()` — Three-mode foreach resolution: integer, Jinja2 expression, or file-backed
 - `_evaluate_condition()` — Evaluate Jinja2 conditions against prior step results
 - `_build_hooks()` — Resolve hook names from defaults/step config to callables
+- `_build_mcp_servers()` — Merge workflow + step MCP configs, resolve `$VAR` env refs, apply `{variable}` interpolation
 - `_load_project()` — Load full project configuration from a path
 - `_handle_step_failure()` — Apply on_failure policy (skip, retry, abort)
 
@@ -164,6 +168,7 @@ Hooks attach to `PreToolUse` and `PostToolUse` events on the Claude agent.
 - Step template expressions use `{{ }}` Jinja2 syntax for conditions and foreach
 - Hook names in blueprints are strings that must exist in `HOOK_REGISTRY` at runtime
 - Workflow files live in `workflows/`
+- MCP server secrets use `$VAR` / `${VAR}` syntax resolved from `os.environ` (loaded via `.env` / `load_dotenv()`)
 
 ## Commands
 

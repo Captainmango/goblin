@@ -38,9 +38,7 @@ class TestParseStepPrompt:
         assert step.prompt_template == "fix {repo}"
 
     def test_prompt_step_stores_allowed_tools(self):
-        bp = _make_blueprint(
-            [{"id": "s1", "prompt": "hi", "allowed_tools": ["Bash", "Read"]}]
-        )
+        bp = _make_blueprint([{"id": "s1", "prompt": "hi", "allowed_tools": ["Bash", "Read"]}])
         step = bp.steps[0]
         assert isinstance(step, PromptStep)
         assert step.allowed_tools == ["Bash", "Read"]
@@ -52,9 +50,7 @@ class TestParseStepPrompt:
         assert step.allowed_tools == []
 
     def test_prompt_step_stores_condition(self):
-        bp = _make_blueprint(
-            [{"id": "s1", "prompt": "hi", "condition": "{{ steps.a.success }}"}]
-        )
+        bp = _make_blueprint([{"id": "s1", "prompt": "hi", "condition": "{{ steps.a.success }}"}])
         assert bp.steps[0].condition == "{{ steps.a.success }}"
 
     def test_prompt_step_condition_default_none(self):
@@ -66,18 +62,28 @@ class TestParseStepPrompt:
         assert bp.steps[0].foreach == "3"
 
     def test_prompt_step_stores_on_failure(self):
-        bp = _make_blueprint(
-            [{"id": "s1", "prompt": "hi", "on_failure": {"action": "skip"}}]
-        )
+        bp = _make_blueprint([{"id": "s1", "prompt": "hi", "on_failure": {"action": "skip"}}])
         assert bp.steps[0].on_failure == {"action": "skip"}
 
     def test_prompt_step_stores_hooks_config(self):
-        bp = _make_blueprint(
-            [{"id": "s1", "prompt": "hi", "hooks": {"post_tool": ["run_tests"]}}]
-        )
+        bp = _make_blueprint([{"id": "s1", "prompt": "hi", "hooks": {"post_tool": ["run_tests"]}}])
         step = bp.steps[0]
         assert isinstance(step, PromptStep)
         assert step.hooks_config == {"post_tool": ["run_tests"]}
+
+
+class TestParseStepMcpServers:
+    def test_prompt_step_stores_mcp_servers(self):
+        bp = _make_blueprint([{"id": "s1", "prompt": "hi", "mcp_servers": {"gh": {"command": "npx"}}}])
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        assert step.mcp_servers_config == {"gh": {"command": "npx"}}
+
+    def test_prompt_step_mcp_servers_default_none(self):
+        bp = _make_blueprint([{"id": "s1", "prompt": "hi"}])
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        assert step.mcp_servers_config is None
 
 
 class TestParseStepLoadProject:

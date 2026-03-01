@@ -17,9 +17,7 @@ from goblin.hooks import HOOK_REGISTRY
 # ---------------------------------------------------------------------------
 
 
-def _make_blueprint(
-    steps: list[dict], vars: dict | None = None, defaults: dict | None = None
-) -> V1Blueprint:
+def _make_blueprint(steps: list[dict], vars: dict | None = None, defaults: dict | None = None) -> V1Blueprint:
     spec: dict[str, Any] = {"name": "test_wf", "steps": steps}
     if vars:
         spec["vars"] = vars
@@ -174,6 +172,20 @@ class TestRunVarsMerging:
 
 
 # ---------------------------------------------------------------------------
+# MCP servers passthrough
+# ---------------------------------------------------------------------------
+
+
+class TestRunMcpServersPassthrough:
+    def test_mcp_servers_in_defaults_accessible(self):
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "do stuff"}],
+            defaults={"mcp_servers": {"gh": {"command": "npx"}}},
+        )
+        assert bp.spec["defaults"]["mcp_servers"]["gh"]["command"] == "npx"
+
+
+# ---------------------------------------------------------------------------
 # Multi-step sequencing
 # ---------------------------------------------------------------------------
 
@@ -190,9 +202,7 @@ class TestRunMultiStep:
             ]
         )
         for i, step in enumerate(bp.steps):
-            step.run.side_effect = lambda ctx, idx=i: (
-                call_order.append(idx) or {"success": True, "message": ["ok"]}
-            )
+            step.run.side_effect = lambda ctx, idx=i: call_order.append(idx) or {"success": True, "message": ["ok"]}
 
         await bp.run({})
 

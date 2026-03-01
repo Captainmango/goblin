@@ -25,9 +25,7 @@ def _make_blueprint(steps: list[dict], vars: dict | None = None) -> V1Blueprint:
     return V1Blueprint(spec)
 
 
-def _make_blueprint_with_mock_steps(
-    steps_raw: list[dict], vars: dict | None = None
-) -> V1Blueprint:
+def _make_blueprint_with_mock_steps(steps_raw: list[dict], vars: dict | None = None) -> V1Blueprint:
     """Build a V1Blueprint but replace the real steps with mock objects so we
     can control step.run() without hitting the Agent SDK."""
     # First build normally, then swap out the parsed steps

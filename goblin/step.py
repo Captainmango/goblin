@@ -53,6 +53,7 @@ class PromptStep(StepProtocol):
         self.condition: str | None = raw.get("condition")
         self.foreach: str | None = raw.get("foreach")
         self.on_failure: dict | None = raw.get("on_failure")
+        self.mcp_servers_config: dict | None = raw.get("mcp_servers")
         self._blueprint = blueprint
 
     async def run(self, context: dict) -> Dict:
@@ -73,6 +74,10 @@ class PromptStep(StepProtocol):
         if self._blueprint.project_agents:
             kwargs["agents"] = self._blueprint.project_agents
 
+        mcp_servers = self._blueprint._build_mcp_servers(self, context)
+        if mcp_servers:
+            kwargs["mcp_servers"] = mcp_servers
+
         options = ClaudeAgentOptions(**kwargs)
 
         text_blocks: list[str] = []
@@ -85,9 +90,7 @@ class PromptStep(StepProtocol):
 
         return await self._parse_response(text_blocks[-1])
 
-    async def _parse_response(
-        self, text: str, retries: int = MAX_PARSE_RETRIES
-    ) -> Dict:
+    async def _parse_response(self, text: str, retries: int = MAX_PARSE_RETRIES) -> Dict:
         """Parse agent response JSON, retrying with a repair prompt on failure."""
         for attempt in range(1 + retries):
             try:

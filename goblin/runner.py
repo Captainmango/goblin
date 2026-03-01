@@ -19,9 +19,7 @@ class WorkflowRunner:
         blueprint_cls = BLUEPRINT_REGISTRY.get(version)
         if blueprint_cls is None:
             supported = sorted(BLUEPRINT_REGISTRY.keys())
-            raise ValueError(
-                f"Unsupported workflow version {version}. Supported: {supported}"
-            )
+            raise ValueError(f"Unsupported workflow version {version}. Supported: {supported}")
         return blueprint_cls(raw["workflow"])
 
     async def run(self, context: dict = {}) -> dict:

@@ -33,7 +33,8 @@
           "description": "Default values inherited by all steps unless overridden",
           "additionalProperties": false,
           "properties": {
-            "hooks": { "$ref": "#/definitions/hooks" }
+            "hooks": { "$ref": "#/definitions/hooks" },
+            "mcp_servers": { "$ref": "#/definitions/mcpServers" }
           }
         },
         "steps": {
@@ -64,6 +65,105 @@
           "examples": [["run_lint", "run_tests"]]
         }
       }
+    },
+    "mcpServerStdio": {
+      "type": "object",
+      "description": "MCP server launched as a subprocess communicating via stdio",
+      "required": ["command"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "stdio",
+          "description": "Transport type. Optional for stdio servers — inferred when command is present.",
+          "examples": ["stdio"]
+        },
+        "command": {
+          "type": "string",
+          "description": "The command to launch the MCP server process. Supports $VAR env var references.",
+          "examples": ["npx", "uvx", "node"]
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Arguments passed to the command. Supports $VAR env var references and {variable} interpolation.",
+          "examples": [["-y", "@modelcontextprotocol/server-github"]]
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Environment variables passed to the server process. Values support $VAR env var references.",
+          "examples": [{ "GITHUB_TOKEN": "$GITHUB_TOKEN" }]
+        }
+      }
+    },
+    "mcpServerSSE": {
+      "type": "object",
+      "description": "Remote MCP server using Server-Sent Events transport",
+      "required": ["type", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "sse",
+          "description": "Transport type",
+          "examples": ["sse"]
+        },
+        "url": {
+          "type": "string",
+          "description": "URL of the SSE MCP server endpoint. Supports $VAR and {variable} interpolation.",
+          "examples": ["https://example.com/mcp"]
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "HTTP headers sent with requests. Values support $VAR env var references.",
+          "examples": [{ "Authorization": "Bearer $API_TOKEN" }]
+        }
+      }
+    },
+    "mcpServerHTTP": {
+      "type": "object",
+      "description": "Remote MCP server using HTTP transport",
+      "required": ["type", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "http",
+          "description": "Transport type",
+          "examples": ["http"]
+        },
+        "url": {
+          "type": "string",
+          "description": "URL of the HTTP MCP server endpoint. Supports $VAR and {variable} interpolation.",
+          "examples": ["https://example.com/mcp"]
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "HTTP headers sent with requests. Values support $VAR env var references.",
+          "examples": [{ "Authorization": "Bearer $API_TOKEN" }]
+        }
+      }
+    },
+    "mcpServers": {
+      "type": "object",
+      "description": "Named MCP server configurations. Keys are server names, values are server configs. Supports stdio (subprocess), sse (Server-Sent Events), and http transports. All string values support $VAR env var references and {variable} context interpolation.",
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/definitions/mcpServerStdio" },
+          { "$ref": "#/definitions/mcpServerSSE" },
+          { "$ref": "#/definitions/mcpServerHTTP" }
+        ]
+      },
+      "examples": [{
+        "github": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-github"],
+          "env": { "GITHUB_TOKEN": "$GITHUB_TOKEN" }
+        }
+      }]
     },
     "step": {
       "type": "object",
@@ -118,6 +218,7 @@
           ]
         },
         "hooks": { "$ref": "#/definitions/hooks" },
+        "mcp_servers": { "$ref": "#/definitions/mcpServers" },
         "on_failure": {
           "type": "object",
           "description": "Behavior when this step fails",

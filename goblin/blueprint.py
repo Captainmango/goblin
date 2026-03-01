@@ -12,6 +12,7 @@ from claude_agent_sdk import (
     HookMatcher,
 )
 from goblin.hooks import HOOK_REGISTRY
+from goblin.utils.env import resolve_env_vars
 from goblin.step import LoadProjectStep, PromptStep, StepProtocol
 from goblin.utils.jinja_helpers import filter_contains, filter_json_value
 
@@ -36,9 +37,7 @@ class V1Blueprint(Blueprint):
             case {"prompt": str(), **_rest}:
                 return PromptStep(raw, self)
             case _:
-                raise ValueError(
-                    f"Step '{raw.get('id', '?')}' must have either 'prompt' or 'load_project'"
-                )
+                raise ValueError(f"Step '{raw.get('id', '?')}' must have either 'prompt' or 'load_project'")
 
     def _build_hooks(self, step: PromptStep) -> dict:
         defaults = self.spec.get("defaults", {}).get("hooks", {})
@@ -49,25 +48,28 @@ class V1Blueprint(Blueprint):
         post_names = step_hooks.get("post_tool", defaults.get("post_tool", []))
 
         return {
-            "PreToolUse": [
-                HookMatcher(
-                    hooks=[
-                        HOOK_REGISTRY[n]
-                        for n in (pre_names or [])
-                        if n in HOOK_REGISTRY
-                    ]
-                )
-            ],
-            "PostToolUse": [
-                HookMatcher(
-                    hooks=[
-                        HOOK_REGISTRY[n]
-                        for n in (post_names or [])
-                        if n in HOOK_REGISTRY
-                    ]
-                )
-            ],
+            "PreToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in (pre_names or []) if n in HOOK_REGISTRY])],
+            "PostToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in (post_names or []) if n in HOOK_REGISTRY])],
         }
+
+    def _build_mcp_servers(self, step: PromptStep, context: dict) -> dict:
+        defaults = self.spec.get("defaults", {}).get("mcp_servers", {})
+        step_servers = step.mcp_servers_config or {}
+        merged = {**defaults, **step_servers}
+        if not merged:
+            return {}
+        resolved = resolve_env_vars(merged)
+        return cast(dict, self._interpolate_strings(resolved, context))
+
+    def _interpolate_strings(self, obj, context: dict):
+        """Recursively apply {variable} interpolation to all string values."""
+        if isinstance(obj, dict):
+            return {k: self._interpolate_strings(v, context) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [self._interpolate_strings(item, context) for item in obj]
+        if isinstance(obj, str):
+            return obj.format(**context)
+        return obj
 
     def _jinja_env(self) -> Environment:
         env = Environment()
@@ -93,9 +95,7 @@ class V1Blueprint(Blueprint):
             try:
                 n = int(rendered)
             except ValueError:
-                raise ValueError(
-                    f"foreach Jinja expression rendered to '{rendered}', which is not a valid integer"
-                )
+                raise ValueError(f"foreach Jinja expression rendered to '{rendered}', which is not a valid integer")
             return self._resolve_foreach_count(n)
 
         # Non-Jinja — interpolate with context, try integer
@@ -185,16 +185,12 @@ class V1Blueprint(Blueprint):
                         for cmd in cmds:
                             result = subprocess.run(cmd, shell=True, cwd=cwd)
                             if result.returncode != 0:
-                                print(
-                                    f"Project hook failed (exit {result.returncode}): {cmd}"
-                                )
+                                print(f"Project hook failed (exit {result.returncode}): {cmd}")
 
                     return run_project_hooks
 
                 HOOK_REGISTRY[registry_name] = make_runner(commands, path)
-                print(
-                    f"Registered {len(commands)} {event_type} command(s) as '{registry_name}'"
-                )
+                print(f"Registered {len(commands)} {event_type} command(s) as '{registry_name}'")
         else:
             print(f"No .claude/settings.json found in {path}")
 
@@ -224,9 +220,7 @@ class V1Blueprint(Blueprint):
                     )
                     print(f"Loaded agent definition: {agent_name}")
 
-    async def _handle_step_failure(
-        self, step: StepProtocol, context: dict, results: dict
-    ) -> bool:
+    async def _handle_step_failure(self, step: StepProtocol, context: dict, results: dict) -> bool:
         """Handle a failed step. Returns True to continue the run, False to abort."""
         on_failure = step.on_failure or {}
         action = on_failure.get("action", "abort")
@@ -276,9 +270,7 @@ class V1Blueprint(Blueprint):
                     result = await step.run(step_context)
                     iteration_results.append(result)
                     if not result.get("success", True):
-                        if not await self._handle_step_failure(
-                            step, step_context, results
-                        ):
+                        if not await self._handle_step_failure(step, step_context, results):
                             results[step.id] = {
                                 "iterations": iteration_results,
                                 "success": False,
