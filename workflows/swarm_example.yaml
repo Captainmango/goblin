@@ -5,12 +5,13 @@ workflow:
   steps:
     - id: build_feature
       swarm:
-        goal: "Create a simple Python calculator with add, subtract, multiply, divide and tests"
+        goal: |
+          Create a simple Python calculator with add, subtract, multiply, divide and tests.
         coordinator:
           prompt: |
             Break down the goal into tasks. Assign implementation to the coder
             agent and test writing to the tester agent. Monitor progress and
-            mark the swarm complete when all tasks pass.
+            mark the swarm complete when all tasks pass. Make sure the code is in a folder called calculator.
           allowed_tools: [Read]
         agents:
           - name: coder
