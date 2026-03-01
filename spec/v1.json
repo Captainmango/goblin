@@ -171,7 +171,8 @@
       "additionalProperties": false,
       "oneOf": [
         { "required": ["prompt"] },
-        { "required": ["load_project"] }
+        { "required": ["load_project"] },
+        { "required": ["swarm"] }
       ],
       "properties": {
         "id": {
@@ -217,6 +218,7 @@
             "{{ steps.clone_repo.message | json_value('data.status') == 'ok' }}"
           ]
         },
+        "swarm": { "$ref": "#/definitions/swarm" },
         "hooks": { "$ref": "#/definitions/hooks" },
         "mcp_servers": { "$ref": "#/definitions/mcpServers" },
         "on_failure": {
@@ -237,6 +239,100 @@
             }
           }
         }
+      }
+    },
+    "swarm": {
+      "type": "object",
+      "required": ["goal", "coordinator", "agents"],
+      "additionalProperties": false,
+      "description": "Launches a team of concurrent agents coordinating through a shared SQLite database and filesystem workspace.",
+      "properties": {
+        "goal": {
+          "type": "string",
+          "description": "High-level objective injected into every agent's system prompt",
+          "examples": ["Implement user authentication with login, signup, and password reset"]
+        },
+        "workspace": {
+          "type": "string",
+          "description": "Path for shared files and SQLite DB. Supports {variable} interpolation. Default: .goblin/swarms/{step_id}",
+          "examples": [".goblin/swarms/{step_id}", "/tmp/swarm-workspace"]
+        },
+        "coordinator": { "$ref": "#/definitions/swarmCoordinator" },
+        "agents": {
+          "type": "array",
+          "description": "List of worker agent definitions",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/swarmAgent" }
+        },
+        "max_rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum coordinator evaluation rounds. Default: 5",
+          "examples": [5, 10]
+        },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum turns per agent per round. Default: 100",
+          "examples": [50, 100]
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Swarm-level timeout in seconds. No default (runs until completion or max_rounds).",
+          "examples": [600, 1800]
+        },
+        "cleanup": {
+          "type": "string",
+          "enum": ["on_success", "always", "never"],
+          "description": "Workspace cleanup policy after teardown. Default: on_success",
+          "examples": ["on_success", "never"]
+        }
+      }
+    },
+    "swarmCoordinator": {
+      "type": "object",
+      "required": ["prompt"],
+      "additionalProperties": false,
+      "description": "The coordinator agent — decomposes the goal into tasks, assigns them to agents, and evaluates completion",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "Coordinator instruction prompt. Supports {variable} interpolation.",
+          "examples": ["Break down the goal into tasks and assign to agents."]
+        },
+        "allowed_tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool whitelist for the coordinator agent",
+          "examples": [["Read", "Write"]]
+        }
+      }
+    },
+    "swarmAgent": {
+      "type": "object",
+      "required": ["name", "prompt"],
+      "additionalProperties": false,
+      "description": "A worker agent in the swarm",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique agent identifier within the swarm",
+          "examples": ["backend", "frontend", "tests"]
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Agent instruction prompt. Supports {variable} interpolation.",
+          "examples": ["You are a backend engineer. Implement assigned tasks."]
+        },
+        "allowed_tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool whitelist for this agent",
+          "examples": [["Bash", "Read", "Write", "Edit"]]
+        },
+        "hooks": { "$ref": "#/definitions/hooks" },
+        "mcp_servers": { "$ref": "#/definitions/mcpServers" }
       }
     }
   }

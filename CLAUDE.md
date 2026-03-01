@@ -9,10 +9,13 @@ goblin/
 ├── goblin/
 │   ├── __init__.py        # Package init (empty)
 │   ├── blueprint.py       # V1Blueprint: core orchestration class
+│   ├── enums.py           # StrEnum classes (SwarmState, TaskStatus, AgentStatus, CleanupPolicy)
 │   ├── hooks.py           # Hook registry and @hook decorator
-│   ├── prompts.py         # System prompts (BASE_SYSTEM_PROMPT, JSON_REPAIR_PROMPT)
+│   ├── prompts.py         # System prompts (BASE_SYSTEM_PROMPT, JSON_REPAIR_PROMPT, SWARM_*_PROMPT)
 │   ├── runner.py          # WorkflowRunner: loads YAML, routes to blueprint version
 │   ├── step.py            # PromptStep, LoadProjectStep, StepProtocol
+│   ├── swarm.py           # SwarmStep: concurrent agent orchestration with state machine
+│   ├── swarm_db.py        # SwarmDB: SQLite coordination layer for swarm agents
 │   └── utils/
 │       ├── __init__.py
 │       ├── click_helpers.py   # JsonParamType for CLI
@@ -29,7 +32,8 @@ goblin/
 │   ├── test_jinja_helpers.py
 │   ├── test_load_project.py
 │   ├── test_parse_step.py
-│   └── test_run_orchestration.py
+│   ├── test_run_orchestration.py
+│   └── test_swarm.py
 ├── agents/                # Claude Code agents (symlinked into .claude/)
 │   └── blueprint-maker.md
 ├── commands/              # Claude Code commands (symlinked into .claude/)
@@ -39,7 +43,8 @@ goblin/
 ├── skills/                # Claude Code skills (symlinked into .claude/)
 │   └── install/
 ├── workflows/
-│   └── test.yaml          # Example blueprint
+│   ├── test.yaml          # Example blueprint
+│   └── swarm_example.yaml # Example swarm blueprint
 ├── main.py                # CLI entry point (Click)
 ├── pyproject.toml
 ├── ruff.toml              # Linter/formatter config
@@ -85,7 +90,7 @@ workflow:
         notify: alert_hook
 ```
 
-Steps are either **prompt steps** (run an agent with a prompt) or **load_project steps** (load full project configuration from a cloned project). The schema enforces this with a `oneOf` constraint — a step must have exactly one of `prompt` or `load_project`.
+Steps are **prompt steps** (run an agent with a prompt), **load_project steps** (load full project configuration from a cloned project), or **swarm steps** (launch concurrent agents coordinating through a shared SQLite database). The schema enforces this with a `oneOf` constraint — a step must have exactly one of `prompt`, `load_project`, or `swarm`.
 
 **Key blueprint fields:**
 
@@ -103,6 +108,7 @@ Steps are either **prompt steps** (run an agent with a prompt) or **load_project
 | `steps[].depends_on` | Step ID(s) that must complete first | Schema only — no dependency graph in runner |
 | `steps[].on_failure.action` | `skip`, `retry`, or `abort` | Implemented |
 | `steps[].on_failure.notify` | Hook name to call on step failure | Implemented |
+| `steps[].swarm` | Swarm step — launches concurrent agents with a coordinator, shared SQLite DB, and filesystem workspace | Implemented |
 
 ### Runner (`goblin/runner.py`)
 
@@ -116,7 +122,7 @@ Steps are either **prompt steps** (run an agent with a prompt) or **load_project
 
 `V1Blueprint` is the core orchestration class:
 
-1. Parses steps from the raw spec via `_parse_step()` (dispatches to `PromptStep` or `LoadProjectStep`)
+1. Parses steps from the raw spec via `_parse_step()` (dispatches to `PromptStep`, `LoadProjectStep`, or `SwarmStep`)
 2. For each step: evaluates conditions, resolves foreach, builds hooks, runs the step
 3. Hook resolution: step-level hooks **override** (not merge) workflow defaults
 4. Results stored as `results[step_id]` and returned from `run()`
@@ -138,6 +144,7 @@ Steps are either **prompt steps** (run an agent with a prompt) or **load_project
 
 - **`PromptStep`** — Runs an agent with a prompt. Parses the response as JSON via `_parse_response()`, with automatic retry/repair (up to 3 attempts via `_request_json_repair()`).
 - **`LoadProjectStep`** — Delegates to `blueprint._load_project()` to load project configuration.
+- **`SwarmStep`** — Launches concurrent agents coordinating through a shared SQLite database (`SwarmDB`) and filesystem workspace. Uses a state machine (`setup → coordinator → agents_running → evaluating → ... → teardown`) to orchestrate rounds of work. The coordinator decomposes goals into tasks; worker agents claim and complete tasks via SQL. SwarmDB tools are registered as in-process SDK MCP servers.
 
 **`load_project` steps:** When a step has `load_project` instead of `prompt`, the blueprint loads the full project configuration from the given path:
 

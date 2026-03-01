@@ -14,7 +14,13 @@ from claude_agent_sdk import (
 from goblin.hooks import HOOK_REGISTRY
 from goblin.utils.env import resolve_env_vars
 from goblin.step import LoadProjectStep, PromptStep, StepProtocol
+from goblin.swarm import SwarmStep
 from goblin.utils.jinja_helpers import filter_contains, filter_json_value
+
+
+class HookableStep(Protocol):
+    hooks_config: dict
+    mcp_servers_config: dict | None
 
 
 class Blueprint(Protocol):
@@ -36,10 +42,12 @@ class V1Blueprint(Blueprint):
                 return LoadProjectStep(raw, self)
             case {"prompt": str(), **_rest}:
                 return PromptStep(raw, self)
+            case {"swarm": dict(), **_rest}:
+                return SwarmStep(raw, self)
             case _:
-                raise ValueError(f"Step '{raw.get('id', '?')}' must have either 'prompt' or 'load_project'")
+                raise ValueError(f"Step '{raw.get('id', '?')}' must have 'prompt', 'load_project', or 'swarm'")
 
-    def _build_hooks(self, step: PromptStep) -> dict:
+    def _build_hooks(self, step: HookableStep) -> dict:
         defaults = self.spec.get("defaults", {}).get("hooks", {})
         step_hooks = step.hooks_config
 
@@ -52,7 +60,7 @@ class V1Blueprint(Blueprint):
             "PostToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in (post_names or []) if n in HOOK_REGISTRY])],
         }
 
-    def _build_mcp_servers(self, step: PromptStep, context: dict) -> dict:
+    def _build_mcp_servers(self, step: HookableStep, context: dict) -> dict:
         defaults = self.spec.get("defaults", {}).get("mcp_servers", {})
         step_servers = step.mcp_servers_config or {}
         merged = {**defaults, **step_servers}

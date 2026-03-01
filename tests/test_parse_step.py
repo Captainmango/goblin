@@ -104,7 +104,7 @@ class TestParseStepLoadProject:
 
 class TestParseStepInvalid:
     def test_step_without_prompt_or_load_project_raises(self):
-        with pytest.raises(ValueError, match="must have either"):
+        with pytest.raises(ValueError, match="must have"):
             _make_blueprint([{"id": "bad"}])
 
 
