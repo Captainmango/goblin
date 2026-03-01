@@ -1,31 +1,14 @@
-# PRD: Swarm Step Type
+# Swarm Step Type
 
-## Problem
+## Overview
 
-Goblin currently executes steps sequentially — one agent at a time. Complex goals that benefit from parallel specialization (e.g., "build a full-stack feature with tests") require manual decomposition into sequential steps with brittle inter-step dependencies. There is no mechanism for multiple agents to work concurrently toward a shared goal, communicate progress, or hand off artifacts.
+The swarm step type enables parallel agent execution within a single blueprint step. A team of concurrent Claude agents coordinates through a shared SQLite database and filesystem workspace to accomplish a high-level goal. A mandatory coordinator agent decomposes the goal into tasks, assigns them to worker agents, and evaluates completion across multiple rounds.
 
-## Proposal
-
-Add a **`swarm`** step type — mutually exclusive with `prompt` and `load_project` — that launches a team of concurrent agents coordinating through a shared filesystem workspace and a SQLite database for structured signalling.
-
-## Goals
-
-- Enable parallel agent execution within a single blueprint step
-- Provide a structured coordination layer (SQLite) for task claiming, status updates, and artifact registration
-- Provide an unstructured coordination layer (filesystem) for code, configs, and other artifacts
-- Keep the design consistent with Goblin's existing step/hook/context architecture
-- Make swarm behavior observable and debuggable
-
-## Non-Goals
-
-- Real-time inter-agent streaming or message passing (agents poll SQLite)
-- Automatic task decomposition by AI (the coordinator agent decomposes the goal; blueprint authors steer via the coordinator prompt)
-- Cross-step swarm persistence (each swarm step is self-contained)
-- Agent-to-agent sub-agent delegation (agents coordinate through SQLite signalling, not direct invocation; may be revisited in a future version)
-
----
+The swarm step is mutually exclusive with `prompt` and `load_project` — a step must have exactly one of the three.
 
 ## Blueprint Schema
+
+A swarm step is defined under the `swarm` key on a step:
 
 ```yaml
 steps:
@@ -39,7 +22,7 @@ steps:
           Break down the goal into tasks. Assign each to an agent by writing
           rows to the `tasks` table. Monitor progress and mark the swarm
           complete when all tasks pass validation.
-        allowed_tools: [Read, Write]
+        allowed_tools: [Read]
 
       agents:
         - name: backend
@@ -56,12 +39,6 @@ steps:
             registered as artifacts by the backend agent.
           allowed_tools: [Bash, Read, Write, Edit]
 
-        - name: tests
-          prompt: |
-            You are a QA engineer. Watch for completed tasks and write
-            integration tests. Register test results as artifacts.
-          allowed_tools: [Bash, Read, Write, Edit]
-
       max_rounds: 5               # max coordinator evaluation rounds (default: 5)
       max_iterations: 50          # per-agent turn budget (default: 100)
       timeout: 600                # swarm-level timeout in seconds (default: none)
@@ -71,37 +48,54 @@ steps:
       action: abort
 ```
 
-### Schema Additions to `spec/v1.json`
+### Schema Fields
 
-The `swarm` key becomes a third option in the step `oneOf`:
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `swarm.goal` | string | yes | — | High-level objective injected into every agent's system prompt |
+| `swarm.workspace` | string | no | `.goblin/swarms/{step_id}` | Path for shared files and SQLite DB. Supports `{variable}` interpolation from context. Relative paths resolve against `project_path` or `cwd`. |
+| `swarm.coordinator` | object | yes | — | The coordinator agent definition |
+| `swarm.coordinator.prompt` | string | yes | — | Coordinator's instruction prompt. Supports `{variable}` interpolation. |
+| `swarm.coordinator.allowed_tools` | string[] | no | — | Tool whitelist for the coordinator. `Bash` is always appended if not present (required for the `swarmdb` CLI). |
+| `swarm.agents` | array | yes | — | List of worker agent definitions (minimum 1) |
+| `swarm.agents[].name` | string | yes | — | Unique agent identifier within the swarm |
+| `swarm.agents[].prompt` | string | yes | — | Agent instruction prompt. Supports `{variable}` interpolation. |
+| `swarm.agents[].allowed_tools` | string[] | no | — | Tool whitelist for the agent. `Bash` is always appended if not present. |
+| `swarm.agents[].hooks` | object | no | — | Per-agent hook overrides (replaces step-level hooks for that agent) |
+| `swarm.agents[].mcp_servers` | object | no | — | Per-agent MCP servers (merged with defaults and step-level servers) |
+| `swarm.max_rounds` | integer | no | 5 | Maximum coordinator evaluation rounds before forced teardown |
+| `swarm.max_iterations` | integer | no | 100 | Maximum turns per agent per round (passed as `max_turns` to the SDK) |
+| `swarm.timeout` | integer | no | none | Swarm-level timeout in seconds. When exceeded, forces transition to teardown. |
+| `swarm.cleanup` | string | no | `on_success` | Workspace cleanup policy: `on_success`, `always`, or `never` |
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `swarm.goal` | string | yes | High-level objective injected into every agent's system prompt |
-| `swarm.workspace` | string | no | Path for shared files and SQLite DB. Default: `.goblin/swarms/{step_id}` |
-| `swarm.coordinator` | object | yes | The coordinator agent — decomposes the goal into tasks, assigns them to agents, and evaluates completion after each round |
-| `swarm.coordinator.prompt` | string | yes | Coordinator's instruction prompt. Use this to steer task decomposition strategy. |
-| `swarm.coordinator.allowed_tools` | string[] | no | Tool whitelist for coordinator |
-| `swarm.agents` | array | yes | List of worker agent definitions |
-| `swarm.agents[].name` | string | yes | Unique agent identifier within the swarm |
-| `swarm.agents[].prompt` | string | yes | Agent instruction prompt |
-| `swarm.agents[].allowed_tools` | string[] | no | Tool whitelist for the agent |
-| `swarm.agents[].hooks` | object | no | Per-agent hook overrides |
-| `swarm.agents[].mcp_servers` | object | no | Per-agent MCP server overrides |
-| `swarm.max_rounds` | integer | no | Max coordinator evaluation rounds (default: 5) |
-| `swarm.max_iterations` | integer | no | Max turns per agent per round (default: 100) |
-| `swarm.timeout` | integer | no | Swarm-level timeout in seconds |
-| `swarm.cleanup` | string | no | Workspace cleanup policy: `on_success`, `always`, or `never` (default: `on_success`) |
+## Architecture
 
----
+### Implementation Files
 
-## Enums
+| File | Purpose |
+|---|---|
+| `goblin/swarm.py` | `SwarmStep` class — step protocol implementation, state machine orchestrator, agent/coordinator launching |
+| `goblin/swarm_db.py` | `SwarmDB` class — SQLite coordination layer with validated reads/writes and state management |
+| `goblin/enums.py` | `SwarmState`, `TaskStatus`, `AgentStatus`, `CleanupPolicy` StrEnum types |
+| `goblin/prompts.py` | `SWARM_AGENT_PROMPT` and `SWARM_COORDINATOR_PROMPT` templates |
+| `spec/v1.json` | JSON Schema definitions for `swarm`, `swarmCoordinator`, `swarmAgent` |
 
-All swarm constants use `StrEnum` for type safety with zero serialization friction — values compare equal to plain strings, so SQLite reads work without explicit conversion. This is a deliberate style choice that will be extended to the rest of the codebase over time.
+### SwarmStep Class
+
+`SwarmStep` implements `StepProtocol` with attributes `id`, `condition`, `foreach`, and `on_failure`. It is instantiated by `V1Blueprint._parse_step()` when a step dict contains the `swarm` key.
+
+The constructor extracts all configuration from the raw step dict:
+
+- `goal`, `workspace_template`, `coordinator_config`, `agents_config` from the `swarm` key
+- `max_rounds`, `max_iterations`, `timeout`, `cleanup` with their defaults
+- `hooks_config` and `mcp_servers_config` from step-level fields
+- A reference to the parent `V1Blueprint` for accessing hook building, MCP server merging, project refs, and project path
+
+### Enums
+
+All swarm constants use `StrEnum` so values compare equal to plain strings — SQLite reads work without explicit conversion.
 
 ```python
-from enum import StrEnum
-
 class SwarmState(StrEnum):
     SETUP          = "setup"
     COORDINATOR    = "coordinator"
@@ -129,280 +123,246 @@ class CleanupPolicy(StrEnum):
     NEVER      = "never"
 ```
 
-These enums are the single source of truth for valid values. The SQLite `CHECK` constraints mirror them, and the orchestrator's `match` statements exhaustively cover all variants.
-
----
-
 ## Coordination Layer: SQLite
 
-A SQLite database is created at `{workspace}/swarm.db` before any agents start. Goblin pre-creates the schema and injects the database path into each agent's context as `{swarm_db}`.
+### SwarmDB
 
-### Schema
+`SwarmDB` wraps a SQLite connection at `{workspace}/swarm.db` with WAL journal mode enabled. It provides two categories of operations:
+
+**Agent-facing operations** (validated — agents can only touch `tasks`, `artifacts`, `signals`):
+
+- `query(sql)` — Execute a `SELECT` statement and return rows as list of dicts. Rejects non-SELECT statements.
+- `execute(sql)` — Execute an `INSERT`, `UPDATE`, or `DELETE` on allowed tables only (`tasks`, `artifacts`, `signals`). Rejects writes to `swarm_state` or `agent_state`. Returns affected row count.
+
+**Orchestrator operations** (used by `SwarmStep` internally):
+
+- `init_schema()` — Creates all five tables if they don't exist and seeds the initial `swarm_state` row.
+- `get_state()` / `transition(new_state)` — Read and update the singleton `swarm_state` row.
+- `increment_round()` — Atomically increment the round counter and return the new value.
+- `register_agent(name)` — Insert a row into `agent_state` with `pending` status.
+- `update_agent_status(name, status, iterations=None)` — Update an agent's status and optionally its iteration count.
+- `get_tasks()` / `get_artifacts()` — Read all rows from the respective tables.
+- `close()` — Close the database connection.
+
+### Database Schema
 
 ```sql
--- Tasks: units of work created by the coordinator agent
 CREATE TABLE tasks (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     title       TEXT NOT NULL,
     description TEXT,
-    assigned_to TEXT,                              -- agent name
-    status      TEXT DEFAULT 'pending'             -- pending | in_progress | done | failed
-                CHECK (status IN ('pending', 'in_progress', 'done', 'failed')),
-    result      TEXT,                              -- freeform outcome / error message
+    assigned_to TEXT,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    result      TEXT,
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Artifacts: registered outputs that other agents can discover
 CREATE TABLE artifacts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id     INTEGER REFERENCES tasks(id),
-    agent       TEXT NOT NULL,                     -- producing agent name
-    name        TEXT NOT NULL,                     -- logical name (e.g., "api_schema")
-    path        TEXT,                              -- filesystem path relative to workspace
-    content     TEXT,                              -- inline content (for small artifacts)
+    task_id     INTEGER,
+    agent       TEXT,
+    name        TEXT,
+    path        TEXT,
+    content     TEXT,
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Signals: lightweight messages between agents
 CREATE TABLE signals (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_agent  TEXT NOT NULL,
-    to_agent    TEXT,                              -- NULL = broadcast
-    type        TEXT NOT NULL,                     -- e.g., "ready", "blocked", "review_needed"
-    payload     TEXT,                              -- JSON blob
+    from_agent  TEXT,
+    to_agent    TEXT,
+    type        TEXT,
+    payload     TEXT,
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-```
 
-### Agent Interaction with SQLite
-
-Agents interact with the database through a **built-in `SwarmDB` tool** provided by Goblin. This is a lightweight tool registered on each agent that wraps SQLite operations — not an MCP server. This avoids adding MCP context overhead to running agents while still giving Goblin the ability to intercept, validate, and log all database operations.
-
-The `SwarmDB` tool exposes operations aligned with the schema:
-
-```
-swarm_db.query(sql)          # Run a read query, returns rows
-swarm_db.execute(sql)        # Run a write statement (INSERT/UPDATE)
-```
-
-Goblin validates that write operations target only the `tasks`, `artifacts`, and `signals` tables, and that status values conform to the CHECK constraint.
-
-Each agent's system prompt includes:
-
-- Instructions for using the `SwarmDB` tool
-- The schema definition
-- Conventions for claiming tasks (`UPDATE tasks SET status='in_progress', assigned_to='{agent_name}' WHERE ...`)
-- How to register artifacts and send signals
-
----
-
-## Coordination Layer: Filesystem
-
-The workspace directory (`{workspace}/`) is the shared root. Convention:
-
-```
-{workspace}/
-├── swarm.db              # SQLite coordination database
-├── shared/               # Files any agent can read/write
-└── agents/
-    ├── backend/          # Per-agent scratch space
-    ├── frontend/
-    └── tests/
-```
-
-Agents are instructed to write outputs to `shared/` for cross-agent visibility and to their own `agents/{name}/` for scratch work. These are conventions enforced via system prompt guidance, not hard filesystem restrictions.
-
----
-
-## Execution Model
-
-### Implementation: `SwarmStep`
-
-A new class implementing `StepProtocol`, analogous to `PromptStep` and `LoadProjectStep`.
-
-### State Machine
-
-The swarm orchestrator is driven by a state machine. All state is persisted to SQLite, making the swarm durable across process restarts and enabling pause/resume.
-
-#### States
-
-```
-SETUP → COORDINATOR → AGENTS_RUNNING → EVALUATING ──→ TEARDOWN
-              ↑              │  ↑            │
-              └──────────────│──│────────────┘  (new tasks created,
-                             ↓  │                round < max_rounds)
-                          PAUSED ┘
-                             │
-                             ├──→ (resume) → previous state
-                             └──→ (abort)  → TEARDOWN
-```
-
-| State | Description |
-|---|---|
-| `setup` | Create workspace, initialize DB, register tools. Automatic transition to `coordinator`. |
-| `coordinator` | Run the coordinator agent. It creates/updates tasks and assigns them to agents. Transitions to `agents_running`. |
-| `agents_running` | All agents execute concurrently. Transitions to `evaluating` when all agents exit. Can be interrupted → `paused`. |
-| `evaluating` | Re-invoke coordinator to assess completion. If new tasks created and `round < max_rounds`, transition to `coordinator`. If done, transition to `teardown`. |
-| `paused` | Swarm is suspended. Stores `paused_from` to know which state to resume into. Can resume or abort → `teardown`. |
-| `teardown` | Collect results, apply cleanup policy, return step result. Terminal state. |
-
-#### State Persistence
-
-Two additional tables in `swarm.db` track orchestrator and agent-level state:
-
-```sql
--- Singleton row tracking the swarm orchestrator state
 CREATE TABLE swarm_state (
     id          INTEGER PRIMARY KEY CHECK (id = 1),
-    state       TEXT NOT NULL
-                CHECK (state IN ('setup', 'coordinator', 'agents_running',
-                                 'evaluating', 'paused', 'teardown')),
-    round       INTEGER DEFAULT 0,
-    paused_from TEXT,                                 -- state to resume into
+    state       TEXT NOT NULL DEFAULT 'setup',
+    round       INTEGER NOT NULL DEFAULT 0,
     updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Per-agent execution tracking
 CREATE TABLE agent_state (
     name        TEXT PRIMARY KEY,
-    status      TEXT DEFAULT 'pending'
-                CHECK (status IN ('pending', 'running', 'done', 'failed', 'interrupted')),
+    status      TEXT NOT NULL DEFAULT 'pending',
     iterations  INTEGER DEFAULT 0,
     updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-This enables:
+Note: the `swarm_state` table does not have a `paused_from` column. The `PAUSED` state exists in the enum and state machine but there is no mechanism to enter it — no external signal or API triggers pause. If the state machine encounters `PAUSED`, it returns `{"success": False, "message": ["Swarm paused"], "paused": True}`.
 
-- **Durable state**: If the process dies, reading `swarm_state` on restart reveals exactly where to resume.
-- **Pause/resume**: An external signal (CLI, hook, future UI) writes `state='paused'` + `paused_from`. The orchestrator loop picks this up and yields control. On resume, it transitions back to `paused_from`.
-- **Observability**: Any external tool can query `swarm_state` and `agent_state` to see live progress — a foundation for dashboards and notifications.
-- **Partial retry**: `agent_state` tracks which agents completed vs. were interrupted, enabling re-runs of only failed agents rather than the entire swarm.
+### Agent Access: CLI Script
 
-#### Orchestrator Loop
+Agents interact with the database through a **CLI wrapper script** (`swarmdb`) deployed into the workspace at setup time. This is a self-contained Python script that agents invoke via Bash:
+
+```bash
+# Read
+{workspace}/swarmdb query "SELECT * FROM tasks"
+
+# Write
+{workspace}/swarmdb execute "INSERT INTO tasks (title, description, assigned_to, status) VALUES ('Build API', 'REST endpoints', 'backend', 'pending')"
+```
+
+The script:
+- Reads the database path from the `SWARMDB_PATH` environment variable (set automatically via `env` on all agent processes)
+- Validates that `query` only accepts `SELECT` statements
+- Validates that `execute` only accepts `INSERT`/`UPDATE`/`DELETE` on the three allowed tables (`tasks`, `artifacts`, `signals`)
+- Connects with WAL mode and `Row` factory for dict-like access
+- Returns JSON for queries, confirmation text for writes
+
+This approach was chosen over an MCP server to avoid adding MCP context overhead to running agents.
+
+## Coordination Layer: Filesystem
+
+The workspace directory is created at setup with this structure:
+
+```
+{workspace}/
+├── swarm.db              # SQLite coordination database
+├── swarmdb               # CLI wrapper script (executable)
+├── shared/               # Files any agent can read/write
+└── agents/
+    ├── backend/          # Per-agent scratch space
+    ├── frontend/
+    └── ...
+```
+
+Directory conventions are enforced via system prompt guidance, not filesystem restrictions. Agents are instructed to use `shared/` for cross-agent visibility and `agents/{name}/` for scratch work.
+
+## Execution Model: State Machine
+
+### States
+
+```
+SETUP → COORDINATOR → AGENTS_RUNNING → EVALUATING ──→ TEARDOWN
+              ↑                            │
+              └────────────────────────────┘  (round < max_rounds)
+```
+
+| State | Description |
+|---|---|
+| `setup` | Create workspace, initialize DB, register agents, deploy CLI script. Automatic transition to `coordinator`. |
+| `coordinator` | Run the coordinator agent. It creates/updates tasks and assigns them to agents. If coordinator returns `{"done": true}`, transition to `teardown`. Otherwise, transition to `agents_running`. |
+| `agents_running` | All worker agents execute concurrently via `asyncio.TaskGroup`. Each agent runs with its prompt, swarm context, and the `swarmdb` CLI available via Bash. Transitions to `evaluating` when all agents exit. |
+| `evaluating` | Increment the round counter. If `round >= max_rounds`, transition to `teardown`. Otherwise, transition back to `coordinator` for re-evaluation. |
+| `paused` | Defined in the enum and handled in the state machine loop but not reachable — no mechanism currently triggers a pause transition. Returns early with `{"success": False, "paused": True}`. |
+| `teardown` | Collect final state from `tasks` and `artifacts` tables, build the result dict, close the DB, apply the cleanup policy. Terminal state. |
+
+### `SwarmStep.run()` — Orchestrator Loop
 
 ```python
 async def run(self, context):
     self._setup(context)
 
+    deadline = None
+    if self.timeout:
+        deadline = asyncio.get_event_loop().time() + self.timeout
+
     while True:
-        state = self._get_state()
+        state = self._db.get_state()
+
+        if deadline and asyncio.get_event_loop().time() > deadline:
+            self._db.transition(SwarmState.TEARDOWN)
+            continue
 
         match state:
             case SwarmState.SETUP:
-                self._transition(SwarmState.COORDINATOR)
-
+                self._db.transition(SwarmState.COORDINATOR)
             case SwarmState.COORDINATOR:
                 result = await self._run_coordinator(context)
-                if result.done:
-                    self._transition(SwarmState.TEARDOWN)
+                if result.get("done"):
+                    self._db.transition(SwarmState.TEARDOWN)
                 else:
-                    self._transition(SwarmState.AGENTS_RUNNING)
-
+                    self._db.transition(SwarmState.AGENTS_RUNNING)
             case SwarmState.AGENTS_RUNNING:
                 await self._run_agents(context)
-                self._transition(SwarmState.EVALUATING)
-
+                self._db.transition(SwarmState.EVALUATING)
             case SwarmState.EVALUATING:
-                if self._round >= self.max_rounds:
-                    self._transition(SwarmState.TEARDOWN)
+                round_num = self._db.increment_round()
+                if round_num >= self.max_rounds:
+                    self._db.transition(SwarmState.TEARDOWN)
                 else:
-                    self._transition(SwarmState.COORDINATOR)
-
+                    self._db.transition(SwarmState.COORDINATOR)
             case SwarmState.PAUSED:
-                return SwarmPaused(workspace=self.workspace)
-
+                return {"success": False, "message": ["Swarm paused"], "paused": True}
             case SwarmState.TEARDOWN:
                 return self._teardown()
 ```
 
-Each `_transition(new_state)` call writes to `swarm_state`, making every state change durable. Pause is an external signal that sets `state='paused'` — the loop picks it up on the next iteration.
+### Setup
 
-### Lifecycle Summary
+`_setup(context)` performs:
 
-```
-1. SETUP
-   ├─ Create workspace directory structure
-   ├─ Initialize swarm.db with full schema (tasks, artifacts, signals,
-   │  swarm_state, agent_state)
-   ├─ Register SwarmDB tool for agent use
-   ├─ Inject swarm context: {swarm_db}, {workspace}, {agent_name}, {goal}
-   └─ Transition → COORDINATOR
+1. Resolve the workspace path — interpolate `{variable}` and `{step_id}`, resolve relative paths against `project_path` or `cwd`
+2. Create the directory structure: `shared/`, `agents/{name}/` for each worker
+3. Initialize `SwarmDB` at `{workspace}/swarm.db` and create the schema
+4. Register each agent in the `agent_state` table with `pending` status
+5. Write the `swarmdb` CLI script to the workspace and make it executable
+6. Transition state from `setup` to `coordinator`
 
-2. COORDINATOR (round N of max_rounds)
-   ├─ Run coordinator agent
-   ├─ Coordinator populates/updates tasks table, assigns to agents
-   ├─ If coordinator signals done → transition → TEARDOWN
-   └─ Otherwise → transition → AGENTS_RUNNING
+### Coordinator Execution
 
-3. AGENTS_RUNNING
-   ├─ Launch all agents concurrently (asyncio.TaskGroup)
-   ├─ Each agent runs with its prompt + swarm context + SwarmDB tool
-   ├─ Agents query tasks table, work, register artifacts, send signals
-   ├─ Agent exits update agent_state (done | failed)
-   ├─ If paused signal received → transition → PAUSED
-   └─ All agents exit → transition → EVALUATING
+`_run_coordinator(context)`:
 
-4. EVALUATING
-   ├─ Increment round counter
-   ├─ If round >= max_rounds or timeout reached → transition → TEARDOWN
-   └─ Otherwise → transition → COORDINATOR (coordinator re-evaluates)
+1. Build a composite system prompt: `BASE_SYSTEM_PROMPT` + `SWARM_COORDINATOR_PROMPT` (with `{goal}`, `{agent_roster}`, `{workspace}` interpolated) + project refs if available
+2. Interpolate `{variable}` in the coordinator's prompt
+3. Ensure `Bash` is in the allowed tools list (needed for the `swarmdb` CLI)
+4. Build hooks and MCP servers via the blueprint
+5. Run the agent with `claude_agent_sdk.query()`, setting `env={"CLAUDECODE": "", "SWARMDB_PATH": "..."}` and optionally `cwd` to the project path
+6. Parse the last text block as JSON. If it contains `"done": true`, the swarm proceeds to teardown. Otherwise, agents run.
 
-5. PAUSED (entered via external signal)
-   ├─ Store paused_from state for resume
-   ├─ Return SwarmPaused to caller
-   ├─ On resume → transition → paused_from state
-   └─ On abort → transition → TEARDOWN
+The coordinator prompt instructs it to:
+- Break the goal into tasks and assign them to agents via `swarmdb execute`
+- Check progress via `swarmdb query`
+- Respond with `{"done": true, "message": [...]}` when complete or `{"done": false, "message": [...]}` when more work is needed
 
-6. TEARDOWN
-   ├─ Collect final state from tasks + artifacts tables
-   ├─ Build step result: {success, message, tasks, artifacts}
-   └─ Clean up workspace per cleanup policy (on_success | always | never)
-```
+### Agent Execution
 
-### Agent System Prompt Injection
+`_run_agents(context)` launches all worker agents concurrently using `asyncio.TaskGroup`.
 
-Each agent receives a composite system prompt:
+`_run_single_agent(agent_cfg, context)`:
 
-```
-{BASE_SYSTEM_PROMPT}
+1. Mark agent status as `running` in `agent_state`
+2. Build a composite system prompt: `BASE_SYSTEM_PROMPT` + `SWARM_AGENT_PROMPT` (with `{agent_name}`, `{goal}`, `{workspace}`, `{agent_roster}`) + project refs
+3. Interpolate `{variable}` in the agent's prompt
+4. Ensure `Bash` is in the allowed tools list
+5. Resolve hooks — use per-agent hooks if specified, otherwise fall back to step-level hooks
+6. Merge MCP servers — defaults → step → per-agent (per-agent wins on collision)
+7. Run with `max_turns` set to `max_iterations`
+8. On success: mark agent as `done` in `agent_state` with iteration count
+9. On exception: mark agent as `failed`, print the error, return empty string
 
-## Swarm Context
-You are agent "{agent_name}" in a swarm working toward: {goal}
+The agent prompt instructs each agent to:
+- Use the `swarmdb` CLI to claim tasks, update status, register artifacts, and send/check signals
+- Write outputs to `{workspace}/shared/` and scratch work to `{workspace}/agents/{agent_name}/`
+- Respond with final status when all assigned work is complete
 
-### Coordination Database
-Use the SwarmDB tool to query and update the tasks, artifacts, and signals tables.
+### Teardown
 
-### Workspace
-Shared files: {workspace}/shared/
-Your scratch space: {workspace}/agents/{agent_name}/
+`_teardown()`:
 
-### Other Agents in This Swarm
-- backend: <first line of prompt or role summary>
-- frontend: ...
-- tests: ...
-
-### Conventions
-- Claim a task: UPDATE tasks SET status='in_progress', assigned_to='{agent_name}' WHERE id=<id> AND status='pending'
-- Complete a task: UPDATE tasks SET status='done', result='<summary>' WHERE id=<id>
-- Register an artifact: INSERT INTO artifacts (task_id, agent, name, path) VALUES (...)
-- Send a signal: INSERT INTO signals (from_agent, to_agent, type, payload) VALUES (...)
-- Check for signals: SELECT * FROM signals WHERE to_agent='{agent_name}' OR to_agent IS NULL
-
-When your assigned work is complete and you have no pending tasks, respond with your final status.
-```
+1. Query all tasks and artifacts from the database
+2. Determine success: `True` if all tasks have `status == "done"` (or no tasks exist)
+3. Build message list from task statuses (e.g., `"[done] Build API"`, `"[failed] Write tests"`)
+4. Close the database connection
+5. Apply cleanup policy:
+   - `on_success`: delete workspace only if `success` is `True`
+   - `always`: always delete workspace
+   - `never`: preserve workspace for inspection
 
 ### Result Structure
 
 ```python
 {
     "success": bool,          # True if all tasks reached "done" status
-    "message": [str],         # Summary messages from each agent
-    "tasks": [                # Final state of all tasks
+    "message": [str],         # Status line per task, e.g. "[done] Build API"
+    "tasks": [                # Full rows from the tasks table
         {"id": 1, "title": "...", "status": "done", "assigned_to": "backend", ...}
     ],
-    "artifacts": [            # All registered artifacts
+    "artifacts": [            # Full rows from the artifacts table
         {"name": "api_schema", "agent": "backend", "path": "shared/api.json", ...}
     ]
 }
@@ -410,50 +370,26 @@ When your assigned work is complete and you have no pending tasks, respond with 
 
 Results are stored in `results[step_id]` as usual, accessible to subsequent steps via conditions and Jinja2 expressions.
 
----
-
 ## Integration with Existing Systems
 
 | System | Integration |
 |---|---|
-| **Hooks** | Swarm step supports `hooks` at the step level (applied to all agents) and per-agent overrides. Same override semantics as today. |
-| **MCP Servers** | Merged from defaults → step → per-agent, same collision rules. |
-| **Conditions** | `condition` on swarm steps works identically — evaluated before the swarm runs. |
-| **Foreach** | Supported — runs the entire swarm N times. Each iteration gets its own workspace. |
-| **on_failure** | Applied at the swarm step level. Individual agent failures are surfaced through the tasks table; the swarm step fails if the overall goal is not met. |
-| **Context/vars** | All workflow vars and context available for `{variable}` interpolation in swarm prompts, workspace path, etc. |
-| **`load_project`** | If a prior step used `load_project`, the swarm inherits `project_path`, `project_refs`, `project_agents`, and `project_settings_path`. |
+| **Hooks** | Step-level `hooks` apply to all agents. Per-agent `hooks` override (not merge) the step-level hooks for that agent. Both resolve through `blueprint._build_hooks()`. |
+| **MCP Servers** | Merged from defaults → step → per-agent. Per-agent servers have `$VAR` env resolution and `{variable}` interpolation applied. Step wins on name collision with defaults; per-agent wins on collision with step. |
+| **Conditions** | `condition` on swarm steps works identically to other steps — evaluated by the blueprint before running the swarm. |
+| **Foreach** | Supported — runs the entire swarm N times (tested with mock steps in `test_swarm.py`). |
+| **on_failure** | Applied at the swarm step level by the blueprint's failure handler. Individual agent failures are tracked in `agent_state`; task-level failures surface through the `tasks` table. The swarm step itself fails if not all tasks reached `done`. |
+| **Context/vars** | All workflow vars and context available for `{variable}` interpolation in swarm prompts, workspace path, coordinator prompt, and agent prompts. |
+| **`load_project`** | If a prior step used `load_project`, the swarm inherits `project_path` (used as `cwd`), `project_refs` (appended to system prompts), and `project_settings_path`. |
+| **Blueprint parsing** | `V1Blueprint._parse_step()` dispatches to `SwarmStep` when the step dict contains a `swarm` key. |
 
----
+## What Is Not Implemented
 
-## Implementation Plan (High-Level)
+The following items exist in the original PRD design or enum definitions but are not functional in the current implementation:
 
-1. **Schema**: Add `swarm` to `spec/v1.json` step `oneOf`
-2. **SwarmDB tool**: Built-in tool wrapping SQLite operations with validation
-3. **SQLite setup**: Workspace creation + `swarm.db` initialization (all 5 tables: `tasks`, `artifacts`, `signals`, `swarm_state`, `agent_state`)
-4. **State machine**: `SwarmState` enum, `_get_state()` / `_transition()` methods reading/writing `swarm_state` table
-5. **Step class**: `SwarmStep` in `goblin/step.py` implementing `StepProtocol` with state machine orchestrator loop
-6. **Agent launcher**: Concurrent agent execution via `asyncio.TaskGroup`, updating `agent_state` on entry/exit
-7. **System prompt builder**: Compose swarm-aware prompts per agent (goal, DB conventions, workspace paths, peer agent summaries)
-8. **Pause/resume**: External signal mechanism to write `paused` state, `SwarmPaused` return type, resume-from-DB logic
-9. **Result collector**: Query final DB state, build result dict
-10. **Workspace cleanup**: Apply cleanup policy based on `cleanup` field after teardown
-11. **Blueprint integration**: Update `_parse_step()` dispatch in `blueprint.py`
-12. **Tests**: Following existing patterns — `_make_blueprint` for parsing, mock steps for orchestration, state transition tests
-13. **Docs**: Update CLAUDE.md tables, add example workflow
-
----
-
-## Resolved Decisions
-
-1. **SQLite access mechanism**: Built-in `SwarmDB` tool inside Goblin. Not an MCP server — avoids adding context overhead to running agents. Goblin registers the tool on each agent, giving it the ability to intercept, validate, and log all DB operations.
-
-2. **Coordinator is mandatory**: The coordinator is the single authority on task decomposition and completion determination. This eliminates the ambiguous "when are we done?" problem. Even simple swarms benefit from a lightweight coordinator that creates obvious tasks and confirms completion after one round.
-
-3. **Coordinator rounds are configurable**: `max_rounds` field with a default of 5. After each agent phase, the coordinator re-evaluates. If it creates new tasks, another agent phase begins. If it signals done or `max_rounds` is exhausted, the swarm proceeds to teardown.
-
-4. **Tasks always come from the coordinator**: No pre-seeded tasks in YAML. Blueprint authors steer task decomposition via the coordinator's prompt. This keeps a single source of truth for task creation and avoids split-brain between static YAML tasks and dynamic coordinator tasks.
-
-5. **SQL signalling is sufficient for v1**: Agents coordinate through the `signals` table — no direct agent-to-agent delegation. All communication is observable in the database, making swarms debuggable after the fact. Direct delegation (nested sub-agents) creates opaque call stacks and complicates resource accounting. May be revisited in a future version if real limitations emerge.
-
-6. **Workspace cleanup is configurable**: `cleanup` field with three options: `on_success` (default — delete workspace if swarm succeeds), `always` (delete regardless of outcome), `never` (preserve for inspection). Applied during teardown.
+- **Pause/resume**: The `PAUSED` state and `SwarmState.PAUSED` enum value exist, but there is no mechanism (CLI command, hook, external signal) to trigger a pause transition. The `swarm_state` table lacks a `paused_from` column. If somehow entered, the loop returns immediately.
+- **`paused_from` tracking**: The `swarm_state` table does not have this column, so resume-to-previous-state is not supported.
+- **CHECK constraints on SQLite tables**: The PRD specified CHECK constraints on `status` columns in `tasks`, `swarm_state`, and `agent_state`. The actual schema uses plain `TEXT` columns without constraints. Validation happens in Python (SwarmDB methods and the CLI script).
+- **`FOREIGN KEY` on artifacts**: The PRD specified `artifacts.task_id REFERENCES tasks(id)`. The actual schema has `task_id INTEGER` without a foreign key constraint.
+- **SQL CHECK on agent status `interrupted`**: The `INTERRUPTED` enum value exists but the database has no constraint — it's enforced at the Python level.
+- **State persistence for restart**: While state is written to SQLite, the `run()` method always calls `_setup()` first which re-initializes the workspace. There is no resume-from-existing-DB logic.
