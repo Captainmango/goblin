@@ -28,7 +28,7 @@ No other top-level keys are allowed.
 | `name` | yes | string | Unique identifier for the workflow (snake_case) |
 | `steps` | yes | array | Ordered list of steps. At least one required. |
 | `vars` | no | object | Workflow-level variables (all values must be strings). Used for `{variable}` interpolation. |
-| `defaults` | no | object | Default configuration inherited by all steps. Currently only `hooks`. |
+| `defaults` | no | object | Default configuration inherited by all steps (`hooks` and `mcp_servers`). |
 
 ### The `defaults` Block
 
@@ -37,9 +37,15 @@ defaults:
   hooks:
     pre_tool: [hook_name]
     post_tool: [hook_name]
+  mcp_servers:
+    github:
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-github"]
+      env:
+        GITHUB_TOKEN: "$GITHUB_TOKEN"
 ```
 
-These hook lists apply to all prompt steps **unless** a step defines its own `hooks` block, which replaces the defaults entirely (no merging).
+Hook lists apply to all prompt steps **unless** a step defines its own `hooks` block, which replaces the defaults entirely (no merging). MCP servers defined in defaults are available to all steps; step-level `mcp_servers` merge with defaults (step wins on name collision).
 
 ### Schema Directive
 
@@ -282,6 +288,213 @@ steps:
 **Override behavior:** Step-level hooks replace defaults entirely (no merge). If a step defines `hooks.post_tool`, the default is ignored for that step. If a step only specifies `pre_tool`, the default `post_tool` still applies.
 
 **Project hooks:** `load_project` steps register shell command hooks as `project_pre_tool` / `project_post_tool`. Reference them like any other hook name.
+
+---
+
+## MCP Servers
+
+MCP (Model Context Protocol) servers give steps access to external tools — GitHub, Jira, databases, custom APIs, etc. Define them at `defaults.mcp_servers` (available to all steps) or `steps[].mcp_servers` (per-step). Step-level servers merge with defaults; if both define the same server name, the step's config wins.
+
+### Transport Types
+
+Three transports are supported:
+
+**stdio** — Launches a subprocess. The server binary communicates over stdin/stdout.
+
+```yaml
+mcp_servers:
+  github:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_TOKEN: "$GITHUB_TOKEN"
+```
+
+- `command` (required) — The executable to run (`npx`, `uvx`, `node`, etc.)
+- `args` (optional) — Arguments passed to the command
+- `type` (optional) — Inferred as `"stdio"` when `command` is present
+
+**sse** — Connects to a remote server using Server-Sent Events.
+
+```yaml
+mcp_servers:
+  my_api:
+    type: sse
+    url: "https://example.com/mcp"
+    headers:
+      Authorization: "Bearer $API_TOKEN"
+```
+
+- `type` (required) — Must be `"sse"`
+- `url` (required) — SSE endpoint URL
+- `headers` (optional) — HTTP headers sent with requests
+
+**http** — Connects to a remote server using HTTP.
+
+```yaml
+mcp_servers:
+  my_api:
+    type: http
+    url: "https://example.com/mcp"
+    headers:
+      Authorization: "Bearer $API_TOKEN"
+```
+
+- `type` (required) — Must be `"http"`
+- `url` (required) — HTTP endpoint URL
+- `headers` (optional) — HTTP headers sent with requests
+
+### Secrets and Environment Variables
+
+MCP server configs support `$VAR` and `${VAR}` syntax for referencing environment variables. These are resolved from `os.environ` at runtime (loaded via `.env` / `load_dotenv()`). If a referenced variable is not set, the runner raises an error.
+
+**Never hardcode secrets in the blueprint.** Use `$VAR` references and instruct users to set the values in their `.env` file or shell environment.
+
+```yaml
+env:
+  GITHUB_TOKEN: "$GITHUB_TOKEN"        # resolved from os.environ
+  API_KEY: "${MY_API_KEY}"              # alternate syntax, same behavior
+```
+
+To set up secrets, add them to your `.env` file in the project root:
+
+```
+GITHUB_TOKEN=ghp_your_token_here
+MY_API_KEY=sk-your-key-here
+```
+
+### Variable Interpolation
+
+All string values in MCP server configs also support `{variable}` interpolation from the workflow context (vars + runtime context). Environment variables are resolved first, then `{variable}` interpolation is applied.
+
+```yaml
+vars:
+  org: my-org
+defaults:
+  mcp_servers:
+    github:
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-github", "--org", "{org}"]
+      env:
+        GITHUB_TOKEN: "$GITHUB_TOKEN"
+```
+
+### Allowing MCP Tools in Steps
+
+MCP tools are namespaced as `mcp__<server_name>__<tool_name>`. Use a wildcard to allow all tools from a server, or specify individual tools:
+
+```yaml
+steps:
+  - id: list_issues
+    prompt: "List all open issues"
+    allowed_tools:
+      - mcp__github__*                  # all tools from the github server
+    mcp_servers:
+      github:
+        command: npx
+        args: ["-y", "@modelcontextprotocol/server-github"]
+        env:
+          GITHUB_TOKEN: "$GITHUB_TOKEN"
+
+  - id: update_ticket
+    prompt: "Update the Jira ticket"
+    allowed_tools:
+      - mcp__jira__update_issue         # one specific tool
+      - Read                            # can mix with regular tools
+```
+
+### Default vs Step-Level Servers
+
+Define servers in `defaults` when multiple steps need them. Override or add servers at the step level when only one step needs a specific server.
+
+```yaml
+defaults:
+  mcp_servers:
+    github:
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-github"]
+      env:
+        GITHUB_TOKEN: "$GITHUB_TOKEN"
+
+steps:
+  - id: read_issues
+    prompt: "List all open issues"
+    allowed_tools: [mcp__github__*]
+    # inherits github server from defaults
+
+  - id: update_jira
+    prompt: "Update the Jira ticket"
+    allowed_tools: [mcp__jira__*]
+    mcp_servers:
+      jira:                             # added for this step only
+        command: npx
+        args: ["-y", "@modelcontextprotocol/server-atlassian"]
+        env:
+          JIRA_API_TOKEN: "$JIRA_API_TOKEN"
+          JIRA_URL: "$JIRA_URL"
+          JIRA_EMAIL: "$JIRA_EMAIL"
+```
+
+### Common MCP Server Examples
+
+**GitHub** — Requires a GitHub personal access token.
+
+```yaml
+mcp_servers:
+  github:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_TOKEN: "$GITHUB_TOKEN"
+```
+
+`.env`: `GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+
+**Jira (Atlassian)** — Requires an Atlassian API token, instance URL, and email.
+
+```yaml
+mcp_servers:
+  jira:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-atlassian"]
+    env:
+      JIRA_API_TOKEN: "$JIRA_API_TOKEN"
+      JIRA_URL: "$JIRA_URL"
+      JIRA_EMAIL: "$JIRA_EMAIL"
+```
+
+`.env`:
+```
+JIRA_API_TOKEN=your_atlassian_api_token
+JIRA_URL=https://your-domain.atlassian.net
+JIRA_EMAIL=you@example.com
+```
+
+**Filesystem** — No secrets required.
+
+```yaml
+mcp_servers:
+  filesystem:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
+```
+
+**Remote server (SSE/HTTP)** — For self-hosted or third-party MCP endpoints.
+
+```yaml
+mcp_servers:
+  my_service:
+    type: sse
+    url: "$MCP_SERVER_URL"
+    headers:
+      Authorization: "Bearer $MCP_API_KEY"
+```
+
+`.env`:
+```
+MCP_SERVER_URL=https://your-mcp-server.example.com/sse
+MCP_API_KEY=your_api_key_here
+```
 
 ---
 

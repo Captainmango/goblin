@@ -23,6 +23,10 @@ workflow:
         action: abort
     - id: load_project
       load_project: /tmp/justpark
+    - id: list issues
+      prompt: "List the open branches on the justpark project."
+      allowed_tools:
+        - "mcp__github__*"
     - id: summarise_project
       prompt: "Summarise what this project is and how it works. Use CLAUDE.md."
       allowed_tools: [Read, Glob]
