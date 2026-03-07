@@ -7,6 +7,7 @@ from typing import Dict, Protocol, TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from goblin.enums import LoadProjectStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, JSON_REPAIR_PROMPT
 
 from claude_agent_sdk import (
@@ -142,6 +143,8 @@ class PromptStep(StepProtocol):
                     if hasattr(block, "text"):
                         text_blocks.append(block.text)
 
+        if not text_blocks:
+            return broken_text
         return text_blocks[-1]
 
 
@@ -157,4 +160,4 @@ class LoadProjectStep(StepProtocol):
     async def run(self, context: dict) -> dict:
         path = self.path_template.format(**context)
         self._blueprint._load_project(path)
-        return {"success": True, "status": "loaded", "path": path}
+        return {"success": True, "status": LoadProjectStatus.LOADED, "path": path}

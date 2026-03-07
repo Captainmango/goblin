@@ -12,6 +12,7 @@ from claude_agent_sdk import (
     AgentDefinition,
     HookMatcher,
 )
+from goblin.enums import FailureAction, HookConfigKey, HookEventType
 from goblin.hooks import HOOK_REGISTRY
 from goblin.utils.env import resolve_env_vars
 from goblin.step import LoadProjectStep, PromptStep, StepProtocol
@@ -113,25 +114,25 @@ class V1Blueprint(Blueprint):
         step_hooks = step.hooks_config
 
         # Resolve merge flag: step-level wins, then blueprint-level, then False
-        blueprint_merge = defaults.get("merge", False)
-        merge = step_hooks.get("merge", blueprint_merge)
+        blueprint_merge = defaults.get(HookConfigKey.MERGE, False)
+        merge = step_hooks.get(HookConfigKey.MERGE, blueprint_merge)
 
-        default_pre = defaults.get("pre_tool") or []
-        default_post = defaults.get("post_tool") or []
-        step_pre = step_hooks.get("pre_tool") or []
-        step_post = step_hooks.get("post_tool") or []
+        default_pre = defaults.get(HookConfigKey.PRE_TOOL) or []
+        default_post = defaults.get(HookConfigKey.POST_TOOL) or []
+        step_pre = step_hooks.get(HookConfigKey.PRE_TOOL) or []
+        step_post = step_hooks.get(HookConfigKey.POST_TOOL) or []
 
         if merge:
             pre_names = [*default_pre, *step_pre]
             post_names = [*default_post, *step_post]
         else:
             # Override mode: step-level replaces defaults when present
-            pre_names = step_pre if step_hooks.get("pre_tool") is not None else default_pre
-            post_names = step_post if step_hooks.get("post_tool") is not None else default_post
+            pre_names = step_pre if step_hooks.get(HookConfigKey.PRE_TOOL) is not None else default_pre
+            post_names = step_post if step_hooks.get(HookConfigKey.POST_TOOL) is not None else default_post
 
         return {
-            "PreToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in pre_names if n in HOOK_REGISTRY])],
-            "PostToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY])],
+            HookEventType.PRE_TOOL_USE: [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in pre_names if n in HOOK_REGISTRY])],
+            HookEventType.POST_TOOL_USE: [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY])],
         }
 
     def _build_mcp_servers(self, step: HookableStep, context: dict) -> dict:
@@ -250,8 +251,8 @@ class V1Blueprint(Blueprint):
                 settings = json.load(f)
             hooks_config = settings.get("hooks", {})
             for event_type, registry_name in (
-                ("PreToolUse", "project_pre_tool"),
-                ("PostToolUse", "project_post_tool"),
+                (HookEventType.PRE_TOOL_USE, "project_pre_tool"),
+                (HookEventType.POST_TOOL_USE, "project_post_tool"),
             ):
                 commands = [
                     hook_def["command"]
@@ -316,7 +317,7 @@ class V1Blueprint(Blueprint):
     async def _handle_step_failure(self, step: StepProtocol, context: dict, results: dict) -> bool:
         """Handle a failed step. Returns True to continue the run, False to abort."""
         on_failure = step.on_failure or {}
-        action = on_failure.get("action", "abort")
+        action = FailureAction(on_failure.get("action", FailureAction.ABORT))
         notify_hook = on_failure.get("notify")
 
         logger.warning("Step failed", extra={"event": "step.failed", "step_id": step.id})
@@ -324,11 +325,11 @@ class V1Blueprint(Blueprint):
         if notify_hook and notify_hook in HOOK_REGISTRY:
             HOOK_REGISTRY[notify_hook](results[step.id])
 
-        if action == "skip":
+        if action == FailureAction.SKIP:
             logger.warning("Skipping failed step", extra={"event": "step.skip_on_failure", "step_id": step.id})
             return True
 
-        if action == "retry":
+        if action == FailureAction.RETRY:
             max_retries = on_failure.get("max_retries", 1)
             for attempt in range(1, max_retries + 1):
                 logger.warning(

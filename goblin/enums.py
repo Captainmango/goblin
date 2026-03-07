@@ -1,6 +1,39 @@
 from enum import StrEnum
 
 
+class FailureAction(StrEnum):
+    SKIP = "skip"
+    RETRY = "retry"
+    ABORT = "abort"
+
+
+class HookEventType(StrEnum):
+    PRE_TOOL_USE = "PreToolUse"
+    POST_TOOL_USE = "PostToolUse"
+
+
+class StepType(StrEnum):
+    PROMPT = "prompt"
+    LOAD_PROJECT = "load_project"
+    SWARM = "swarm"
+
+
+class HookConfigKey(StrEnum):
+    PRE_TOOL = "pre_tool"
+    POST_TOOL = "post_tool"
+    MERGE = "merge"
+
+
+class SwarmDBTable(StrEnum):
+    TASKS = "tasks"
+    ARTIFACTS = "artifacts"
+    SIGNALS = "signals"
+
+
+class LoadProjectStatus(StrEnum):
+    LOADED = "loaded"
+
+
 class SwarmState(StrEnum):
     SETUP = "setup"
     COORDINATOR = "coordinator"

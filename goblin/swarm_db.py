@@ -3,9 +3,9 @@ from __future__ import annotations
 import re
 import sqlite3
 
-from goblin.enums import AgentStatus, SwarmState
+from goblin.enums import AgentStatus, SwarmDBTable, SwarmState
 
-_ALLOWED_WRITE_TABLES = {"tasks", "artifacts", "signals"}
+_ALLOWED_WRITE_TABLES = {t.value for t in SwarmDBTable}
 _WRITE_RE = re.compile(r"^\s*(INSERT|UPDATE|DELETE)\b", re.IGNORECASE)
 _TABLE_RE = re.compile(
     r"(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(\w+)",

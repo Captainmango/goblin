@@ -15,7 +15,7 @@ from claude_agent_sdk import (
     query,
 )
 
-from goblin.enums import AgentStatus, CleanupPolicy, SwarmState
+from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDINATOR_PROMPT
 from goblin.step import StepProtocol, _extract_json
 from goblin.swarm_db import SwarmDB
@@ -284,7 +284,7 @@ class SwarmStep(StepProtocol):
         assert self._db is not None
         tasks = self._db.get_tasks()
         artifacts = self._db.get_artifacts()
-        success = all(t.get("status") == "done" for t in tasks) if tasks else True
+        success = all(t.get("status") == TaskStatus.DONE for t in tasks) if tasks else True
 
         messages = []
         for t in tasks:
