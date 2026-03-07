@@ -2,16 +2,6 @@
 
 ## Improvements
 
-### Quality
-
-#### Replace `print()` with Structured Logging
-The codebase uses `print()` throughout (`blueprint.py`, `swarm.py`, `runner.py`). Switching to Python's `logging` module would let consumers control verbosity, route to files, and silence output in tests without monkeypatching stdout.
-
-#### `WorkflowRunner` Result Output
-`WorkflowRunner.run()` calls `print(results)` unconditionally. Results should be returned and logged at a configurable level, not dumped raw to stdout.
-
----
-
 ## Enhancements
 
 ### Blueprint Schema Validation at Load Time

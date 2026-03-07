@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 from typing import Any, Protocol, cast
@@ -16,6 +17,8 @@ from goblin.utils.env import resolve_env_vars
 from goblin.step import LoadProjectStep, PromptStep, StepProtocol
 from goblin.swarm import SwarmStep
 from goblin.utils.jinja_helpers import filter_contains, filter_json_value
+
+logger = logging.getLogger(__name__)
 
 
 class HookableStep(Protocol):
@@ -182,7 +185,7 @@ class V1Blueprint(Blueprint):
         settings_path = os.path.join(path, ".claude", "settings.json")
         if os.path.isfile(settings_path):
             self.project_settings_path = settings_path
-            print(f"Loaded project settings from {settings_path}")
+            logger.info("Loaded project settings", extra={"event": "project.settings_loaded", "path": settings_path})
 
             # Register subprocess-backed hooks from settings
             with open(settings_path) as f:
@@ -206,14 +209,25 @@ class V1Blueprint(Blueprint):
                         for cmd in cmds:
                             result = subprocess.run(cmd, shell=True, cwd=cwd)
                             if result.returncode != 0:
-                                print(f"Project hook failed (exit {result.returncode}): {cmd}")
+                                logger.warning(
+                                    "Project hook failed",
+                                    extra={"event": "project.hook_failed", "cmd": cmd, "exit_code": result.returncode},
+                                )
 
                     return run_project_hooks
 
                 HOOK_REGISTRY[registry_name] = make_runner(commands, path)
-                print(f"Registered {len(commands)} {event_type} command(s) as '{registry_name}'")
+                logger.info(
+                    "Registered project hooks",
+                    extra={
+                        "event": "project.hooks_registered",
+                        "count": len(commands),
+                        "event_type": event_type,
+                        "registry_name": registry_name,
+                    },
+                )
         else:
-            print(f"No .claude/settings.json found in {path}")
+            logger.warning("No .claude/settings.json found", extra={"event": "project.settings_missing", "path": path})
 
         # References (CLAUDE.md files)
         refs = []
@@ -224,7 +238,7 @@ class V1Blueprint(Blueprint):
             if os.path.isfile(ref_path):
                 with open(ref_path) as f:
                     refs.append(f.read())
-                print(f"Loaded reference from {ref_path}")
+                logger.info("Loaded reference", extra={"event": "project.reference_loaded", "path": ref_path})
         self.project_refs = "\n\n".join(refs)
 
         # Agent definitions
@@ -239,7 +253,7 @@ class V1Blueprint(Blueprint):
                         description=agent_name,
                         prompt=content,
                     )
-                    print(f"Loaded agent definition: {agent_name}")
+                    logger.info("Loaded agent definition", extra={"event": "project.agent_loaded", "agent": agent_name})
 
     async def _handle_step_failure(self, step: StepProtocol, context: dict, results: dict) -> bool:
         """Handle a failed step. Returns True to continue the run, False to abort."""
@@ -247,28 +261,34 @@ class V1Blueprint(Blueprint):
         action = on_failure.get("action", "abort")
         notify_hook = on_failure.get("notify")
 
-        print(f"Step {step.id} failed")
+        logger.warning("Step failed", extra={"event": "step.failed", "step_id": step.id})
 
         if notify_hook and notify_hook in HOOK_REGISTRY:
             HOOK_REGISTRY[notify_hook](results[step.id])
 
         if action == "skip":
-            print(f"Skipping failed step {step.id}, continuing workflow")
+            logger.warning("Skipping failed step", extra={"event": "step.skip_on_failure", "step_id": step.id})
             return True
 
         if action == "retry":
             max_retries = on_failure.get("max_retries", 1)
             for attempt in range(1, max_retries + 1):
-                print(f"Retrying step {step.id} (attempt {attempt}/{max_retries})")
+                logger.warning(
+                    "Retrying step",
+                    extra={"event": "step.retry", "step_id": step.id, "attempt": attempt, "max_retries": max_retries},
+                )
                 result = await step.run(context)
                 results[step.id] = result
                 if result.get("success", True):
                     return True
-            print(f"Step {step.id} failed after {max_retries} retries, aborting")
+            logger.error(
+                "Step failed after retries",
+                extra={"event": "step.retry_exhausted", "step_id": step.id, "max_retries": max_retries},
+            )
             return False
 
         # abort (default)
-        print(f"Aborting workflow due to step {step.id} failure")
+        logger.error("Aborting workflow", extra={"event": "step.abort", "step_id": step.id})
         return False
 
     async def run(self, context: dict | None = None):
@@ -281,7 +301,9 @@ class V1Blueprint(Blueprint):
             # Check conditions
             if step.condition:
                 if not self._evaluate_condition(step.condition, results):
-                    print(f"Skipping {step.id} — condition not met")
+                    logger.info(
+                        "Skipping step — condition not met", extra={"event": "step.condition_skip", "step_id": step.id}
+                    )
                     continue
 
             # Handle foreach expansion

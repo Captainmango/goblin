@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Dict, Protocol, TYPE_CHECKING
 
@@ -13,6 +14,8 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     query,
 )
+
+logger = logging.getLogger(__name__)
 
 
 MAX_PARSE_RETRIES = 3
@@ -102,7 +105,15 @@ class PromptStep(StepProtocol):
             except (json.JSONDecodeError, ValueError) as exc:
                 if attempt >= retries:
                     raise exc
-                print(f"JSON parse failed (attempt {attempt + 1}/{1 + retries}): {exc}")
+                logger.warning(
+                    "JSON parse failed",
+                    extra={
+                        "event": "step.json_parse_failed",
+                        "attempt": attempt + 1,
+                        "max_attempts": 1 + retries,
+                        "error": str(exc),
+                    },
+                )
                 # This variable is used. Each loop iter uses the previous run's text value
                 text = await self._request_json_repair(text)
         raise RuntimeError("all parse attempts exhausted")

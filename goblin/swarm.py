@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import stat
@@ -21,6 +22,8 @@ from goblin.swarm_db import SwarmDB
 
 if TYPE_CHECKING:
     from goblin.blueprint import V1Blueprint
+
+logger = logging.getLogger(__name__)
 
 
 # The CLI wrapper script placed in the workspace for agents to call via Bash.
@@ -266,7 +269,7 @@ class SwarmStep(StepProtocol):
 
         except Exception as e:
             self._db.update_agent_status(name, AgentStatus.FAILED)
-            print(f"Agent '{name}' failed: {e}")
+            logger.error("Swarm agent failed", extra={"event": "swarm.agent_failed", "agent": name, "error": str(e)})
             return ""
 
     async def _run_agents(self, context: dict):

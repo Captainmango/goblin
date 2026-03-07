@@ -11,6 +11,7 @@ goblin/
 │   ├── blueprint.py       # V1Blueprint: core orchestration class
 │   ├── enums.py           # StrEnum classes (SwarmState, TaskStatus, AgentStatus, CleanupPolicy)
 │   ├── hooks.py           # Hook registry and @hook decorator
+│   ├── logging.py         # Logging config, JSONFormatter, configure_logging()
 │   ├── prompts.py         # System prompts (BASE_SYSTEM_PROMPT, JSON_REPAIR_PROMPT, SWARM_*_PROMPT)
 │   ├── runner.py          # WorkflowRunner: loads YAML, routes to blueprint version
 │   ├── step.py            # PromptStep, LoadProjectStep, StepProtocol
@@ -31,6 +32,7 @@ goblin/
 │   ├── test_extract_json.py
 │   ├── test_jinja_helpers.py
 │   ├── test_load_project.py
+│   ├── test_logging.py
 │   ├── test_parse_step.py
 │   ├── test_run_orchestration.py
 │   └── test_swarm.py
@@ -167,6 +169,12 @@ def run_tests(tool_use):
 
 Hooks attach to `PreToolUse` and `PostToolUse` events on the Claude agent.
 
+### Logging (`goblin/logging.py`)
+
+Structured JSON logging via Python's `logging` module. `configure_logging()` is called
+once at CLI entry. Default: JSON lines to `goblin-run.jsonl` + plain-text stderr at WARNING.
+Users can supply a YAML config via `--log-config` or `GOBLIN_LOG_CONFIG` env var.
+
 ## Spec Evolution
 
 `spec/v1.json` is the source of truth for the blueprint schema. When extending the schema:
@@ -184,6 +192,8 @@ Hooks attach to `PreToolUse` and `PostToolUse` events on the Claude agent.
 - Hook names in blueprints are strings that must exist in `HOOK_REGISTRY` at runtime
 - Workflow files live in `workflows/`
 - MCP server secrets use `$VAR` / `${VAR}` syntax resolved from `os.environ` (loaded via `.env` / `load_dotenv()`)
+- All runtime messages use `logging.getLogger(__name__)`, never `print()`
+- Log calls include `extra={"event": "...", ...}` for structured context
 - **Plugin assets live at the project root, not in `.claude/`.** The top-level `agents/`, `commands/`, `references/`, and `skills/` directories are the source of truth for Claude Code plugin assets. The corresponding `.claude/` subdirectories are **symlinks** pointing to these outer folders — never edit or create files directly in `.claude/agents/`, `.claude/commands/`, `.claude/references/`, or `.claude/skills/`
 
 ## Commands

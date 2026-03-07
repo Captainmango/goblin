@@ -13,3 +13,4 @@ wheels/
 .venv
 .env
 .goblin
+goblin-run.jsonl

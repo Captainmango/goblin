@@ -1,5 +1,9 @@
+import logging
+
 import yaml
 from goblin.blueprint import Blueprint, V1Blueprint
+
+logger = logging.getLogger(__name__)
 
 BLUEPRINT_REGISTRY: dict[str, type] = {
     "v1": V1Blueprint,
@@ -23,6 +27,8 @@ class WorkflowRunner:
         return blueprint_cls(raw["workflow"])
 
     async def run(self, context: dict | None = None) -> dict:
+        logger.info("Workflow started", extra={"event": "workflow.start"})
         results = await self.blueprint.run(context)
-        print(results)
+        logger.debug("Workflow results", extra={"event": "workflow.results", "results": results})
+        logger.info("Workflow complete", extra={"event": "workflow.complete"})
         return results
