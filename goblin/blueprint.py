@@ -257,12 +257,14 @@ class V1Blueprint(Blueprint):
             return True
 
         if action == "retry":
-            print(f"Retrying step {step.id}")
-            result = await step.run(context)
-            results[step.id] = result
-            if result.get("success", True):
-                return True
-            print(f"Step {step.id} failed again after retry, aborting")
+            max_retries = on_failure.get("max_retries", 1)
+            for attempt in range(1, max_retries + 1):
+                print(f"Retrying step {step.id} (attempt {attempt}/{max_retries})")
+                result = await step.run(context)
+                results[step.id] = result
+                if result.get("success", True):
+                    return True
+            print(f"Step {step.id} failed after {max_retries} retries, aborting")
             return False
 
         # abort (default)

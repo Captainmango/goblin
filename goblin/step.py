@@ -103,6 +103,7 @@ class PromptStep(StepProtocol):
                 if attempt >= retries:
                     raise exc
                 print(f"JSON parse failed (attempt {attempt + 1}/{1 + retries}): {exc}")
+                # This variable is used. Each loop iter uses the previous run's text value
                 text = await self._request_json_repair(text)
         raise RuntimeError("all parse attempts exhausted")
 

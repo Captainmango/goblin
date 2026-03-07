@@ -394,6 +394,113 @@ class TestRunFailureNotify:
 
 
 # ---------------------------------------------------------------------------
+# on_failure — max_retries
+# ---------------------------------------------------------------------------
+
+
+class TestRunFailureMaxRetries:
+    @pytest.mark.asyncio
+    async def test_default_max_retries_is_one(self):
+        """No max_retries set: step fails twice; workflow aborts after the one retry."""
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "retry_step",
+                    "prompt": "try",
+                    "on_failure": {"action": "retry"},
+                },
+                {"id": "next_step", "prompt": "never"},
+            ]
+        )
+        bp.steps[0].run.side_effect = [
+            {"success": False, "message": ["fail"]},
+            {"success": False, "message": ["fail again"]},
+        ]
+
+        results = await bp.run({})
+
+        assert bp.steps[0].run.call_count == 2
+        bp.steps[1].run.assert_not_called()
+        assert results["retry_step"]["success"] is False
+
+    @pytest.mark.asyncio
+    async def test_custom_max_retries_succeeds_on_last_attempt(self):
+        """max_retries: 3 — step fails 3 times then succeeds on the 4th call; workflow continues."""
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "retry_step",
+                    "prompt": "try",
+                    "on_failure": {"action": "retry", "max_retries": 3},
+                },
+                {"id": "next_step", "prompt": "after"},
+            ]
+        )
+        bp.steps[0].run.side_effect = [
+            {"success": False},
+            {"success": False},
+            {"success": False},
+            {"success": True, "message": ["ok"]},
+        ]
+        bp.steps[1].run.return_value = {"success": True}
+
+        results = await bp.run({})
+
+        assert bp.steps[0].run.call_count == 4
+        bp.steps[1].run.assert_called_once()
+        assert results["retry_step"]["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_exhausted_retries_aborts(self):
+        """max_retries: 2 — step fails all attempts; run called 3 times (original + 2), workflow aborts."""
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "retry_step",
+                    "prompt": "try",
+                    "on_failure": {"action": "retry", "max_retries": 2},
+                },
+                {"id": "next_step", "prompt": "never"},
+            ]
+        )
+        bp.steps[0].run.side_effect = [
+            {"success": False},
+            {"success": False},
+            {"success": False},
+        ]
+
+        results = await bp.run({})
+
+        assert bp.steps[0].run.call_count == 3
+        bp.steps[1].run.assert_not_called()
+        assert results["retry_step"]["success"] is False
+
+    @pytest.mark.asyncio
+    async def test_explicit_max_retries_one_same_as_default(self):
+        """max_retries: 1 explicit — same behavior as omitting the field."""
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {
+                    "id": "retry_step",
+                    "prompt": "try",
+                    "on_failure": {"action": "retry", "max_retries": 1},
+                },
+                {"id": "next_step", "prompt": "after"},
+            ]
+        )
+        bp.steps[0].run.side_effect = [
+            {"success": False},
+            {"success": True},
+        ]
+        bp.steps[1].run.return_value = {"success": True}
+
+        await bp.run({})
+
+        assert bp.steps[0].run.call_count == 2
+        bp.steps[1].run.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # Mutable default argument regression
 # ---------------------------------------------------------------------------
 

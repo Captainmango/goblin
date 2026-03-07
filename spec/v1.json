@@ -237,6 +237,12 @@
               "enum": ["skip", "retry", "abort"],
               "examples": ["skip"]
             },
+            "max_retries": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of retry attempts when action is 'retry'. Defaults to 1.",
+              "examples": [1, 3, 5]
+            },
             "notify": {
               "type": "string",
               "description": "Hook function to call on failure",

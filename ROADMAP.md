@@ -13,9 +13,6 @@ The codebase uses `print()` throughout (`blueprint.py`, `swarm.py`, `runner.py`)
 #### Retry Count is Not Configurable
 `on_failure.action: retry` always retries exactly once. There is no `max_retries` field in the schema or step config. The retry count should be a first-class field.
 
-#### Hook Override vs. Merge
-Step-level hooks silently replace workflow defaults rather than extending them. This is intentional but undocumented and surprising. At minimum it should be called out in the schema description. A `hooks.merge` flag that allows additive behaviour would give authors more control.
-
 ---
 
 ## Enhancements
