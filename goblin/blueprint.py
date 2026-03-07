@@ -24,7 +24,7 @@ class HookableStep(Protocol):
 
 
 class Blueprint(Protocol):
-    async def run(self, context: dict) -> dict: ...
+    async def run(self, context: dict | None = None) -> dict: ...
 
 
 class V1Blueprint(Blueprint):
@@ -256,10 +256,10 @@ class V1Blueprint(Blueprint):
         print(f"Aborting workflow due to step {step.id} failure")
         return False
 
-    async def run(self, context: dict = {}):
+    async def run(self, context: dict | None = None):
         # Merge blueprint vars with caller context; caller context wins on conflicts
         blueprint_vars = self.spec.get("vars", {})
-        context = {**blueprint_vars, **context}
+        context = {**blueprint_vars, **(context or {})}
 
         results = {}
         for step in self.steps:

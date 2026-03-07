@@ -22,7 +22,7 @@ class WorkflowRunner:
             raise ValueError(f"Unsupported workflow version {version}. Supported: {supported}")
         return blueprint_cls(raw["workflow"])
 
-    async def run(self, context: dict = {}) -> dict:
+    async def run(self, context: dict | None = None) -> dict:
         results = await self.blueprint.run(context)
         print(results)
         return results

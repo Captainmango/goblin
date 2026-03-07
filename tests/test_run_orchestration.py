@@ -391,3 +391,25 @@ class TestRunFailureNotify:
         # Should not raise
         results = await bp.run({})
         assert "fail_step" in results
+
+
+# ---------------------------------------------------------------------------
+# Mutable default argument regression
+# ---------------------------------------------------------------------------
+
+
+class TestRunNoSharedDefaultContext:
+    @pytest.mark.asyncio
+    async def test_successive_calls_without_context_do_not_share_state(self):
+        """Two consecutive bp.run() calls with no args must produce independent results."""
+        bp = _make_blueprint_with_mock_steps(
+            [{"id": "s1", "prompt": "do thing"}],
+            vars={"key": "value"},
+        )
+        bp.steps[0].run.return_value = {"success": True, "message": ["ok"]}
+
+        results_first = await bp.run()
+        results_second = await bp.run()
+
+        assert results_first == results_second
+        assert results_first is not results_second

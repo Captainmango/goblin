@@ -88,6 +88,9 @@ class PromptStep(StepProtocol):
                     if hasattr(block, "text"):
                         text_blocks.append(block.text)
 
+        if not text_blocks:
+            return {"success": False, "message": ["Agent produced no text output"]}
+
         return await self._parse_response(text_blocks[-1])
 
     async def _parse_response(self, text: str, retries: int = MAX_PARSE_RETRIES) -> Dict:
@@ -100,7 +103,7 @@ class PromptStep(StepProtocol):
                 if attempt >= retries:
                     raise exc
                 print(f"JSON parse failed (attempt {attempt + 1}/{1 + retries}): {exc}")
-                await self._request_json_repair(text)
+                text = await self._request_json_repair(text)
         raise RuntimeError("all parse attempts exhausted")
 
     async def _request_json_repair(self, broken_text: str) -> str:
@@ -128,7 +131,6 @@ class LoadProjectStep(StepProtocol):
         self.path_template: str = raw["load_project"]
         self.condition: str | None = raw.get("condition")
         self.foreach: str | None = raw.get("foreach")
-        self.depends_on: str | list[str] | None = raw.get("depends_on")
         self.on_failure: dict | None = raw.get("on_failure")
         self._blueprint = blueprint
 

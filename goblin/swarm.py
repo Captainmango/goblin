@@ -314,12 +314,12 @@ class SwarmStep(StepProtocol):
 
         deadline = None
         if self.timeout:
-            deadline = asyncio.get_event_loop().time() + self.timeout
+            deadline = asyncio.get_running_loop().time() + self.timeout
 
         while True:
             state = self._db.get_state()
 
-            if deadline is not None and asyncio.get_event_loop().time() > deadline:
+            if deadline is not None and asyncio.get_running_loop().time() > deadline:
                 self._db.transition(SwarmState.TEARDOWN)
                 continue
 
