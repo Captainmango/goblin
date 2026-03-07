@@ -154,7 +154,7 @@ class SwarmStep(StepProtocol):
         assert self._db is not None
         agent_roster = self._build_agent_roster()
 
-        system_prompt = BASE_SYSTEM_PROMPT + SWARM_COORDINATOR_PROMPT.format(
+        system_prompt = SWARM_COORDINATOR_PROMPT.format(
             goal=self.goal,
             agent_roster=agent_roster,
             workspace=self._workspace,
