@@ -10,9 +10,6 @@ The codebase uses `print()` throughout (`blueprint.py`, `swarm.py`, `runner.py`)
 #### `WorkflowRunner` Result Output
 `WorkflowRunner.run()` calls `print(results)` unconditionally. Results should be returned and logged at a configurable level, not dumped raw to stdout.
 
-#### Retry Count is Not Configurable
-`on_failure.action: retry` always retries exactly once. There is no `max_retries` field in the schema or step config. The retry count should be a first-class field.
-
 ---
 
 ## Enhancements
