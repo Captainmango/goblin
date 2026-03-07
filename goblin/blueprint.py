@@ -38,6 +38,7 @@ class V1Blueprint(Blueprint):
         self.project_refs: str = ""
         self.project_agents: dict[str, AgentDefinition] = {}
         self.steps: list[StepProtocol] = [self._parse_step(s) for s in spec["steps"]]
+        self._validate_history()
 
     def _parse_step(self, raw: dict) -> StepProtocol:
         match raw:
@@ -49,6 +50,63 @@ class V1Blueprint(Blueprint):
                 return SwarmStep(raw, self)
             case _:
                 raise ValueError(f"Step '{raw.get('id', '?')}' must have 'prompt', 'load_project', or 'swarm'")
+
+    def _validate_history(self):
+        """Validate history references at parse time."""
+        step_ids_seen: list[str] = []
+        foreach_step_ids: set[str] = set()
+
+        for step in self.steps:
+            history = getattr(step, "history", None)
+            if history:
+                if not isinstance(step, PromptStep):
+                    raise ValueError(
+                        f"Step '{step.id}': history is only valid on prompt steps"
+                    )
+                for ref_id in history:
+                    if ref_id not in step_ids_seen:
+                        raise ValueError(
+                            f"Step '{step.id}': history references '{ref_id}' "
+                            f"which is not defined before this step"
+                        )
+                    if ref_id in foreach_step_ids:
+                        raise ValueError(
+                            f"Step '{step.id}': history cannot reference foreach "
+                            f"step '{ref_id}'"
+                        )
+                    referenced = next(s for s in self.steps if s.id == ref_id)
+                    if not isinstance(referenced, PromptStep):
+                        raise ValueError(
+                            f"Step '{step.id}': history can only reference prompt "
+                            f"steps, but '{ref_id}' is a {type(referenced).__name__}"
+                        )
+
+            step_ids_seen.append(step.id)
+            if step.foreach:
+                foreach_step_ids.add(step.id)
+
+    def _build_history_context(self, history_ids: list[str], results: dict) -> str:
+        """Build a context string from prior steps' prompts and outputs."""
+        sections = []
+        for step_id in history_ids:
+            if step_id not in results:
+                continue
+            step_result = results[step_id]
+            step_prompt = step_result.get("prompt", "")
+            output = step_result.get("output", "")
+            if not output and not step_prompt:
+                continue
+            section = f"### Step: {step_id}\n"
+            if step_prompt:
+                section += f"\n**Prompt:** {step_prompt}\n"
+            if output:
+                section += f"\n**Output:**\n{output}\n"
+            sections.append(section)
+
+        if not sections:
+            return ""
+
+        return "## Prior Step Results\n\n" + "\n".join(sections) + "\n---\n\n"
 
     def _build_hooks(self, step: HookableStep) -> dict:
         defaults = self.spec.get("defaults", {}).get("hooks", {})
@@ -312,6 +370,9 @@ class V1Blueprint(Blueprint):
                 iteration_results = []
                 for item in items:
                     step_context = {**context, **item}
+                    if hasattr(step, "history") and step.history:
+                        history_context = self._build_history_context(step.history, results)
+                        step_context = {**step_context, "_history_context": history_context}
                     result = await step.run(step_context)
                     iteration_results.append(result)
                     if not result.get("success", True):
@@ -326,7 +387,11 @@ class V1Blueprint(Blueprint):
                     "success": all(r.get("success", True) for r in iteration_results),
                 }
             else:
-                result = await step.run(context)
+                step_context = context
+                if hasattr(step, "history") and step.history:
+                    history_context = self._build_history_context(step.history, results)
+                    step_context = {**context, "_history_context": history_context}
+                result = await step.run(step_context)
                 results[step.id] = result
                 if not result.get("success", True):
                     if not await self._handle_step_failure(step, context, results):

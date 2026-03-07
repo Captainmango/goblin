@@ -57,10 +57,16 @@ class PromptStep(StepProtocol):
         self.foreach: str | None = raw.get("foreach")
         self.on_failure: dict | None = raw.get("on_failure")
         self.mcp_servers_config: dict | None = raw.get("mcp_servers")
+        self.history: list[str] | None = raw.get("history")
         self._blueprint = blueprint
 
     async def run(self, context: dict) -> Dict:
         prompt = self.prompt_template.format(**context)
+
+        # Prepend history context if provided by the blueprint
+        history_context = context.get("_history_context", "")
+        if history_context:
+            prompt = history_context + prompt
 
         kwargs: dict = {
             "system_prompt": BASE_SYSTEM_PROMPT,
@@ -92,9 +98,11 @@ class PromptStep(StepProtocol):
                         text_blocks.append(block.text)
 
         if not text_blocks:
-            return {"success": False, "message": ["Agent produced no text output"]}
+            return {"success": False, "message": ["Agent produced no text output"], "prompt": prompt, "output": ""}
 
-        return await self._parse_response(text_blocks[-1])
+        full_output = "\n".join(text_blocks)
+        parsed = await self._parse_response(text_blocks[-1])
+        return {**parsed, "prompt": prompt, "output": full_output}
 
     async def _parse_response(self, text: str, retries: int = MAX_PARSE_RETRIES) -> Dict:
         """Parse agent response JSON, retrying with a repair prompt on failure."""

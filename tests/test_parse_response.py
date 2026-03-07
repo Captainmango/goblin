@@ -103,7 +103,10 @@ class TestRunEmptyResponse:
         with patch("goblin.step.query", side_effect=empty_query):
             result = await step.run({})
 
-        assert result == {"success": False, "message": ["Agent produced no text output"]}
+        assert result["success"] is False
+        assert result["message"] == ["Agent produced no text output"]
+        assert result["output"] == ""
+        assert "prompt" in result
 
     @pytest.mark.asyncio
     async def test_assistant_message_with_no_text_blocks_returns_failure(self):
@@ -121,4 +124,7 @@ class TestRunEmptyResponse:
         with patch("goblin.step.query", side_effect=query_no_text):
             result = await step.run({})
 
-        assert result == {"success": False, "message": ["Agent produced no text output"]}
+        assert result["success"] is False
+        assert result["message"] == ["Agent produced no text output"]
+        assert result["output"] == ""
+        assert "prompt" in result

@@ -1,2 +1,2 @@
 - [ ] Figure out why swarm step didn't exit properly even though the task was done successfully
-- [ ] Add in opt-in conversation history memory (reference messages by step ID and add those to the prompt, bookended in tags or smth)
+- [x] Add in opt-in conversation history memory (reference messages by step ID and add those to the prompt, bookended in tags or smth)

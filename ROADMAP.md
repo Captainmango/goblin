@@ -1,7 +1,5 @@
 # Goblin Roadmap
 
-## Improvements
-
 ## Enhancements
 
 ### Blueprint Schema Validation at Load Time

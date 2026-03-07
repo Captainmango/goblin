@@ -14,7 +14,7 @@ from goblin.runner import WorkflowRunner
     type=JSON,
     required=False,
     default="{}",
-    help="the context that will be passed to the workflow. Must be a valid, unescaped JSON string",
+    help="the context that will be passed to the blueprint. Must be a valid, unescaped JSON string",
 )
 @click.option(
     "--log-config",

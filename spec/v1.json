@@ -223,6 +223,12 @@
             "{{ steps.clone_repo.message | json_value('data.status') == 'ok' }}"
           ]
         },
+        "history": {
+          "description": "List of prior step IDs whose prompt and text output should be included as context in this step's prompt. Context is prepended in order before the step's own prompt. Referenced steps must be prompt steps defined before this step. Cannot reference foreach steps.",
+          "type": "array",
+          "items": { "type": "string" },
+          "examples": [["step_one"], ["analyze", "plan"]]
+        },
         "swarm": { "$ref": "#/definitions/swarm" },
         "hooks": { "$ref": "#/definitions/hooks" },
         "mcp_servers": { "$ref": "#/definitions/mcpServers" },
