@@ -135,7 +135,6 @@ Always returns `{"success": true, "status": "loaded", "path": "..."}`.
 
 - Steps execute in array order — no parallel execution.
 - `load_project` must appear before prompt steps that need the loaded configuration.
-- `depends_on` is defined in the schema but not enforced by the runner — rely on array order.
 - Each step `id` must be unique.
 
 ---
@@ -568,4 +567,3 @@ workflow:
 - **Missing `load_project` before prompt** — Without it, the agent runs with no project awareness (no CLAUDE.md, no agents, no settings).
 - **Unregistered hook names** — Silently skipped. Verify hooks are registered with `@hook("name")` in imported code.
 - **Over-broad tool lists** — Giving every step all tools defeats tool scoping. Read-only steps: `[Read, Glob, Grep]`. Shell-only: `[Bash]`.
-- **Relying on `depends_on`** — Schema-defined but not enforced. Use array order.

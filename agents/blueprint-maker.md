@@ -68,5 +68,4 @@ Once you have enough information, generate a complete blueprint YAML file follow
 - Be generous with `allowed_tools`. If a step needs to read files, include `Read`, `Glob`, and `Grep`. If it needs to make changes, include `Write` and `Edit`. If it needs to run commands, include `Bash`.
 - Keep step IDs short and descriptive: `clone_repo`, `find_bugs`, `apply_fix`, `run_tests`.
 - For repos that have a `.claude/` directory, always include a `load_project` step after cloning so the agent picks up the project's settings, instructions, and custom agents.
-- Prefer explicit `depends_on` when step ordering matters beyond sequential execution.
 - Use `vars` for anything the user might want to change between runs (repo URLs, branch names, ticket IDs).

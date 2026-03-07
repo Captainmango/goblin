@@ -107,7 +107,6 @@ Steps are **prompt steps** (run an agent with a prompt), **load_project steps** 
 | `steps[].foreach` | Integer, Jinja2 expression (must resolve to integer), or file path. Injects `{index}`; file mode also injects `{item}`. | Implemented |
 | `steps[].condition` | Jinja2 expression evaluated against prior step results. Custom filters: `contains`, `json_value`. | Implemented |
 | `steps[].mcp_servers` | Per-step MCP servers; merges with defaults (step wins on name collision) | Implemented |
-| `steps[].depends_on` | Step ID(s) that must complete first | Schema only — no dependency graph in runner |
 | `steps[].on_failure.action` | `skip`, `retry`, or `abort` | Implemented |
 | `steps[].on_failure.notify` | Hook name to call on step failure | Implemented |
 | `steps[].swarm` | Swarm step — launches concurrent agents with a coordinator, shared SQLite DB, and filesystem workspace | Implemented |
