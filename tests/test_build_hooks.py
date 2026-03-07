@@ -127,3 +127,120 @@ class TestBuildHooksNoHooks:
         # Should not raise — unregistered names are silently skipped
         hooks = bp._build_hooks(step)
         assert "PostToolUse" in hooks
+
+
+class TestBuildHooksMerge:
+    def test_blueprint_merge_flag_appends_step_hooks_to_defaults(self):
+        HOOK_REGISTRY["default_post"] = _dummy_hook
+        HOOK_REGISTRY["step_post"] = _another_hook
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "do stuff", "hooks": {"post_tool": ["step_post"]}}],
+            defaults={"hooks": {"merge": True, "post_tool": ["default_post"]}},
+        )
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        hooks = bp._build_hooks(step)
+
+        post_hooks = hooks["PostToolUse"][0].hooks
+        assert len(post_hooks) == 2
+        assert _dummy_hook in post_hooks
+        assert _another_hook in post_hooks
+
+    def test_blueprint_merge_flag_defaults_run_first(self):
+        HOOK_REGISTRY["default_post"] = _dummy_hook
+        HOOK_REGISTRY["step_post"] = _another_hook
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "do stuff", "hooks": {"post_tool": ["step_post"]}}],
+            defaults={"hooks": {"merge": True, "post_tool": ["default_post"]}},
+        )
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        hooks = bp._build_hooks(step)
+
+        post_hooks = hooks["PostToolUse"][0].hooks
+        assert post_hooks[0] is _dummy_hook
+        assert post_hooks[1] is _another_hook
+
+    def test_step_merge_flag_overrides_blueprint_default(self):
+        HOOK_REGISTRY["default_post"] = _dummy_hook
+        HOOK_REGISTRY["step_post"] = _another_hook
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "do stuff", "hooks": {"merge": True, "post_tool": ["step_post"]}}],
+            defaults={"hooks": {"post_tool": ["default_post"]}},
+        )
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        hooks = bp._build_hooks(step)
+
+        post_hooks = hooks["PostToolUse"][0].hooks
+        assert len(post_hooks) == 2
+        assert _dummy_hook in post_hooks
+        assert _another_hook in post_hooks
+
+    def test_step_merge_false_reverts_to_override_when_blueprint_merges(self):
+        HOOK_REGISTRY["default_post"] = _dummy_hook
+        HOOK_REGISTRY["step_post"] = _another_hook
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "do stuff", "hooks": {"merge": False, "post_tool": ["step_post"]}}],
+            defaults={"hooks": {"merge": True, "post_tool": ["default_post"]}},
+        )
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        hooks = bp._build_hooks(step)
+
+        post_hooks = hooks["PostToolUse"][0].hooks
+        assert len(post_hooks) == 1
+        assert _another_hook in post_hooks
+        assert _dummy_hook not in post_hooks
+
+    def test_merge_mode_pre_and_post_both_concatenated(self):
+        HOOK_REGISTRY["default_pre"] = _dummy_hook
+        HOOK_REGISTRY["step_pre"] = _another_hook
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "do stuff", "hooks": {"pre_tool": ["step_pre"]}}],
+            defaults={"hooks": {"merge": True, "pre_tool": ["default_pre"]}},
+        )
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        hooks = bp._build_hooks(step)
+
+        pre_hooks = hooks["PreToolUse"][0].hooks
+        assert len(pre_hooks) == 2
+        assert _dummy_hook in pre_hooks
+        assert _another_hook in pre_hooks
+
+    def test_override_step_overrides_pre_but_inherits_default_post(self):
+        HOOK_REGISTRY["default_pre"] = _dummy_hook
+        HOOK_REGISTRY["default_post"] = _dummy_hook
+        HOOK_REGISTRY["step_pre"] = _another_hook
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "do stuff", "hooks": {"pre_tool": ["step_pre"]}}],
+            defaults={"hooks": {"pre_tool": ["default_pre"], "post_tool": ["default_post"]}},
+        )
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        hooks = bp._build_hooks(step)
+
+        pre_hooks = hooks["PreToolUse"][0].hooks
+        post_hooks = hooks["PostToolUse"][0].hooks
+        # pre_tool is overridden by step
+        assert len(pre_hooks) == 1
+        assert _another_hook in pre_hooks
+        # post_tool falls back to defaults (not specified by step)
+        assert len(post_hooks) == 1
+        assert _dummy_hook in post_hooks
+
+    def test_unknown_hooks_skipped_in_merge_mode(self):
+        HOOK_REGISTRY["known_hook"] = _dummy_hook
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "do stuff", "hooks": {"post_tool": ["unknown_hook"]}}],
+            defaults={"hooks": {"merge": True, "post_tool": ["known_hook"]}},
+        )
+        step = bp.steps[0]
+        assert isinstance(step, PromptStep)
+        hooks = bp._build_hooks(step)
+
+        post_hooks = hooks["PostToolUse"][0].hooks
+        # unknown_hook silently dropped; known_hook from defaults present
+        assert len(post_hooks) == 1
+        assert _dummy_hook in post_hooks

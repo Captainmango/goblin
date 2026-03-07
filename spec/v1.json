@@ -49,9 +49,14 @@
   "definitions": {
     "hooks": {
       "type": "object",
-      "description": "Lifecycle hooks that run before or after tool calls",
+      "description": "Lifecycle hooks that run before or after tool calls. Set merge: true to append step-level hooks to workflow defaults rather than replacing them.",
       "additionalProperties": false,
       "properties": {
+        "merge": {
+          "type": "boolean",
+          "description": "When true, step-level hooks are appended to workflow defaults (merge mode). When false or absent, step-level hooks replace defaults entirely (override mode, default). At the defaults level, sets the default merge behaviour for all steps.",
+          "examples": [true, false]
+        },
         "pre_tool": {
           "type": "array",
           "description": "Hook functions to run before each tool call",

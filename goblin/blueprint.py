@@ -51,13 +51,26 @@ class V1Blueprint(Blueprint):
         defaults = self.spec.get("defaults", {}).get("hooks", {})
         step_hooks = step.hooks_config
 
-        # Step-level hooks override defaults entirely if specified
-        pre_names = step_hooks.get("pre_tool", defaults.get("pre_tool", []))
-        post_names = step_hooks.get("post_tool", defaults.get("post_tool", []))
+        # Resolve merge flag: step-level wins, then blueprint-level, then False
+        blueprint_merge = defaults.get("merge", False)
+        merge = step_hooks.get("merge", blueprint_merge)
+
+        default_pre = defaults.get("pre_tool") or []
+        default_post = defaults.get("post_tool") or []
+        step_pre = step_hooks.get("pre_tool") or []
+        step_post = step_hooks.get("post_tool") or []
+
+        if merge:
+            pre_names = [*default_pre, *step_pre]
+            post_names = [*default_post, *step_post]
+        else:
+            # Override mode: step-level replaces defaults when present
+            pre_names = step_pre if step_hooks.get("pre_tool") is not None else default_pre
+            post_names = step_post if step_hooks.get("post_tool") is not None else default_post
 
         return {
-            "PreToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in (pre_names or []) if n in HOOK_REGISTRY])],
-            "PostToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in (post_names or []) if n in HOOK_REGISTRY])],
+            "PreToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in pre_names if n in HOOK_REGISTRY])],
+            "PostToolUse": [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY])],
         }
 
     def _build_mcp_servers(self, step: HookableStep, context: dict) -> dict:
