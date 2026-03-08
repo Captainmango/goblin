@@ -23,9 +23,7 @@ def _make_blueprint(steps: list[dict], vars: dict | None = None) -> V1Blueprint:
     return V1Blueprint(spec)
 
 
-def _make_blueprint_with_mock_steps(
-    steps_raw: list[dict], vars: dict | None = None
-) -> V1Blueprint:
+def _make_blueprint_with_mock_steps(steps_raw: list[dict], vars: dict | None = None) -> V1Blueprint:
     bp = _make_blueprint(steps_raw, vars)
     mock_steps = []
     for real_step in bp.steps:
@@ -48,19 +46,23 @@ def _make_blueprint_with_mock_steps(
 class TestValidateHistoryValid:
     def test_valid_history_reference(self):
         """Step B references step A (defined before it). No error."""
-        bp = _make_blueprint([
-            {"id": "step_a", "prompt": "do A"},
-            {"id": "step_b", "prompt": "do B", "history": ["step_a"]},
-        ])
+        bp = _make_blueprint(
+            [
+                {"id": "step_a", "prompt": "do A"},
+                {"id": "step_b", "prompt": "do B", "history": ["step_a"]},
+            ]
+        )
         assert isinstance(bp.steps[1], PromptStep)
         assert bp.steps[1].history == ["step_a"]
 
     def test_foreach_step_with_history_is_allowed(self):
         """A step with both foreach and history parses without error."""
-        bp = _make_blueprint([
-            {"id": "step_a", "prompt": "analyze"},
-            {"id": "step_b", "prompt": "do {item}", "foreach": "3", "history": ["step_a"]},
-        ])
+        bp = _make_blueprint(
+            [
+                {"id": "step_a", "prompt": "analyze"},
+                {"id": "step_b", "prompt": "do {item}", "foreach": "3", "history": ["step_a"]},
+            ]
+        )
         assert isinstance(bp.steps[1], PromptStep)
         assert bp.steps[1].history == ["step_a"]
         assert bp.steps[1].foreach == "3"
@@ -69,30 +71,38 @@ class TestValidateHistoryValid:
 class TestValidateHistoryInvalid:
     def test_reference_to_undefined_step(self):
         with pytest.raises(ValueError, match="not defined before this step"):
-            _make_blueprint([
-                {"id": "step_a", "prompt": "do A", "history": ["nonexistent"]},
-            ])
+            _make_blueprint(
+                [
+                    {"id": "step_a", "prompt": "do A", "history": ["nonexistent"]},
+                ]
+            )
 
     def test_reference_to_later_step(self):
         with pytest.raises(ValueError, match="not defined before this step"):
-            _make_blueprint([
-                {"id": "step_a", "prompt": "do A", "history": ["step_b"]},
-                {"id": "step_b", "prompt": "do B"},
-            ])
+            _make_blueprint(
+                [
+                    {"id": "step_a", "prompt": "do A", "history": ["step_b"]},
+                    {"id": "step_b", "prompt": "do B"},
+                ]
+            )
 
     def test_reference_to_foreach_step(self):
         with pytest.raises(ValueError, match="cannot reference foreach"):
-            _make_blueprint([
-                {"id": "step_a", "prompt": "do A", "foreach": "3"},
-                {"id": "step_b", "prompt": "do B", "history": ["step_a"]},
-            ])
+            _make_blueprint(
+                [
+                    {"id": "step_a", "prompt": "do A", "foreach": "3"},
+                    {"id": "step_b", "prompt": "do B", "history": ["step_a"]},
+                ]
+            )
 
     def test_reference_to_load_project_step(self):
         with pytest.raises(ValueError, match="can only reference prompt steps"):
-            _make_blueprint([
-                {"id": "load", "load_project": "/some/path"},
-                {"id": "step_b", "prompt": "do B", "history": ["load"]},
-            ])
+            _make_blueprint(
+                [
+                    {"id": "load", "load_project": "/some/path"},
+                    {"id": "step_b", "prompt": "do B", "history": ["load"]},
+                ]
+            )
 
     def test_history_on_non_prompt_step(self):
         """history on a load_project step should raise."""
@@ -105,10 +115,12 @@ class TestValidateHistoryInvalid:
         # load_project step won't even parse it — but the schema should
         # reject this. Let's test the validator path by creating a blueprint
         # and manually setting history on a non-prompt step.
-        bp = _make_blueprint([
-            {"id": "load", "load_project": "/path"},
-            {"id": "step_b", "prompt": "do B"},
-        ])
+        bp = _make_blueprint(
+            [
+                {"id": "load", "load_project": "/path"},
+                {"id": "step_b", "prompt": "do B"},
+            ]
+        )
         # Manually set history on the load_project step to test the validator
         bp.steps[0].history = ["step_b"]  # type: ignore[attr-defined]
         with pytest.raises(ValueError, match="only valid on prompt steps"):
@@ -185,10 +197,12 @@ class TestRunHistoryContextInjection:
     @pytest.mark.asyncio
     async def test_history_context_passed_to_step(self):
         """Step B with history: [step_a] receives _history_context in context."""
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "step_a", "prompt": "analyze"},
-            {"id": "step_b", "prompt": "fix", "history": ["step_a"]},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "step_a", "prompt": "analyze"},
+                {"id": "step_b", "prompt": "fix", "history": ["step_a"]},
+            ]
+        )
         bp.steps[0].run.return_value = {
             "success": True,
             "message": ["ok"],
@@ -206,10 +220,12 @@ class TestRunHistoryContextInjection:
 
     @pytest.mark.asyncio
     async def test_step_without_history_has_no_history_context(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "step_a", "prompt": "analyze"},
-            {"id": "step_b", "prompt": "fix"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "step_a", "prompt": "analyze"},
+                {"id": "step_b", "prompt": "fix"},
+            ]
+        )
         bp.steps[0].run.return_value = {"success": True, "message": ["ok"]}
         bp.steps[1].run.return_value = {"success": True, "message": ["done"]}
 
@@ -220,9 +236,11 @@ class TestRunHistoryContextInjection:
 
     @pytest.mark.asyncio
     async def test_output_and_prompt_captured_in_results(self):
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "step_a", "prompt": "analyze"},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "step_a", "prompt": "analyze"},
+            ]
+        )
         bp.steps[0].run.return_value = {
             "success": True,
             "message": ["ok"],
@@ -238,10 +256,12 @@ class TestRunHistoryContextInjection:
     @pytest.mark.asyncio
     async def test_foreach_with_history_each_iteration_gets_same_context(self):
         """Each foreach iteration receives the same history context."""
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "step_a", "prompt": "analyze"},
-            {"id": "step_b", "prompt": "do {index}", "foreach": "3", "history": ["step_a"]},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "step_a", "prompt": "analyze"},
+                {"id": "step_b", "prompt": "do {index}", "foreach": "3", "history": ["step_a"]},
+            ]
+        )
         bp.steps[0].run.return_value = {
             "success": True,
             "message": ["ok"],
@@ -261,10 +281,12 @@ class TestRunHistoryContextInjection:
     @pytest.mark.asyncio
     async def test_history_context_not_in_results(self):
         """_history_context should not leak into results dict."""
-        bp = _make_blueprint_with_mock_steps([
-            {"id": "step_a", "prompt": "analyze"},
-            {"id": "step_b", "prompt": "fix", "history": ["step_a"]},
-        ])
+        bp = _make_blueprint_with_mock_steps(
+            [
+                {"id": "step_a", "prompt": "analyze"},
+                {"id": "step_b", "prompt": "fix", "history": ["step_a"]},
+            ]
+        )
         bp.steps[0].run.return_value = {
             "success": True,
             "message": ["ok"],

@@ -12,6 +12,7 @@ from claude_agent_sdk import (
     AgentDefinition,
     HookMatcher,
 )
+from goblin.checkpoint import Checkpoint
 from goblin.enums import FailureAction, HookConfigKey, HookEventType
 from goblin.hooks import HOOK_REGISTRY
 from goblin.utils.env import resolve_env_vars
@@ -28,7 +29,7 @@ class HookableStep(Protocol):
 
 
 class Blueprint(Protocol):
-    async def run(self, context: dict | None = None) -> dict: ...
+    async def run(self, context: dict | None = None, checkpoint: Checkpoint | None = None) -> dict: ...
 
 
 class V1Blueprint(Blueprint):
@@ -61,20 +62,14 @@ class V1Blueprint(Blueprint):
             history = getattr(step, "history", None)
             if history:
                 if not isinstance(step, PromptStep):
-                    raise ValueError(
-                        f"Step '{step.id}': history is only valid on prompt steps"
-                    )
+                    raise ValueError(f"Step '{step.id}': history is only valid on prompt steps")
                 for ref_id in history:
                     if ref_id not in step_ids_seen:
                         raise ValueError(
-                            f"Step '{step.id}': history references '{ref_id}' "
-                            f"which is not defined before this step"
+                            f"Step '{step.id}': history references '{ref_id}' which is not defined before this step"
                         )
                     if ref_id in foreach_step_ids:
-                        raise ValueError(
-                            f"Step '{step.id}': history cannot reference foreach "
-                            f"step '{ref_id}'"
-                        )
+                        raise ValueError(f"Step '{step.id}': history cannot reference foreach step '{ref_id}'")
                     referenced = next(s for s in self.steps if s.id == ref_id)
                     if not isinstance(referenced, PromptStep):
                         raise ValueError(
@@ -131,8 +126,12 @@ class V1Blueprint(Blueprint):
             post_names = step_post if step_hooks.get(HookConfigKey.POST_TOOL) is not None else default_post
 
         return {
-            HookEventType.PRE_TOOL_USE: [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in pre_names if n in HOOK_REGISTRY])],
-            HookEventType.POST_TOOL_USE: [HookMatcher(hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY])],
+            HookEventType.PRE_TOOL_USE: [
+                HookMatcher(hooks=[HOOK_REGISTRY[n] for n in pre_names if n in HOOK_REGISTRY])
+            ],
+            HookEventType.POST_TOOL_USE: [
+                HookMatcher(hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY])
+            ],
         }
 
     def _build_mcp_servers(self, step: HookableStep, context: dict) -> dict:
@@ -350,24 +349,40 @@ class V1Blueprint(Blueprint):
         logger.error("Aborting workflow", extra={"event": "step.abort", "step_id": step.id})
         return False
 
-    async def run(self, context: dict | None = None):
+    async def run(self, context: dict | None = None, checkpoint: Checkpoint | None = None):
         # Merge blueprint vars with caller context; caller context wins on conflicts
         blueprint_vars = self.spec.get("vars", {})
         context = {**blueprint_vars, **(context or {})}
 
-        results = {}
+        if checkpoint:
+            results = checkpoint.get_results()
+        else:
+            results = {}
+
         for step in self.steps:
+            # Skip steps already completed in a previous run
+            if checkpoint and step.id in checkpoint.completed_step_ids():
+                logger.info(
+                    "Skipping step — already completed",
+                    extra={"event": "step.checkpoint_skip", "step_id": step.id},
+                )
+                continue
+
             # Check conditions
             if step.condition:
                 if not self._evaluate_condition(step.condition, results):
                     logger.info(
                         "Skipping step — condition not met", extra={"event": "step.condition_skip", "step_id": step.id}
                     )
+                    if checkpoint:
+                        checkpoint.step_skipped(step.id)
                     continue
 
             # Handle foreach expansion
             if step.foreach:
                 items = self._resolve(step.foreach, results, context)
+                if checkpoint:
+                    checkpoint.step_started(step.id, {"foreach": step.foreach, "item_count": len(items)})
                 iteration_results = []
                 for item in items:
                     step_context = {**context, **item}
@@ -382,20 +397,48 @@ class V1Blueprint(Blueprint):
                                 "iterations": iteration_results,
                                 "success": False,
                             }
+                            if checkpoint:
+                                checkpoint.step_failed(step.id, results[step.id])
+                                checkpoint.mark_failed()
                             return results
                 results[step.id] = {
                     "iterations": iteration_results,
                     "success": all(r.get("success", True) for r in iteration_results),
                 }
+                if checkpoint:
+                    if results[step.id].get("success", True):
+                        checkpoint.step_completed(step.id, results[step.id])
+                    else:
+                        checkpoint.step_failed(step.id, results[step.id])
             else:
                 step_context = context
                 if hasattr(step, "history") and step.history:
                     history_context = self._build_history_context(step.history, results)
                     step_context = {**context, "_history_context": history_context}
+                if checkpoint:
+                    checkpoint.step_started(
+                        step.id, {"context": {k: v for k, v in step_context.items() if k != "_history_context"}}
+                    )
                 result = await step.run(step_context)
                 results[step.id] = result
                 if not result.get("success", True):
                     if not await self._handle_step_failure(step, context, results):
+                        if checkpoint:
+                            checkpoint.step_failed(step.id, results[step.id])
+                            checkpoint.mark_failed()
                         return results
+                    # Retry/skip succeeded — record final state
+                    if checkpoint:
+                        final = results[step.id]
+                        if final.get("success", True):
+                            checkpoint.step_completed(step.id, final)
+                        else:
+                            checkpoint.step_failed(step.id, final)
+                else:
+                    if checkpoint:
+                        checkpoint.step_completed(step.id, result)
+
+        if checkpoint:
+            checkpoint.mark_completed()
 
         return results

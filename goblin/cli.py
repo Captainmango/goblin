@@ -8,7 +8,7 @@ from goblin.runner import WorkflowRunner
 
 
 @click.command()
-@click.argument("blueprint_path", type=str)
+@click.argument("blueprint_path", type=str, required=False, default=None)
 @click.option(
     "--context",
     type=JSON,
@@ -40,8 +40,27 @@ from goblin.runner import WorkflowRunner
     default=False,
     help="Suppress stderr handler",
 )
+@click.option(
+    "--resume",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to a .goblin/run-<id>.json checkpoint file to resume",
+)
+@click.option(
+    "--run-dir",
+    type=click.Path(),
+    default=None,
+    help="Directory for .goblin/ checkpoint files (default: current directory)",
+)
 def run(
-    blueprint_path: str, context: Any, log_config: str | None, log_level: str | None, log_file: str | None, quiet: bool
+    blueprint_path: str | None,
+    context: Any,
+    log_config: str | None,
+    log_level: str | None,
+    log_file: str | None,
+    quiet: bool,
+    resume: str | None,
+    run_dir: str | None,
 ):
     load_dotenv()
 
@@ -54,8 +73,17 @@ def run(
         quiet=quiet,
     )
 
-    runner = WorkflowRunner(blueprint_path)
-    asyncio.run(runner.run(context))
+    if resume and blueprint_path:
+        raise click.UsageError("Cannot specify both blueprint_path and --resume")
+    if not resume and not blueprint_path:
+        raise click.UsageError("Must specify either blueprint_path or --resume")
+
+    if resume:
+        asyncio.run(WorkflowRunner.resume(resume))
+    else:
+        assert blueprint_path is not None
+        runner = WorkflowRunner(blueprint_path, run_dir=run_dir)
+        asyncio.run(runner.run(context))
 
 
 if __name__ == "__main__":

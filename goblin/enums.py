@@ -62,3 +62,17 @@ class CleanupPolicy(StrEnum):
     ON_SUCCESS = "on_success"
     ALWAYS = "always"
     NEVER = "never"
+
+
+class RunStatus(StrEnum):
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+
+
+class StepStatus(StrEnum):
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"

@@ -11,8 +11,8 @@ A `--dry-run` CLI flag that parses and validates the blueprint, resolves foreach
 ### Structured Step Output Schema
 Allow steps to declare an `output_schema` (JSON Schema fragment) that the runner validates the agent's response against. This would make data flow between steps explicit and catch mis-shaped outputs early rather than letting a bad value silently propagate.
 
-### Resume / Checkpointing
-Persist step results to a `.goblin/run-<id>.json` checkpoint file after each step completes. A `--resume` flag would reload the checkpoint and skip already-completed steps, allowing interrupted long-running workflows to continue from where they left off.
+### ~~Resume / Checkpointing~~ ✅
+Implemented. Step inputs/outputs are persisted to `.goblin/run-<id>.json` after each step. The `--resume` CLI flag reloads the checkpoint and skips completed steps.
 
 ### Per-Step Model Selection
 Allow blueprint authors to specify which Claude model a step runs against (e.g. `model: claude-opus-4-6` for critical steps, a faster model for lightweight ones). The spec and SDK options would need to carry this through.
