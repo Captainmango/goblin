@@ -1,6 +1,6 @@
 # Goblin
 
-Goblin is an autonomous coding agent harness that runs high-level workflow definitions called **blueprints** (YAML files). The runner parses a blueprint, orchestrates step execution via the Claude Agent SDK, and applies lifecycle hooks around tool calls.
+Goblin is an autonomous coding agent harness that runs high-level definitions called **blueprints** (YAML files). The runner parses a blueprint, orchestrates phase execution via the Claude Agent SDK, and applies lifecycle hooks around tool calls.
 
 ## Project Layout
 
@@ -13,9 +13,9 @@ goblin/
 │   ├── hooks.py           # Hook registry and @hook decorator
 │   ├── logging.py         # Logging config, JSONFormatter, configure_logging()
 │   ├── prompts.py         # System prompts (BASE_SYSTEM_PROMPT, JSON_REPAIR_PROMPT, SWARM_*_PROMPT)
-│   ├── runner.py          # WorkflowRunner: loads YAML, routes to blueprint version
-│   ├── step.py            # PromptStep, LoadProjectStep, StepProtocol
-│   ├── swarm.py           # SwarmStep: concurrent agent orchestration with state machine
+│   ├── runner.py          # BlueprintRunner: loads YAML, routes to blueprint version
+│   ├── phase.py           # PromptPhase, LoadProjectPhase, PhaseProtocol
+│   ├── swarm.py           # SwarmPhase: concurrent agent orchestration with state machine
 │   ├── swarm_db.py        # SwarmDB: SQLite coordination layer for swarm agents
 │   └── utils/
 │       ├── __init__.py
@@ -33,18 +33,18 @@ goblin/
 │   ├── test_jinja_helpers.py
 │   ├── test_load_project.py
 │   ├── test_logging.py
-│   ├── test_parse_step.py
+│   ├── test_parse_phase.py
 │   ├── test_run_orchestration.py
 │   └── test_swarm.py
 ├── agents/                # Claude Code agents (symlinked into .claude/)
 │   └── blueprint-maker.md
 ├── commands/              # Claude Code commands (symlinked into .claude/)
-│   └── run-workflow.md
+│   └── run-blueprint.md
 ├── references/            # Claude Code references (symlinked into .claude/)
-│   └── workflow_creation_guidance.md
+│   └── blueprint_creation_guidance.md
 ├── skills/                # Claude Code skills (symlinked into .claude/)
 │   └── install/
-├── workflows/
+├── blueprints/
 │   ├── test.yaml          # Example blueprint
 │   └── swarm_example.yaml # Example swarm blueprint
 ├── main.py                # CLI entry point (Click)
@@ -61,7 +61,7 @@ goblin/
 - **claude-agent-sdk** — agent orchestration
 - **click** — CLI framework
 - **jinja2** — template expressions in conditions and foreach
-- **pydantic** — response validation (StepResult model)
+- **pydantic** — response validation (PhaseResult model)
 - **pyyaml** — YAML parsing for blueprints
 - **ruff** — linter and formatter (dev)
 - **pyrefly** — type checker (dev)
@@ -76,15 +76,15 @@ Blueprints are YAML files validated against `spec/v1.json`. The schema is an evo
 
 ```yaml
 # yaml-language-server: $schema=../spec/v1.json
-workflow:
-  name: my_workflow
+blueprint:
+  name: my_blueprint
   vars:
     repo: my-service
   defaults:
     hooks:
       post_tool: [run_tests]
-  steps:
-    - id: step_one
+  phases:
+    - id: phase_one
       prompt: "Do something with {repo}"
       allowed_tools: [Bash, Read, Write]
       on_failure:
@@ -92,28 +92,28 @@ workflow:
         notify: alert_hook
 ```
 
-Steps are **prompt steps** (run an agent with a prompt), **load_project steps** (load full project configuration from a cloned project), or **swarm steps** (launch concurrent agents coordinating through a shared SQLite database). The schema enforces this with a `oneOf` constraint — a step must have exactly one of `prompt`, `load_project`, or `swarm`.
+Phases are **prompt phases** (run an agent with a prompt), **load_project phases** (load full project configuration from a cloned project), or **swarm phases** (launch concurrent agents coordinating through a shared SQLite database). The schema enforces this with a `oneOf` constraint — a phase must have exactly one of `prompt`, `load_project`, or `swarm`.
 
 **Key blueprint fields:**
 
 | Field | Description | Status |
 |-------|-------------|--------|
-| `vars` | Workflow-level variables for `{variable}` interpolation | Implemented — merged into context at runtime |
-| `defaults.hooks` | Hook names applied to all steps unless overridden | Implemented |
-| `defaults.mcp_servers` | Named MCP server configs (stdio/sse/http) available to all steps | Implemented |
-| `steps[].prompt` | Agent prompt (mutually exclusive with `load_project`) | Implemented |
-| `steps[].load_project` | Path to project root — loads settings, CLAUDE.md refs, agent definitions, and hooks | Implemented |
-| `steps[].allowed_tools` | List of tool names the agent may use | Implemented |
-| `steps[].foreach` | Integer, Jinja2 expression (must resolve to integer), or file path. Injects `{index}`; file mode also injects `{item}`. | Implemented |
-| `steps[].condition` | Jinja2 expression evaluated against prior step results. Custom filters: `contains`, `json_value`. | Implemented |
-| `steps[].mcp_servers` | Per-step MCP servers; merges with defaults (step wins on name collision) | Implemented |
-| `steps[].on_failure.action` | `skip`, `retry`, or `abort` | Implemented |
-| `steps[].on_failure.notify` | Hook name to call on step failure | Implemented |
-| `steps[].swarm` | Swarm step — launches concurrent agents with a coordinator, shared SQLite DB, and filesystem workspace | Implemented |
+| `vars` | Blueprint-level variables for `{variable}` interpolation | Implemented — merged into context at runtime |
+| `defaults.hooks` | Hook names applied to all phases unless overridden | Implemented |
+| `defaults.mcp_servers` | Named MCP server configs (stdio/sse/http) available to all phases | Implemented |
+| `phases[].prompt` | Agent prompt (mutually exclusive with `load_project`) | Implemented |
+| `phases[].load_project` | Path to project root — loads settings, CLAUDE.md refs, agent definitions, and hooks | Implemented |
+| `phases[].allowed_tools` | List of tool names the agent may use | Implemented |
+| `phases[].foreach` | Integer, Jinja2 expression (must resolve to integer), or file path. Injects `{index}`; file mode also injects `{item}`. | Implemented |
+| `phases[].condition` | Jinja2 expression evaluated against prior phase results. Custom filters: `contains`, `json_value`. | Implemented |
+| `phases[].mcp_servers` | Per-phase MCP servers; merges with defaults (phase wins on name collision) | Implemented |
+| `phases[].on_failure.action` | `skip`, `retry`, or `abort` | Implemented |
+| `phases[].on_failure.notify` | Hook name to call on phase failure | Implemented |
+| `phases[].swarm` | Swarm phase — launches concurrent agents with a coordinator, shared SQLite DB, and filesystem workspace | Implemented |
 
 ### Runner (`goblin/runner.py`)
 
-`WorkflowRunner` is a thin entry point:
+`BlueprintRunner` is a thin entry point:
 
 1. Loads the YAML blueprint
 2. Routes to the appropriate blueprint version class (currently `V1Blueprint`)
@@ -123,36 +123,36 @@ Steps are **prompt steps** (run an agent with a prompt), **load_project steps** 
 
 `V1Blueprint` is the core orchestration class:
 
-1. Parses steps from the raw spec via `_parse_step()` (dispatches to `PromptStep`, `LoadProjectStep`, or `SwarmStep`)
-2. For each step: evaluates conditions, resolves foreach, builds hooks, runs the step
-3. Hook resolution: step-level hooks **override** (not merge) workflow defaults
-4. Results stored as `results[step_id]` and returned from `run()`
-5. External `context` dict is passed to `run()` by the caller and merged with workflow `vars` for `{variable}` interpolation
+1. Parses phases from the raw spec via `_parse_phase()` (dispatches to `PromptPhase`, `LoadProjectPhase`, or `SwarmPhase`)
+2. For each phase: evaluates conditions, resolves foreach, builds hooks, runs the phase
+3. Hook resolution: phase-level hooks **override** (not merge) blueprint defaults
+4. Results stored as `results[phase_id]` and returned from `run()`
+5. External `context` dict is passed to `run()` by the caller and merged with blueprint `vars` for `{variable}` interpolation
 6. All agent calls set `env={"CLAUDECODE": ""}` to run in Claude Code mode
 
 **Key methods:**
 
 - `_resolve()` — Three-mode foreach resolution: integer, Jinja2 expression, or file-backed
-- `_evaluate_condition()` — Evaluate Jinja2 conditions against prior step results
-- `_build_hooks()` — Resolve hook names from defaults/step config to callables
-- `_build_mcp_servers()` — Merge workflow + step MCP configs, resolve `$VAR` env refs, apply `{variable}` interpolation
+- `_evaluate_condition()` — Evaluate Jinja2 conditions against prior phase results
+- `_build_hooks()` — Resolve hook names from defaults/phase config to callables
+- `_build_mcp_servers()` — Merge blueprint + phase MCP configs, resolve `$VAR` env refs, apply `{variable}` interpolation
 - `_load_project()` — Load full project configuration from a path
-- `_handle_step_failure()` — Apply on_failure policy (skip, retry, abort)
+- `_handle_phase_failure()` — Apply on_failure policy (skip, retry, abort)
 
-### Steps (`goblin/step.py`)
+### Phases (`goblin/phase.py`)
 
-`StepProtocol` defines the interface: `id`, `condition`, `foreach`, `on_failure` attributes and `async run(context)`.
+`PhaseProtocol` defines the interface: `id`, `condition`, `foreach`, `on_failure` attributes and `async run(context)`.
 
-- **`PromptStep`** — Runs an agent with a prompt. Parses the response as JSON via `_parse_response()`, with automatic retry/repair (up to 3 attempts via `_request_json_repair()`).
-- **`LoadProjectStep`** — Delegates to `blueprint._load_project()` to load project configuration.
-- **`SwarmStep`** — Launches concurrent agents coordinating through a shared SQLite database (`SwarmDB`) and filesystem workspace. Uses a state machine (`setup → coordinator → agents_running → evaluating → ... → teardown`) to orchestrate rounds of work. The coordinator decomposes goals into tasks; worker agents claim and complete tasks via SQL. SwarmDB tools are registered as in-process SDK MCP servers.
+- **`PromptPhase`** — Runs an agent with a prompt. Parses the response as JSON via `_parse_response()`, with automatic retry/repair (up to 3 attempts via `_request_json_repair()`).
+- **`LoadProjectPhase`** — Delegates to `blueprint._load_project()` to load project configuration.
+- **`SwarmPhase`** — Launches concurrent agents coordinating through a shared SQLite database (`SwarmDB`) and filesystem workspace. Uses a state machine (`setup → coordinator → agents_running → evaluating → ... → teardown`) to orchestrate rounds of work. The coordinator decomposes goals into tasks; worker agents claim and complete tasks via SQL. SwarmDB tools are registered as in-process SDK MCP servers.
 
-**`load_project` steps:** When a step has `load_project` instead of `prompt`, the blueprint loads the full project configuration from the given path:
+**`load_project` phases:** When a phase has `load_project` instead of `prompt`, the blueprint loads the full project configuration from the given path:
 
 - **Settings**: Stores `{path}/.claude/settings.json` path (passed to SDK via `settings` param). Also extracts shell command hooks and registers them in `HOOK_REGISTRY` as `project_pre_tool` / `project_post_tool`.
-- **References**: Reads `{path}/CLAUDE.md` and `{path}/.claude/CLAUDE.md` if they exist, concatenates them, and appends to the system prompt for subsequent steps.
+- **References**: Reads `{path}/CLAUDE.md` and `{path}/.claude/CLAUDE.md` if they exist, concatenates them, and appends to the system prompt for subsequent phases.
 - **Agents**: Scans `{path}/.claude/agents/*.md` — each file becomes an `AgentDefinition(description=filename, prompt=file_content)` passed to the SDK.
-- **cwd**: Sets the project path as the working directory for subsequent prompt steps.
+- **cwd**: Sets the project path as the working directory for subsequent prompt phases.
 
 ### Hook System (`goblin/hooks.py`)
 
@@ -187,9 +187,9 @@ Users can supply a YAML config via `--log-config` or `GOBLIN_LOG_CONFIG` env var
 
 - All runner and agent operations are **async**
 - Prompts support `{variable}` interpolation (Python `.format()`) from the `context` dict passed to `run()`
-- Step template expressions use `{{ }}` Jinja2 syntax for conditions and foreach
+- Phase template expressions use `{{ }}` Jinja2 syntax for conditions and foreach
 - Hook names in blueprints are strings that must exist in `HOOK_REGISTRY` at runtime
-- Workflow files live in `workflows/`
+- Blueprint files live in `blueprints/`
 - MCP server secrets use `$VAR` / `${VAR}` syntax resolved from `os.environ` (loaded via `.env` / `load_dotenv()`)
 - All runtime messages use `logging.getLogger(__name__)`, never `print()`
 - Log calls include `extra={"event": "...", ...}` for structured context
