@@ -61,7 +61,7 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_dict, default=str)
 
 
-class WorkflowLoggerAdapter(logging.LoggerAdapter):
+class BlueprintLoggerAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
         kwargs.setdefault("extra", {}).update(self.extra)
         return msg, kwargs

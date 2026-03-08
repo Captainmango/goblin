@@ -1,4 +1,4 @@
-"""Tests for V1Blueprint._build_hooks — hook resolution from defaults and step overrides."""
+"""Tests for V1Blueprint._build_hooks — hook resolution from defaults and phase overrides."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import pytest
 
 from goblin.blueprint import V1Blueprint
 from goblin.hooks import HOOK_REGISTRY
-from goblin.step import PromptStep
+from goblin.phase import PromptPhase
 
 
 # ---------------------------------------------------------------------------
@@ -33,8 +33,8 @@ def _clean_registry():
     HOOK_REGISTRY.update(saved)
 
 
-def _make_blueprint(steps: list[dict], defaults: dict | None = None) -> V1Blueprint:
-    spec: dict[str, Any] = {"name": "test_wf", "steps": steps}
+def _make_blueprint(phases: list[dict], defaults: dict | None = None) -> V1Blueprint:
+    spec: dict[str, Any] = {"name": "test_bp", "phases": phases}
     if defaults is not None:
         spec["defaults"] = defaults
     return V1Blueprint(spec)
@@ -52,9 +52,9 @@ class TestBuildHooksDefaults:
             [{"id": "s1", "prompt": "do stuff"}],
             defaults={"hooks": {"post_tool": ["run_tests"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         assert "PostToolUse" in hooks
         assert "PreToolUse" in hooks
@@ -68,9 +68,9 @@ class TestBuildHooksDefaults:
             [{"id": "s1", "prompt": "do stuff"}],
             defaults={"hooks": {"pre_tool": ["check_prom"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         pre_matchers = hooks["PreToolUse"]
         assert len(pre_matchers) == 1
@@ -84,9 +84,9 @@ class TestBuildHooksStepOverride:
             [{"id": "s1", "prompt": "do stuff", "hooks": {"post_tool": ["step_hook"]}}],
             defaults={"hooks": {"post_tool": ["default_hook"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         # Step-level overrides defaults entirely — default_hook should NOT be used
         post_matchers = hooks["PostToolUse"]
@@ -99,9 +99,9 @@ class TestBuildHooksStepOverride:
             [{"id": "s1", "prompt": "do stuff", "hooks": {"pre_tool": ["step_pre"]}}],
             defaults={"hooks": {"pre_tool": ["default_pre"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         pre_matchers = hooks["PreToolUse"]
         assert len(pre_matchers) == 1
@@ -110,9 +110,9 @@ class TestBuildHooksStepOverride:
 class TestBuildHooksNoHooks:
     def test_no_defaults_no_step_hooks(self):
         bp = _make_blueprint([{"id": "s1", "prompt": "do stuff"}])
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         assert "PreToolUse" in hooks
         assert "PostToolUse" in hooks
@@ -122,10 +122,10 @@ class TestBuildHooksNoHooks:
             [{"id": "s1", "prompt": "do stuff"}],
             defaults={"hooks": {"post_tool": ["nonexistent_hook"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
         # Should not raise — unregistered names are silently skipped
-        hooks = bp._build_hooks(step)
+        hooks = bp._build_hooks(phase)
         assert "PostToolUse" in hooks
 
 
@@ -137,9 +137,9 @@ class TestBuildHooksMerge:
             [{"id": "s1", "prompt": "do stuff", "hooks": {"post_tool": ["step_post"]}}],
             defaults={"hooks": {"merge": True, "post_tool": ["default_post"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         post_hooks = hooks["PostToolUse"][0].hooks
         assert len(post_hooks) == 2
@@ -153,9 +153,9 @@ class TestBuildHooksMerge:
             [{"id": "s1", "prompt": "do stuff", "hooks": {"post_tool": ["step_post"]}}],
             defaults={"hooks": {"merge": True, "post_tool": ["default_post"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         post_hooks = hooks["PostToolUse"][0].hooks
         assert post_hooks[0] is _dummy_hook
@@ -168,9 +168,9 @@ class TestBuildHooksMerge:
             [{"id": "s1", "prompt": "do stuff", "hooks": {"merge": True, "post_tool": ["step_post"]}}],
             defaults={"hooks": {"post_tool": ["default_post"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         post_hooks = hooks["PostToolUse"][0].hooks
         assert len(post_hooks) == 2
@@ -184,9 +184,9 @@ class TestBuildHooksMerge:
             [{"id": "s1", "prompt": "do stuff", "hooks": {"merge": False, "post_tool": ["step_post"]}}],
             defaults={"hooks": {"merge": True, "post_tool": ["default_post"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         post_hooks = hooks["PostToolUse"][0].hooks
         assert len(post_hooks) == 1
@@ -200,9 +200,9 @@ class TestBuildHooksMerge:
             [{"id": "s1", "prompt": "do stuff", "hooks": {"pre_tool": ["step_pre"]}}],
             defaults={"hooks": {"merge": True, "pre_tool": ["default_pre"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         pre_hooks = hooks["PreToolUse"][0].hooks
         assert len(pre_hooks) == 2
@@ -217,9 +217,9 @@ class TestBuildHooksMerge:
             [{"id": "s1", "prompt": "do stuff", "hooks": {"pre_tool": ["step_pre"]}}],
             defaults={"hooks": {"pre_tool": ["default_pre"], "post_tool": ["default_post"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         pre_hooks = hooks["PreToolUse"][0].hooks
         post_hooks = hooks["PostToolUse"][0].hooks
@@ -236,9 +236,9 @@ class TestBuildHooksMerge:
             [{"id": "s1", "prompt": "do stuff", "hooks": {"post_tool": ["unknown_hook"]}}],
             defaults={"hooks": {"merge": True, "post_tool": ["known_hook"]}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        hooks = bp._build_hooks(step)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        hooks = bp._build_hooks(phase)
 
         post_hooks = hooks["PostToolUse"][0].hooks
         # unknown_hook silently dropped; known_hook from defaults present

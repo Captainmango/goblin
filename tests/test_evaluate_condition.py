@@ -12,7 +12,7 @@ from goblin.blueprint import V1Blueprint
 
 
 def _make_blueprint() -> V1Blueprint:
-    return V1Blueprint({"name": "test_wf", "steps": [{"id": "s1", "prompt": "hi"}]})
+    return V1Blueprint({"name": "test_bp", "phases": [{"id": "s1", "prompt": "hi"}]})
 
 
 # ---------------------------------------------------------------------------

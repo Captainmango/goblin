@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime, timezone
 
-from goblin.enums import RunStatus, StepStatus
+from goblin.enums import RunStatus, PhaseStatus
 
 
 class Checkpoint:
@@ -18,13 +18,13 @@ class Checkpoint:
             "started_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "status": RunStatus.IN_PROGRESS,
-            "steps": {},
+            "phases": {},
         }
         self._flush()
 
-    def step_started(self, step_id: str, input_data: dict) -> None:
-        self._data["steps"][step_id] = {
-            "status": StepStatus.RUNNING,
+    def phase_started(self, phase_id: str, input_data: dict) -> None:
+        self._data["phases"][phase_id] = {
+            "status": PhaseStatus.RUNNING,
             "input": input_data,
             "output": None,
             "started_at": datetime.now(timezone.utc).isoformat(),
@@ -33,23 +33,23 @@ class Checkpoint:
         self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
         self._flush()
 
-    def step_completed(self, step_id: str, output: dict) -> None:
-        self._data["steps"][step_id]["status"] = StepStatus.COMPLETED
-        self._data["steps"][step_id]["output"] = output
-        self._data["steps"][step_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+    def phase_completed(self, phase_id: str, output: dict) -> None:
+        self._data["phases"][phase_id]["status"] = PhaseStatus.COMPLETED
+        self._data["phases"][phase_id]["output"] = output
+        self._data["phases"][phase_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
         self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
         self._flush()
 
-    def step_failed(self, step_id: str, output: dict) -> None:
-        self._data["steps"][step_id]["status"] = StepStatus.FAILED
-        self._data["steps"][step_id]["output"] = output
-        self._data["steps"][step_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+    def phase_failed(self, phase_id: str, output: dict) -> None:
+        self._data["phases"][phase_id]["status"] = PhaseStatus.FAILED
+        self._data["phases"][phase_id]["output"] = output
+        self._data["phases"][phase_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
         self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
         self._flush()
 
-    def step_skipped(self, step_id: str) -> None:
-        self._data["steps"][step_id] = {
-            "status": StepStatus.SKIPPED,
+    def phase_skipped(self, phase_id: str) -> None:
+        self._data["phases"][phase_id] = {
+            "status": PhaseStatus.SKIPPED,
             "input": None,
             "output": None,
             "started_at": None,
@@ -68,16 +68,18 @@ class Checkpoint:
         self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
         self._flush()
 
-    def completed_step_ids(self) -> set[str]:
+    def completed_phase_ids(self) -> set[str]:
         return {
-            step_id for step_id, step_data in self._data["steps"].items() if step_data["status"] == StepStatus.COMPLETED
+            phase_id
+            for phase_id, phase_data in self._data["phases"].items()
+            if phase_data["status"] == PhaseStatus.COMPLETED
         }
 
     def get_results(self) -> dict:
         return {
-            step_id: step_data["output"]
-            for step_id, step_data in self._data["steps"].items()
-            if step_data["status"] == StepStatus.COMPLETED and step_data["output"] is not None
+            phase_id: phase_data["output"]
+            for phase_id, phase_data in self._data["phases"].items()
+            if phase_data["status"] == PhaseStatus.COMPLETED and phase_data["output"] is not None
         }
 
     @classmethod
@@ -89,10 +91,10 @@ class Checkpoint:
         instance._path = path
         instance._data = data
 
-        # Remove any steps that were still running when the process died
-        running_ids = [step_id for step_id, step_data in data["steps"].items() if step_data["status"] == "running"]
-        for step_id in running_ids:
-            del instance._data["steps"][step_id]
+        # Remove any phases that were still running when the process died
+        running_ids = [phase_id for phase_id, phase_data in data["phases"].items() if phase_data["status"] == "running"]
+        for phase_id in running_ids:
+            del instance._data["phases"][phase_id]
 
         instance._data["status"] = RunStatus.IN_PROGRESS
         instance._flush()

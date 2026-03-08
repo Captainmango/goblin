@@ -1,4 +1,4 @@
-"""Tests for goblin.step._extract_json — JSON extraction from agent responses."""
+"""Tests for goblin.phase._extract_json — JSON extraction from agent responses."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from goblin.step import _extract_json
+from goblin.phase import _extract_json
 
 
 # ---------------------------------------------------------------------------

@@ -1,12 +1,12 @@
 # yaml-language-server: $schema=../spec/v1.json
 
 version: v1
-workflow:
-  name: my_workflow
+blueprint:
+  name: my_blueprint
   vars:
     repo: https://github.com/parkhub/justpark.git
   defaults:
-    mcp_servers: 
+    mcp_servers:
       github:
         command: npx
         args:
@@ -14,8 +14,8 @@ workflow:
           - "@modelcontextprotocol/server-github"
         env:
           GITHUB_TOKEN: $GITHUB_TOKEN
-    
-  steps:
+
+  phases:
     - id: clone_repo
       prompt: "Clone {repo} into /tmp/justpark"
       allowed_tools: [Bash]
@@ -35,7 +35,7 @@ workflow:
 # To use MCP servers, add a .env file with your tokens:
 #   GITHUB_TOKEN=ghp_...
 #
-# Then configure servers at workflow or step level:
+# Then configure servers at blueprint or phase level:
 #
 #   defaults:
 #     mcp_servers:
@@ -45,7 +45,7 @@ workflow:
 #         env:
 #           GITHUB_TOKEN: $GITHUB_TOKEN
 #
-#   steps:
+#   phases:
 #     - id: fetch_issues
 #       prompt: "List open issues in {repo}"
 #       allowed_tools: [mcp__github__list_issues]

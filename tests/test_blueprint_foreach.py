@@ -16,29 +16,29 @@ from goblin.blueprint import V1Blueprint
 # ---------------------------------------------------------------------------
 
 
-def _make_blueprint(steps: list[dict], vars: dict | None = None) -> V1Blueprint:
-    """Build a V1Blueprint from a minimal spec, patching step parsing to avoid
-    importing the real PromptStep/LoadProjectStep (which pull in the SDK)."""
-    spec: dict[str, Any] = {"name": "test_wf", "steps": steps}
+def _make_blueprint(phases: list[dict], vars: dict | None = None) -> V1Blueprint:
+    """Build a V1Blueprint from a minimal spec, patching phase parsing to avoid
+    importing the real PromptPhase/LoadProjectPhase (which pull in the SDK)."""
+    spec: dict[str, Any] = {"name": "test_bp", "phases": phases}
     if vars:
         spec["vars"] = vars
     return V1Blueprint(spec)
 
 
-def _make_blueprint_with_mock_steps(steps_raw: list[dict], vars: dict | None = None) -> V1Blueprint:
-    """Build a V1Blueprint but replace the real steps with mock objects so we
-    can control step.run() without hitting the Agent SDK."""
-    # First build normally, then swap out the parsed steps
-    bp = _make_blueprint(steps_raw, vars)
-    mock_steps = []
-    for raw in steps_raw:
-        step = AsyncMock()
-        step.id = raw["id"]
-        step.condition = raw.get("condition")
-        step.foreach = raw.get("foreach")
-        step.on_failure = raw.get("on_failure")
-        mock_steps.append(step)
-    bp.steps = mock_steps
+def _make_blueprint_with_mock_phases(phases_raw: list[dict], vars: dict | None = None) -> V1Blueprint:
+    """Build a V1Blueprint but replace the real phases with mock objects so we
+    can control phase.run() without hitting the Agent SDK."""
+    # First build normally, then swap out the parsed phases
+    bp = _make_blueprint(phases_raw, vars)
+    mock_phases = []
+    for raw in phases_raw:
+        phase = AsyncMock()
+        phase.id = raw["id"]
+        phase.condition = raw.get("condition")
+        phase.foreach = raw.get("foreach")
+        phase.on_failure = raw.get("on_failure")
+        mock_phases.append(phase)
+    bp.phases = mock_phases
     return bp
 
 
@@ -203,41 +203,41 @@ class TestEvaluateConditionStillWorks:
 
 
 # ---------------------------------------------------------------------------
-# run() — foreach integration (mocking query via step.run)
+# run() — foreach integration (mocking query via phase.run)
 # ---------------------------------------------------------------------------
 
 
 class TestRunForeach:
     @pytest.mark.asyncio
-    async def test_foreach_integer_runs_step_n_times(self):
-        bp = _make_blueprint_with_mock_steps(
+    async def test_foreach_integer_runs_phase_n_times(self):
+        bp = _make_blueprint_with_mock_phases(
             [
-                {"id": "repeat_step", "prompt": "do thing {index}", "foreach": "3"},
+                {"id": "repeat_phase", "prompt": "do thing {index}", "foreach": "3"},
             ]
         )
-        step = bp.steps[0]
-        step.run.return_value = {"success": True, "message": ["done"]}
+        phase = bp.phases[0]
+        phase.run.return_value = {"success": True, "message": ["done"]}
 
         results = await bp.run({})
 
-        assert step.run.call_count == 3
-        assert results["repeat_step"]["success"] is True
-        assert len(results["repeat_step"]["iterations"]) == 3
+        assert phase.run.call_count == 3
+        assert results["repeat_phase"]["success"] is True
+        assert len(results["repeat_phase"]["iterations"]) == 3
 
     @pytest.mark.asyncio
     async def test_foreach_iteration_contexts_have_index(self):
-        bp = _make_blueprint_with_mock_steps(
+        bp = _make_blueprint_with_mock_phases(
             [
-                {"id": "indexed_step", "prompt": "item {index}", "foreach": "2"},
+                {"id": "indexed_phase", "prompt": "item {index}", "foreach": "2"},
             ]
         )
-        step = bp.steps[0]
-        step.run.return_value = {"success": True, "message": ["ok"]}
+        phase = bp.phases[0]
+        phase.run.return_value = {"success": True, "message": ["ok"]}
 
         await bp.run({})
 
         # First call should have index=0, second index=1
-        calls = step.run.call_args_list
+        calls = phase.run.call_args_list
         assert calls[0].args[0]["index"] == 0
         assert calls[1].args[0]["index"] == 1
 
@@ -246,7 +246,7 @@ class TestRunForeach:
         items_file = tmp_path / "repos.txt"
         items_file.write_text("repo-a\nrepo-b\n")
 
-        bp = _make_blueprint_with_mock_steps(
+        bp = _make_blueprint_with_mock_phases(
             [
                 {
                     "id": "per_repo",
@@ -255,101 +255,101 @@ class TestRunForeach:
                 },
             ]
         )
-        step = bp.steps[0]
-        step.run.return_value = {"success": True, "message": ["processed"]}
+        phase = bp.phases[0]
+        phase.run.return_value = {"success": True, "message": ["processed"]}
 
         results = await bp.run({})
 
-        assert step.run.call_count == 2
-        calls = step.run.call_args_list
+        assert phase.run.call_count == 2
+        calls = phase.run.call_args_list
         assert calls[0].args[0]["item"] == "repo-a"
         assert calls[1].args[0]["item"] == "repo-b"
         assert results["per_repo"]["success"] is True
 
     @pytest.mark.asyncio
     async def test_foreach_zero_iterations_produces_empty_result(self):
-        bp = _make_blueprint_with_mock_steps(
+        bp = _make_blueprint_with_mock_phases(
             [
-                {"id": "empty_step", "prompt": "nothing", "foreach": "0"},
+                {"id": "empty_phase", "prompt": "nothing", "foreach": "0"},
             ]
         )
-        step = bp.steps[0]
+        phase = bp.phases[0]
 
         results = await bp.run({})
 
-        step.run.assert_not_called()
-        assert results["empty_step"]["iterations"] == []
-        assert results["empty_step"]["success"] is True
+        phase.run.assert_not_called()
+        assert results["empty_phase"]["iterations"] == []
+        assert results["empty_phase"]["success"] is True
 
     @pytest.mark.asyncio
-    async def test_foreach_failure_aborts_workflow(self):
-        bp = _make_blueprint_with_mock_steps(
+    async def test_foreach_failure_aborts_blueprint(self):
+        bp = _make_blueprint_with_mock_phases(
             [
-                {"id": "failing_step", "prompt": "fail {index}", "foreach": "3"},
+                {"id": "failing_phase", "prompt": "fail {index}", "foreach": "3"},
             ]
         )
-        step = bp.steps[0]
-        step.run.side_effect = [
+        phase = bp.phases[0]
+        phase.run.side_effect = [
             {"success": True, "message": ["ok"]},
             {"success": False, "message": ["error"]},
         ]
 
         results = await bp.run({})
 
-        assert step.run.call_count == 2
-        assert results["failing_step"]["success"] is False
-        assert len(results["failing_step"]["iterations"]) == 2
+        assert phase.run.call_count == 2
+        assert results["failing_phase"]["success"] is False
+        assert len(results["failing_phase"]["iterations"]) == 2
 
     @pytest.mark.asyncio
     async def test_foreach_failure_with_skip_continues(self):
-        bp = _make_blueprint_with_mock_steps(
+        bp = _make_blueprint_with_mock_phases(
             [
                 {
-                    "id": "skip_step",
+                    "id": "skip_phase",
                     "prompt": "try {index}",
                     "foreach": "2",
                     "on_failure": {"action": "skip"},
                 },
             ]
         )
-        step = bp.steps[0]
-        step.run.side_effect = [
+        phase = bp.phases[0]
+        phase.run.side_effect = [
             {"success": False, "message": ["err"]},
             {"success": True, "message": ["ok"]},
         ]
 
         await bp.run({})
 
-        # With skip, the workflow should continue past the failure
-        assert step.run.call_count == 2
+        # With skip, the blueprint should continue past the failure
+        assert phase.run.call_count == 2
 
     @pytest.mark.asyncio
     async def test_foreach_with_vars_merged_into_context(self):
-        bp = _make_blueprint_with_mock_steps(
-            [{"id": "var_step", "prompt": "do {repo} {index}", "foreach": "2"}],
+        bp = _make_blueprint_with_mock_phases(
+            [{"id": "var_phase", "prompt": "do {repo} {index}", "foreach": "2"}],
             vars={"repo": "my-service"},
         )
-        step = bp.steps[0]
-        step.run.return_value = {"success": True, "message": ["ok"]}
+        phase = bp.phases[0]
+        phase.run.return_value = {"success": True, "message": ["ok"]}
 
         await bp.run({})
 
-        calls = step.run.call_args_list
+        calls = phase.run.call_args_list
         # Each call should have both repo (from vars) and index (from foreach)
         assert calls[0].args[0]["repo"] == "my-service"
         assert calls[0].args[0]["index"] == 0
 
     @pytest.mark.asyncio
-    async def test_non_foreach_step_still_works(self):
-        bp = _make_blueprint_with_mock_steps(
+    async def test_non_foreach_phase_still_works(self):
+        bp = _make_blueprint_with_mock_phases(
             [
-                {"id": "normal_step", "prompt": "just do it"},
+                {"id": "normal_phase", "prompt": "just do it"},
             ]
         )
-        step = bp.steps[0]
-        step.run.return_value = {"success": True, "message": ["done"]}
+        phase = bp.phases[0]
+        phase.run.return_value = {"success": True, "message": ["done"]}
 
         results = await bp.run({})
 
-        step.run.assert_called_once()
-        assert results["normal_step"] == {"success": True, "message": ["done"]}
+        phase.run.assert_called_once()
+        assert results["normal_phase"] == {"success": True, "message": ["done"]}

@@ -17,7 +17,7 @@ from claude_agent_sdk import (
 
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDINATOR_PROMPT
-from goblin.step import StepProtocol, _extract_json
+from goblin.phase import PhaseProtocol, _extract_json
 from goblin.swarm_db import SwarmDB
 
 if TYPE_CHECKING:
@@ -91,7 +91,7 @@ _SWARMDB_CLI_SCRIPT = textwrap.dedent("""\
 """)
 
 
-class SwarmStep(StepProtocol):
+class SwarmPhase(PhaseProtocol):
     def __init__(self, raw: dict, blueprint: V1Blueprint):
         self.id: str = raw["id"]
         self.condition: str | None = raw.get("condition")

@@ -12,7 +12,7 @@ class HookEventType(StrEnum):
     POST_TOOL_USE = "PostToolUse"
 
 
-class StepType(StrEnum):
+class PhaseType(StrEnum):
     PROMPT = "prompt"
     LOAD_PROJECT = "load_project"
     SWARM = "swarm"
@@ -71,7 +71,7 @@ class RunStatus(StrEnum):
     INTERRUPTED = "interrupted"
 
 
-class StepStatus(StrEnum):
+class PhaseStatus(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"

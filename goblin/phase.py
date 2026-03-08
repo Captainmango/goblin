@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 MAX_PARSE_RETRIES = 3
 
 
-class StepResult(BaseModel):
+class PhaseResult(BaseModel):
     success: bool
     message: list
 
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from goblin.blueprint import V1Blueprint
 
 
-class StepProtocol(Protocol):
+class PhaseProtocol(Protocol):
     id: str
     condition: str | None
     foreach: str | None
@@ -48,7 +48,7 @@ class StepProtocol(Protocol):
     async def run(self, context: dict) -> Dict: ...
 
 
-class PromptStep(StepProtocol):
+class PromptPhase(PhaseProtocol):
     def __init__(self, raw: dict, blueprint: V1Blueprint):
         self.id: str = raw["id"]
         self.prompt_template: str = raw["prompt"]
@@ -110,14 +110,14 @@ class PromptStep(StepProtocol):
         for attempt in range(1 + retries):
             try:
                 raw = _extract_json(text)
-                return StepResult(**raw).model_dump()
+                return PhaseResult(**raw).model_dump()
             except (json.JSONDecodeError, ValueError) as exc:
                 if attempt >= retries:
                     raise exc
                 logger.warning(
                     "JSON parse failed",
                     extra={
-                        "event": "step.json_parse_failed",
+                        "event": "phase.json_parse_failed",
                         "attempt": attempt + 1,
                         "max_attempts": 1 + retries,
                         "error": str(exc),
@@ -128,7 +128,7 @@ class PromptStep(StepProtocol):
         raise RuntimeError("all parse attempts exhausted")
 
     async def _request_json_repair(self, broken_text: str) -> str:
-        """Ask the LLM to fix malformed JSON without re-running the step."""
+        """Ask the LLM to fix malformed JSON without re-running the phase."""
         repair_prompt = JSON_REPAIR_PROMPT.format(broken_text=broken_text)
         options = ClaudeAgentOptions(
             system_prompt=BASE_SYSTEM_PROMPT,
@@ -148,7 +148,7 @@ class PromptStep(StepProtocol):
         return text_blocks[-1]
 
 
-class LoadProjectStep(StepProtocol):
+class LoadProjectPhase(PhaseProtocol):
     def __init__(self, raw: dict, blueprint: V1Blueprint):
         self.id: str = raw["id"]
         self.path_template: str = raw["load_project"]

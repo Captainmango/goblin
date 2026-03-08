@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=../spec/v1.json
 version: v1
-workflow:
+blueprint:
   name: swarm_demo
-  steps:
+  phases:
     - id: build_feature
       swarm:
         goal: |

@@ -1,4 +1,4 @@
-# Workflow Creation Guidance
+# Blueprint Creation Guidance
 
 Complete reference for creating GOBLIN blueprints — YAML workflow files validated against `spec/v1.json`.
 

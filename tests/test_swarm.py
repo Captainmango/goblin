@@ -1,4 +1,4 @@
-"""Tests for swarm step — SwarmDB, SwarmStep parsing, setup, state machine,
+"""Tests for swarm phase — SwarmDB, SwarmPhase parsing, setup, state machine,
 teardown/cleanup, and blueprint orchestration integration."""
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import pytest
 
 from goblin.blueprint import V1Blueprint
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState
-from goblin.swarm import SwarmStep
+from goblin.swarm import SwarmPhase
 from goblin.swarm_db import SwarmDB
 
 
@@ -21,8 +21,8 @@ from goblin.swarm_db import SwarmDB
 # ---------------------------------------------------------------------------
 
 
-def _make_blueprint(steps: list[dict], vars: dict | None = None, defaults: dict | None = None) -> V1Blueprint:
-    spec: dict[str, Any] = {"name": "test_wf", "steps": steps}
+def _make_blueprint(phases: list[dict], vars: dict | None = None, defaults: dict | None = None) -> V1Blueprint:
+    spec: dict[str, Any] = {"name": "test_bp", "phases": phases}
     if vars:
         spec["vars"] = vars
     if defaults:
@@ -30,19 +30,19 @@ def _make_blueprint(steps: list[dict], vars: dict | None = None, defaults: dict 
     return V1Blueprint(spec)
 
 
-def _make_blueprint_with_mock_steps(
-    steps_raw: list[dict], vars: dict | None = None, defaults: dict | None = None
+def _make_blueprint_with_mock_phases(
+    phases_raw: list[dict], vars: dict | None = None, defaults: dict | None = None
 ) -> V1Blueprint:
-    bp = _make_blueprint(steps_raw, vars, defaults)
-    mock_steps = []
-    for raw in steps_raw:
-        step = AsyncMock()
-        step.id = raw["id"]
-        step.condition = raw.get("condition")
-        step.foreach = raw.get("foreach")
-        step.on_failure = raw.get("on_failure")
-        mock_steps.append(step)
-    bp.steps = mock_steps
+    bp = _make_blueprint(phases_raw, vars, defaults)
+    mock_phases = []
+    for raw in phases_raw:
+        phase = AsyncMock()
+        phase.id = raw["id"]
+        phase.condition = raw.get("condition")
+        phase.foreach = raw.get("foreach")
+        phase.on_failure = raw.get("on_failure")
+        mock_phases.append(phase)
+    bp.phases = mock_phases
     return bp
 
 
@@ -179,39 +179,39 @@ class TestSwarmDBQueries:
 
 
 # ---------------------------------------------------------------------------
-# 7b: SwarmStep parsing
+# 7b: SwarmPhase parsing
 # ---------------------------------------------------------------------------
 
 
-class TestParseSwarmStep:
-    def test_parse_swarm_step(self):
+class TestParseSwarmPhase:
+    def test_parse_swarm_phase(self):
         bp = _make_blueprint([MINIMAL_SWARM_RAW])
-        assert isinstance(bp.steps[0], SwarmStep)
+        assert isinstance(bp.phases[0], SwarmPhase)
 
-    def test_swarm_step_stores_id(self):
+    def test_swarm_phase_stores_id(self):
         bp = _make_blueprint([MINIMAL_SWARM_RAW])
-        assert bp.steps[0].id == "test_swarm"
+        assert bp.phases[0].id == "test_swarm"
 
-    def test_swarm_step_stores_goal(self):
+    def test_swarm_phase_stores_goal(self):
         bp = _make_blueprint([MINIMAL_SWARM_RAW])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        assert step.goal == "Build a calculator"
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        assert phase.goal == "Build a calculator"
 
-    def test_swarm_step_stores_agents(self):
+    def test_swarm_phase_stores_agents(self):
         bp = _make_blueprint([MINIMAL_SWARM_RAW])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        assert len(step.agents_config) == 2
-        assert step.agents_config[0]["name"] == "coder"
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        assert len(phase.agents_config) == 2
+        assert phase.agents_config[0]["name"] == "coder"
 
     def test_swarm_defaults(self):
         bp = _make_blueprint([MINIMAL_SWARM_RAW])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        assert step.max_rounds == 5
-        assert step.max_iterations == 100
-        assert step.cleanup == CleanupPolicy.ON_SUCCESS
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        assert phase.max_rounds == 5
+        assert phase.max_iterations == 100
+        assert phase.cleanup == CleanupPolicy.ON_SUCCESS
 
     def test_swarm_custom_values(self):
         raw = {
@@ -225,36 +225,36 @@ class TestParseSwarmStep:
             },
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        assert step.max_rounds == 10
-        assert step.max_iterations == 50
-        assert step.timeout == 600
-        assert step.cleanup == CleanupPolicy.NEVER
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        assert phase.max_rounds == 10
+        assert phase.max_iterations == 50
+        assert phase.timeout == 600
+        assert phase.cleanup == CleanupPolicy.NEVER
 
-    def test_step_without_any_type_raises(self):
+    def test_phase_without_any_type_raises(self):
         with pytest.raises(ValueError, match="must have"):
             _make_blueprint([{"id": "bad"}])
 
 
 # ---------------------------------------------------------------------------
-# 7c: SwarmStep._setup
+# 7c: SwarmPhase._setup
 # ---------------------------------------------------------------------------
 
 
-class TestSwarmStepSetup:
+class TestSwarmPhaseSetup:
     def test_setup_creates_workspace(self, tmp_path):
         raw = {
             **MINIMAL_SWARM_RAW,
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws/{step_id}")},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        assert os.path.isdir(os.path.join(step._workspace, "shared"))
-        assert os.path.isdir(os.path.join(step._workspace, "agents", "coder"))
-        assert os.path.isdir(os.path.join(step._workspace, "agents", "tester"))
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        assert os.path.isdir(os.path.join(phase._workspace, "shared"))
+        assert os.path.isdir(os.path.join(phase._workspace, "agents", "coder"))
+        assert os.path.isdir(os.path.join(phase._workspace, "agents", "tester"))
 
     def test_setup_creates_db(self, tmp_path):
         raw = {
@@ -262,17 +262,17 @@ class TestSwarmStepSetup:
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws/{step_id}")},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        assert os.path.isfile(os.path.join(step._workspace, "swarm.db"))
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        assert os.path.isfile(os.path.join(phase._workspace, "swarm.db"))
         # Verify tables exist
-        conn = sqlite3.connect(os.path.join(step._workspace, "swarm.db"))
+        conn = sqlite3.connect(os.path.join(phase._workspace, "swarm.db"))
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = {row[0] for row in cursor.fetchall()}
         conn.close()
         assert "tasks" in tables
-        step._db.close()
+        phase._db.close()
 
     def test_setup_workspace_interpolation(self, tmp_path):
         raw = {
@@ -280,32 +280,32 @@ class TestSwarmStepSetup:
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "{project_name}/{step_id}")},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({"project_name": "myproj"})
-        assert "myproj" in step._workspace
-        assert "test_swarm" in step._workspace
-        step._db.close()
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({"project_name": "myproj"})
+        assert "myproj" in phase._workspace
+        assert "test_swarm" in phase._workspace
+        phase._db.close()
 
     def test_setup_registers_agents_in_db(self, tmp_path):
         raw = {**MINIMAL_SWARM_RAW, "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")}}
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        rows = step._db.query("SELECT * FROM agent_state")
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        rows = phase._db.query("SELECT * FROM agent_state")
         names = {r["name"] for r in rows}
         assert names == {"coder", "tester"}
-        step._db.close()
+        phase._db.close()
 
     def test_setup_transitions_to_coordinator(self, tmp_path):
         raw = {**MINIMAL_SWARM_RAW, "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")}}
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        assert step._db.get_state() == SwarmState.COORDINATOR
-        step._db.close()
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        assert phase._db.get_state() == SwarmState.COORDINATOR
+        phase._db.close()
 
     def test_setup_deploys_cli_script(self, tmp_path):
         raw = {
@@ -313,13 +313,13 @@ class TestSwarmStepSetup:
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        script_path = os.path.join(step._workspace, "swarmdb")
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        script_path = os.path.join(phase._workspace, "swarmdb")
         assert os.path.isfile(script_path)
         assert os.access(script_path, os.X_OK)
-        step._db.close()
+        phase._db.close()
 
     def test_cli_script_query(self, tmp_path):
         """The deployed CLI script can query the DB via subprocess."""
@@ -330,14 +330,14 @@ class TestSwarmStepSetup:
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
         # Insert a task via the DB directly
-        step._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'desc', 'pending')")
+        phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'desc', 'pending')")
         # Query via the CLI script
-        script = os.path.join(step._workspace, "swarmdb")
-        db_path = os.path.join(step._workspace, "swarm.db")
+        script = os.path.join(phase._workspace, "swarmdb")
+        db_path = os.path.join(phase._workspace, "swarm.db")
         result = subprocess.run(
             [script, "query", "SELECT * FROM tasks"],
             capture_output=True,
@@ -350,7 +350,7 @@ class TestSwarmStepSetup:
         rows = json.loads(result.stdout)
         assert len(rows) == 1
         assert rows[0]["title"] == "T1"
-        step._db.close()
+        phase._db.close()
 
     def test_cli_script_execute(self, tmp_path):
         """The deployed CLI script can write to the DB via subprocess."""
@@ -361,11 +361,11 @@ class TestSwarmStepSetup:
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        script = os.path.join(step._workspace, "swarmdb")
-        db_path = os.path.join(step._workspace, "swarm.db")
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        script = os.path.join(phase._workspace, "swarmdb")
+        db_path = os.path.join(phase._workspace, "swarm.db")
         result = subprocess.run(
             [script, "execute", "INSERT INTO tasks (title, description, status) VALUES ('T2', 'test', 'pending')"],
             capture_output=True,
@@ -375,10 +375,10 @@ class TestSwarmStepSetup:
         assert result.returncode == 0
         assert "1 row(s) affected" in result.stdout
         # Verify via direct DB query
-        rows = step._db.get_tasks()
+        rows = phase._db.get_tasks()
         assert len(rows) == 1
         assert rows[0]["title"] == "T2"
-        step._db.close()
+        phase._db.close()
 
     def test_cli_script_rejects_protected_table(self, tmp_path):
         """The deployed CLI script rejects writes to protected tables."""
@@ -389,11 +389,11 @@ class TestSwarmStepSetup:
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        script = os.path.join(step._workspace, "swarmdb")
-        db_path = os.path.join(step._workspace, "swarm.db")
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        script = os.path.join(phase._workspace, "swarmdb")
+        db_path = os.path.join(phase._workspace, "swarm.db")
         result = subprocess.run(
             [script, "execute", "UPDATE swarm_state SET state='teardown'"],
             capture_output=True,
@@ -402,7 +402,7 @@ class TestSwarmStepSetup:
         )
         assert result.returncode != 0
         assert "cannot write to" in result.stderr
-        step._db.close()
+        phase._db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -447,20 +447,20 @@ class TestSwarmDBStateTransitions:
 # ---------------------------------------------------------------------------
 
 
-class TestSwarmStepTeardown:
+class TestSwarmPhaseTeardown:
     def test_teardown_collects_results(self, tmp_path):
         raw = {
             **MINIMAL_SWARM_RAW,
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "never"},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        step._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'done')")
-        step._db.execute("INSERT INTO artifacts (agent, name, path) VALUES ('coder', 'main.py', '/shared/main.py')")
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'done')")
+        phase._db.execute("INSERT INTO artifacts (agent, name, path) VALUES ('coder', 'main.py', '/shared/main.py')")
 
-        result = step._teardown()
+        result = phase._teardown()
         assert result["success"] is True
         assert len(result["tasks"]) == 1
         assert len(result["artifacts"]) == 1
@@ -471,12 +471,12 @@ class TestSwarmStepTeardown:
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "never"},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        step._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'pending')")
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'pending')")
 
-        result = step._teardown()
+        result = phase._teardown()
         assert result["success"] is False
 
     def test_cleanup_on_success_deletes_workspace(self, tmp_path):
@@ -485,13 +485,13 @@ class TestSwarmStepTeardown:
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "on_success"},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        step._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'done')")
-        result = step._teardown()
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'done')")
+        result = phase._teardown()
         assert result["success"] is True
-        assert not os.path.exists(step._workspace)
+        assert not os.path.exists(phase._workspace)
 
     def test_cleanup_on_success_preserves_on_failure(self, tmp_path):
         raw = {
@@ -499,13 +499,13 @@ class TestSwarmStepTeardown:
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "on_success"},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        step._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'failed')")
-        result = step._teardown()
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'failed')")
+        result = phase._teardown()
         assert result["success"] is False
-        assert os.path.exists(step._workspace)
+        assert os.path.exists(phase._workspace)
 
     def test_cleanup_never_preserves_workspace(self, tmp_path):
         raw = {
@@ -513,12 +513,12 @@ class TestSwarmStepTeardown:
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "never"},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        step._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'done')")
-        step._teardown()
-        assert os.path.exists(step._workspace)
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'done')")
+        phase._teardown()
+        assert os.path.exists(phase._workspace)
 
     def test_cleanup_always_deletes_on_failure(self, tmp_path):
         raw = {
@@ -526,60 +526,60 @@ class TestSwarmStepTeardown:
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "always"},
         }
         bp = _make_blueprint([raw])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        step._setup({})
-        step._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'failed')")
-        step._teardown()
-        assert not os.path.exists(step._workspace)
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'failed')")
+        phase._teardown()
+        assert not os.path.exists(phase._workspace)
 
 
 # ---------------------------------------------------------------------------
-# 7f: Orchestration with mock steps
+# 7f: Orchestration with mock phases
 # ---------------------------------------------------------------------------
 
 
-class TestSwarmStepInBlueprintRun:
+class TestSwarmPhaseInBlueprintRun:
     @pytest.mark.asyncio
-    async def test_swarm_step_in_blueprint_run(self):
-        bp = _make_blueprint_with_mock_steps([MINIMAL_SWARM_RAW])
-        bp.steps[0].run.return_value = {"success": True, "message": ["swarm done"]}
+    async def test_swarm_phase_in_blueprint_run(self):
+        bp = _make_blueprint_with_mock_phases([MINIMAL_SWARM_RAW])
+        bp.phases[0].run.return_value = {"success": True, "message": ["swarm done"]}
 
         results = await bp.run({})
 
-        bp.steps[0].run.assert_called_once()
+        bp.phases[0].run.assert_called_once()
         assert results["test_swarm"]["success"] is True
 
     @pytest.mark.asyncio
-    async def test_swarm_step_with_condition_false_skipped(self):
-        bp = _make_blueprint_with_mock_steps(
+    async def test_swarm_phase_with_condition_false_skipped(self):
+        bp = _make_blueprint_with_mock_phases(
             [
                 {"id": "first", "prompt": "go"},
                 {
                     **MINIMAL_SWARM_RAW,
-                    "id": "swarm_step",
+                    "id": "swarm_phase",
                     "condition": "{{ steps.first.success }}",
                 },
             ]
         )
-        bp.steps[0].run.return_value = {"success": False, "message": ["fail"]}
-        bp.steps[0].on_failure = {"action": "skip"}
-        bp.steps[1].run.return_value = {"success": True, "message": ["done"]}
+        bp.phases[0].run.return_value = {"success": False, "message": ["fail"]}
+        bp.phases[0].on_failure = {"action": "skip"}
+        bp.phases[1].run.return_value = {"success": True, "message": ["done"]}
 
         results = await bp.run({})
 
-        bp.steps[1].run.assert_not_called()
-        assert "swarm_step" not in results
+        bp.phases[1].run.assert_not_called()
+        assert "swarm_phase" not in results
 
     @pytest.mark.asyncio
-    async def test_swarm_step_with_foreach(self):
+    async def test_swarm_phase_with_foreach(self):
         raw = {**MINIMAL_SWARM_RAW, "foreach": "2"}
-        bp = _make_blueprint_with_mock_steps([raw])
-        bp.steps[0].run.return_value = {"success": True, "message": ["ok"]}
+        bp = _make_blueprint_with_mock_phases([raw])
+        bp.phases[0].run.return_value = {"success": True, "message": ["ok"]}
 
         results = await bp.run({})
 
-        assert bp.steps[0].run.call_count == 2
+        assert bp.phases[0].run.call_count == 2
         assert results["test_swarm"]["success"] is True
         assert len(results["test_swarm"]["iterations"]) == 2
 
@@ -587,9 +587,9 @@ class TestSwarmStepInBlueprintRun:
 class TestBuildAgentRoster:
     def test_roster_lists_all_agents(self):
         bp = _make_blueprint([MINIMAL_SWARM_RAW])
-        step = bp.steps[0]
-        assert isinstance(step, SwarmStep)
-        roster = step._build_agent_roster()
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        roster = phase._build_agent_roster()
         assert "coder" in roster
         assert "tester" in roster
         assert "Implement assigned tasks." in roster

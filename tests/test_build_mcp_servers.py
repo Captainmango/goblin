@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from goblin.blueprint import V1Blueprint
-from goblin.step import PromptStep
+from goblin.phase import PromptPhase
 
 
 # ---------------------------------------------------------------------------
@@ -15,8 +15,8 @@ from goblin.step import PromptStep
 # ---------------------------------------------------------------------------
 
 
-def _make_blueprint(steps: list[dict], defaults: dict | None = None) -> V1Blueprint:
-    spec: dict[str, Any] = {"name": "test_wf", "steps": steps}
+def _make_blueprint(phases: list[dict], defaults: dict | None = None) -> V1Blueprint:
+    spec: dict[str, Any] = {"name": "test_bp", "phases": phases}
     if defaults is not None:
         spec["defaults"] = defaults
     return V1Blueprint(spec)
@@ -28,48 +28,48 @@ def _make_blueprint(steps: list[dict], defaults: dict | None = None) -> V1Bluepr
 
 
 class TestBuildMcpServersDefaults:
-    def test_workflow_defaults_used_when_step_has_none(self):
+    def test_blueprint_defaults_used_when_phase_has_none(self):
         bp = _make_blueprint(
             [{"id": "s1", "prompt": "do stuff"}],
             defaults={"mcp_servers": {"gh": {"command": "npx", "args": ["-y", "@mcp/github"]}}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
         assert "gh" in result
         assert result["gh"]["command"] == "npx"
 
-    def test_empty_when_no_defaults_no_step(self):
+    def test_empty_when_no_defaults_no_phase(self):
         bp = _make_blueprint([{"id": "s1", "prompt": "do stuff"}])
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
         assert result == {}
 
 
 # ---------------------------------------------------------------------------
-# Step-level
+# Phase-level
 # ---------------------------------------------------------------------------
 
 
-class TestBuildMcpServersStepLevel:
-    def test_step_servers_returned(self):
+class TestBuildMcpServersPhaseLevel:
+    def test_phase_servers_returned(self):
         bp = _make_blueprint(
             [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"jira": {"type": "http", "url": "https://j.co/mcp"}}}],
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
         assert "jira" in result
 
-    def test_step_overrides_default_by_name(self):
+    def test_phase_overrides_default_by_name(self):
         bp = _make_blueprint(
             [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"gh": {"command": "new"}}}],
             defaults={"mcp_servers": {"gh": {"command": "old"}}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
         assert result["gh"]["command"] == "new"
 
 
@@ -84,9 +84,9 @@ class TestBuildMcpServersMerge:
             [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"jira": {"type": "http", "url": "https://j.co/mcp"}}}],
             defaults={"mcp_servers": {"gh": {"command": "npx"}}},
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
         assert "gh" in result
         assert "jira" in result
 
@@ -108,9 +108,9 @@ class TestBuildMcpServersEnvResolution:
                 }
             ],
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
         assert result["gh"]["env"]["TOKEN"] == "secret"
 
     def test_env_var_in_url(self, monkeypatch):
@@ -118,9 +118,9 @@ class TestBuildMcpServersEnvResolution:
         bp = _make_blueprint(
             [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"api": {"type": "http", "url": "https://$HOST/mcp"}}}],
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
         assert result["api"]["url"] == "https://example.com/mcp"
 
     def test_env_var_in_headers(self, monkeypatch):
@@ -136,9 +136,9 @@ class TestBuildMcpServersEnvResolution:
                 }
             ],
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
         assert result["api"]["headers"]["Auth"] == "Bearer abc"
 
     def test_missing_env_var_raises(self, monkeypatch):
@@ -152,10 +152,10 @@ class TestBuildMcpServersEnvResolution:
                 }
             ],
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
         with pytest.raises(ValueError, match="MISSING"):
-            bp._build_mcp_servers(step, {})
+            bp._build_mcp_servers(phase, {})
 
 
 # ---------------------------------------------------------------------------
@@ -174,18 +174,18 @@ class TestBuildMcpServersContextInterpolation:
                 }
             ],
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {"package": "@mcp/gh"})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {"package": "@mcp/gh"})
         assert "@mcp/gh" in result["gh"]["args"]
 
     def test_context_var_in_url(self):
         bp = _make_blueprint(
             [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"api": {"type": "http", "url": "https://{host}/mcp"}}}],
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {"host": "example.com"})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {"host": "example.com"})
         assert result["api"]["url"] == "https://example.com/mcp"
 
     def test_mixed_env_and_context(self, monkeypatch):
@@ -201,9 +201,9 @@ class TestBuildMcpServersContextInterpolation:
                 }
             ],
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {"host": "example.com"})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {"host": "example.com"})
         assert result["api"]["url"] == "https://example.com/mcp"
         assert result["api"]["headers"]["Auth"] == "Bearer secret123"
 
@@ -218,9 +218,9 @@ class TestBuildMcpServersTypeInference:
         bp = _make_blueprint(
             [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"gh": {"command": "npx"}}}],
         )
-        step = bp.steps[0]
-        assert isinstance(step, PromptStep)
-        result = bp._build_mcp_servers(step, {})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
         assert "gh" in result
         assert "type" not in result["gh"]
         assert result["gh"]["command"] == "npx"

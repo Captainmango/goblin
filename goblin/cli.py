@@ -4,7 +4,7 @@ import click
 from typing import Any
 from dotenv import load_dotenv
 import asyncio
-from goblin.runner import WorkflowRunner
+from goblin.runner import BlueprintRunner
 
 
 @click.command()
@@ -79,10 +79,10 @@ def run(
         raise click.UsageError("Must specify either blueprint_path or --resume")
 
     if resume:
-        asyncio.run(WorkflowRunner.resume(resume))
+        asyncio.run(BlueprintRunner.resume(resume))
     else:
         assert blueprint_path is not None
-        runner = WorkflowRunner(blueprint_path, run_dir=run_dir)
+        runner = BlueprintRunner(blueprint_path, run_dir=run_dir)
         asyncio.run(runner.run(context))
 
 

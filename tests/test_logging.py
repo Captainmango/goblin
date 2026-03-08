@@ -47,16 +47,16 @@ class TestJSONFormatter:
             level=logging.WARNING,
             pathname="test.py",
             lineno=1,
-            msg="step failed",
+            msg="phase failed",
             args=None,
             exc_info=None,
         )
-        record.event = "step.failed"
-        record.step_id = "s1"
+        record.event = "phase.failed"
+        record.phase_id = "s1"
         output = formatter.format(record)
         parsed = json.loads(output)
-        assert parsed["event"] == "step.failed"
-        assert parsed["step_id"] == "s1"
+        assert parsed["event"] == "phase.failed"
+        assert parsed["phase_id"] == "s1"
 
     def test_non_serializable_extra_coerced(self):
         formatter = JSONFormatter()

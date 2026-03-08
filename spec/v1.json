@@ -4,44 +4,44 @@
   "title": "GOBLIN Blueprint Definition",
   "description": "Schema for GOBLIN blueprint files",
   "type": "object",
-  "required": ["version", "workflow"],
+  "required": ["version", "blueprint"],
   "additionalProperties": false,
   "properties": {
     "version": {
       "type": "string",
-      "description": "Schema version of the workflow definition. Determines which blueprint class the runner uses to execute the workflow.",
+      "description": "Schema version of the blueprint definition. Determines which blueprint class the runner uses to execute the blueprint.",
       "examples": ["v1", "v1.1"]
     },
-    "workflow": {
+    "blueprint": {
       "type": "object",
-      "required": ["name", "steps"],
+      "required": ["name", "phases"],
       "additionalProperties": false,
       "properties": {
         "name": {
           "type": "string",
-          "description": "Unique identifier name for the workflow",
+          "description": "Unique identifier name for the blueprint",
           "examples": ["resolve_jira_epic"]
         },
         "vars": {
           "type": "object",
-          "description": "Workflow-level variables available for {variable} interpolation in step prompts",
+          "description": "Blueprint-level variables available for {variable} interpolation in phase prompts",
           "additionalProperties": { "type": "string" },
           "examples": [{ "epic": "PROJ-123", "repo": "my-service" }]
         },
         "defaults": {
           "type": "object",
-          "description": "Default values inherited by all steps unless overridden",
+          "description": "Default values inherited by all phases unless overridden",
           "additionalProperties": false,
           "properties": {
             "hooks": { "$ref": "#/definitions/hooks" },
             "mcp_servers": { "$ref": "#/definitions/mcpServers" }
           }
         },
-        "steps": {
+        "phases": {
           "type": "array",
-          "description": "Ordered list of steps to execute in the workflow",
+          "description": "Ordered list of phases to execute in the blueprint",
           "minItems": 1,
-          "items": { "$ref": "#/definitions/step" }
+          "items": { "$ref": "#/definitions/phase" }
         }
       }
     }
@@ -49,12 +49,12 @@
   "definitions": {
     "hooks": {
       "type": "object",
-      "description": "Lifecycle hooks that run before or after tool calls. Set merge: true to append step-level hooks to workflow defaults rather than replacing them.",
+      "description": "Lifecycle hooks that run before or after tool calls. Set merge: true to append phase-level hooks to blueprint defaults rather than replacing them.",
       "additionalProperties": false,
       "properties": {
         "merge": {
           "type": "boolean",
-          "description": "When true, step-level hooks are appended to workflow defaults (merge mode). When false or absent, step-level hooks replace defaults entirely (override mode, default). At the defaults level, sets the default merge behaviour for all steps.",
+          "description": "When true, phase-level hooks are appended to blueprint defaults (merge mode). When false or absent, phase-level hooks replace defaults entirely (override mode, default). At the defaults level, sets the default merge behaviour for all phases.",
           "examples": [true, false]
         },
         "pre_tool": {
@@ -170,7 +170,7 @@
         }
       }]
     },
-    "step": {
+    "phase": {
       "type": "object",
       "required": ["id"],
       "additionalProperties": false,
@@ -182,12 +182,12 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for this step, referenced by other steps",
+          "description": "Unique identifier for this phase, referenced by other phases",
           "examples": ["fetch_tickets", "resolve_ticket", "close_epic"]
         },
         "prompt": {
           "type": "string",
-          "description": "Instruction prompt for the agent. Supports {variable} interpolation from workflow vars.",
+          "description": "Instruction prompt for the agent. Supports {variable} interpolation from blueprint vars.",
           "examples": [
             "Fetch all open tickets in epic {epic} using JIRA",
             "Resolve ticket {ticket_id}: {ticket_summary}"
@@ -195,18 +195,18 @@
         },
         "load_project": {
           "type": "string",
-          "description": "Path to a project root from which to load the full project configuration. Loads .claude/settings.json (passed to SDK as settings path), reads CLAUDE.md and .claude/CLAUDE.md as references (appended to system prompt), scans .claude/agents/*.md as agent definitions, and registers shell command hooks as 'project_pre_tool'/'project_post_tool'. Sets cwd to the project path for subsequent prompt steps. Supports {variable} interpolation.",
+          "description": "Path to a project root from which to load the full project configuration. Loads .claude/settings.json (passed to SDK as settings path), reads CLAUDE.md and .claude/CLAUDE.md as references (appended to system prompt), scans .claude/agents/*.md as agent definitions, and registers shell command hooks as 'project_pre_tool'/'project_post_tool'. Sets cwd to the project path for subsequent prompt phases. Supports {variable} interpolation.",
           "examples": ["{clone_dir}"]
         },
         "allowed_tools": {
           "type": "array",
-          "description": "Whitelist of tools the agent may call during this step",
+          "description": "Whitelist of tools the agent may call during this phase",
           "items": { "type": "string" },
           "examples": [["Bash", "Read", "Write", "mcp__jira__update_ticket"]]
         },
         "foreach": {
           "type": "string",
-          "description": "Controls iteration for the step. Accepts three forms: (1) An integer — runs the step that many times. (2) A Jinja2 expression ({{ }}) that evaluates to an integer against prior step results. (3) A file path — runs the step once per non-empty line. In all modes, {index} (0-based) is injected into context. File mode also injects {item} with the line content.",
+          "description": "Controls iteration for the phase. Accepts three forms: (1) An integer — runs the phase that many times. (2) A Jinja2 expression ({{ }}) that evaluates to an integer against prior phase results. (3) A file path — runs the phase once per non-empty line. In all modes, {index} (0-based) is injected into context. File mode also injects {item} with the line content.",
           "examples": [
             "5",
             "{{ steps.fetch_tickets.output.count }}",
@@ -216,7 +216,7 @@
         },
         "condition": {
           "type": "string",
-          "description": "Jinja2 expression that must evaluate truthy for this step to run. Access prior step results via steps.<id>.success (bool) or steps.<id>.message (list). Use the 'contains' filter to search messages for a substring, or 'json_value' to parse message strings as JSON and extract a value by dot-path.",
+          "description": "Jinja2 expression that must evaluate truthy for this phase to run. Access prior phase results via steps.<id>.success (bool) or steps.<id>.message (list). Use the 'contains' filter to search messages for a substring, or 'json_value' to parse message strings as JSON and extract a value by dot-path.",
           "examples": [
             "{{ steps.clone_repo.success }}",
             "{{ steps.clone_repo.message | contains('cloned successfully') }}",
@@ -224,22 +224,22 @@
           ]
         },
         "history": {
-          "description": "List of prior step IDs whose prompt and text output should be included as context in this step's prompt. Context is prepended in order before the step's own prompt. Referenced steps must be prompt steps defined before this step. Cannot reference foreach steps.",
+          "description": "List of prior phase IDs whose prompt and text output should be included as context in this phase's prompt. Context is prepended in order before the phase's own prompt. Referenced phases must be prompt phases defined before this phase. Cannot reference foreach phases.",
           "type": "array",
           "items": { "type": "string" },
-          "examples": [["step_one"], ["analyze", "plan"]]
+          "examples": [["phase_one"], ["analyze", "plan"]]
         },
         "swarm": { "$ref": "#/definitions/swarm" },
         "hooks": { "$ref": "#/definitions/hooks" },
         "mcp_servers": { "$ref": "#/definitions/mcpServers" },
         "on_failure": {
           "type": "object",
-          "description": "Behavior when this step fails",
+          "description": "Behavior when this phase fails",
           "additionalProperties": false,
           "properties": {
             "action": {
               "type": "string",
-              "description": "What to do when the step fails",
+              "description": "What to do when the phase fails",
               "enum": ["skip", "retry", "abort"],
               "examples": ["skip"]
             },
@@ -271,8 +271,8 @@
         },
         "workspace": {
           "type": "string",
-          "description": "Path for shared files and SQLite DB. Supports {variable} interpolation. Default: .goblin/swarms/{step_id}",
-          "examples": [".goblin/swarms/{step_id}", "/tmp/swarm-workspace"]
+          "description": "Path for shared files and SQLite DB. Supports {variable} interpolation. Default: .goblin/swarms/{phase_id}",
+          "examples": [".goblin/swarms/{phase_id}", "/tmp/swarm-workspace"]
         },
         "coordinator": { "$ref": "#/definitions/swarmCoordinator" },
         "agents": {
