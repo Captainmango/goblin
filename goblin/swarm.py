@@ -7,18 +7,16 @@ import os
 import shutil
 import stat
 import textwrap
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Dict
 
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    query,
-)
-
+from openhands.sdk import Agent, LocalConversation, LocalWorkspace
+from openhands.sdk.conversation import get_agent_final_response
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDINATOR_PROMPT
 from goblin.phase import PhaseProtocol, _extract_json
 from goblin.swarm_db import SwarmDB
+from goblin.utils.llm import build_llm
+from goblin.utils.tool_map import resolve_tools
 
 if TYPE_CHECKING:
     from goblin.blueprint import V1Blueprint
@@ -26,9 +24,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# The CLI wrapper script placed in the workspace for agents to call via Bash.
-# Agents run:  swarmdb query "SELECT * FROM tasks"
-#              swarmdb execute "INSERT INTO tasks ..."
 _SWARMDB_CLI_SCRIPT = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, re, sqlite3, sys
@@ -131,7 +126,6 @@ class SwarmPhase(PhaseProtocol):
         for agent_cfg in self.agents_config:
             self._db.register_agent(agent_cfg["name"])
 
-        # Write the CLI wrapper script into the workspace
         script_path = os.path.join(self._workspace, "swarmdb")
         with open(script_path, "w") as f:
             f.write(_SWARMDB_CLI_SCRIPT)
@@ -145,10 +139,6 @@ class SwarmPhase(PhaseProtocol):
             first_line = agent_cfg["prompt"].strip().split("\n")[0]
             lines.append(f"- {agent_cfg['name']}: {first_line}")
         return "\n".join(lines)
-
-    def _swarmdb_env(self) -> dict[str, str]:
-        """Return env vars that include the SwarmDB path so the CLI script works."""
-        return {"CLAUDECODE": "", "SWARMDB_PATH": os.path.join(self._workspace, "swarm.db")}
 
     async def _run_coordinator(self, context: dict) -> dict:
         assert self._db is not None
@@ -168,37 +158,33 @@ class SwarmPhase(PhaseProtocol):
         if "Bash" not in coordinator_tools:
             coordinator_tools.append("Bash")
 
-        mcp_servers = self._blueprint._build_mcp_servers(self, context)
+        mcp_config = self._blueprint._build_mcp_servers(self, context)
 
-        kwargs: dict[str, Any] = {
-            "system_prompt": system_prompt,
-            "allowed_tools": coordinator_tools,
-            "hooks": self._blueprint._build_hooks(self),
-            "env": self._swarmdb_env(),
-        }
+        db_path = os.path.join(self._workspace, "swarm.db")
+        llm = build_llm()
+        agent = Agent(  # pyrefly: ignore[missing-argument]
+            llm=llm,
+            tools=resolve_tools(coordinator_tools),
+            mcp_config=mcp_config,
+            system_prompt=system_prompt,
+        )
+        conversation = LocalConversation(
+            agent=agent,
+            workspace=LocalWorkspace(working_dir=self._blueprint.project_path or "."),
+            hook_config=self._blueprint._build_hooks(self),
+            secrets={"SWARMDB_PATH": db_path},
+        )
+        conversation.send_message(prompt)
+        await conversation.arun()
 
-        if mcp_servers:
-            kwargs["mcp_servers"] = mcp_servers
-
-        if self._blueprint.project_path:
-            kwargs["cwd"] = self._blueprint.project_path
-
-        options = ClaudeAgentOptions(**kwargs)
-
-        text_blocks: list[str] = []
-        async for message in query(prompt=prompt, options=options):
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if hasattr(block, "text"):
-                        text_blocks.append(block.text)
-
-        if not text_blocks:
+        text = get_agent_final_response(conversation.state.events)
+        if not text:
             return {"done": False, "message": ["No response from coordinator"]}
 
         try:
-            return _extract_json(text_blocks[-1])
+            return _extract_json(text)
         except (json.JSONDecodeError, ValueError):
-            return {"done": False, "message": text_blocks}
+            return {"done": False, "message": [text]}
 
     async def _run_single_agent(self, agent_cfg: dict, context: dict):
         assert self._db is not None
@@ -222,50 +208,43 @@ class SwarmPhase(PhaseProtocol):
             if "Bash" not in agent_tools:
                 agent_tools.append("Bash")
 
-            # Build hooks: use per-agent hooks if specified, else step-level
             original_hooks = self.hooks_config
             if "hooks" in agent_cfg:
                 self.hooks_config = agent_cfg["hooks"]
-            hooks = self._blueprint._build_hooks(self)
+            hook_config = self._blueprint._build_hooks(self)
             self.hooks_config = original_hooks
 
-            mcp_servers = self._blueprint._build_mcp_servers(self, context)
+            mcp_config = self._blueprint._build_mcp_servers(self, context)
 
-            # Merge per-agent MCP servers if specified
             if "mcp_servers" in agent_cfg:
                 from goblin.utils.env import resolve_env_vars
 
                 resolved = resolve_env_vars(agent_cfg["mcp_servers"])
                 interpolated = self._blueprint._interpolate_strings(resolved, context)
-                mcp_servers.update(interpolated)
+                existing = mcp_config.get("mcpServers", {})
+                existing.update(interpolated)
+                mcp_config["mcpServers"] = existing
 
-            kwargs: dict[str, Any] = {
-                "system_prompt": system_prompt,
-                "allowed_tools": agent_tools,
-                "hooks": hooks,
-                "max_turns": self.max_iterations,
-                "env": self._swarmdb_env(),
-            }
+            db_path = os.path.join(self._workspace, "swarm.db")
+            llm = build_llm()
+            agent = Agent(  # pyrefly: ignore[missing-argument]
+                llm=llm,
+                tools=resolve_tools(agent_tools),
+                mcp_config=mcp_config,
+                system_prompt=system_prompt,
+            )
+            conversation = LocalConversation(
+                agent=agent,
+                workspace=LocalWorkspace(working_dir=self._blueprint.project_path or "."),
+                hook_config=hook_config,
+                max_iteration_per_run=self.max_iterations,
+                secrets={"SWARMDB_PATH": db_path},
+            )
+            conversation.send_message(prompt)
+            await conversation.arun()
 
-            if mcp_servers:
-                kwargs["mcp_servers"] = mcp_servers
-
-            if self._blueprint.project_path:
-                kwargs["cwd"] = self._blueprint.project_path
-
-            options = ClaudeAgentOptions(**kwargs)
-
-            text_blocks: list[str] = []
-            turns = 0
-            async for message in query(prompt=prompt, options=options):
-                if isinstance(message, AssistantMessage):
-                    turns += 1
-                    for block in message.content:
-                        if hasattr(block, "text"):
-                            text_blocks.append(block.text)
-
-            self._db.update_agent_status(name, AgentStatus.DONE, iterations=turns)
-            return text_blocks[-1] if text_blocks else ""
+            self._db.update_agent_status(name, AgentStatus.DONE)
+            return get_agent_final_response(conversation.state.events) or ""
 
         except Exception as e:
             self._db.update_agent_status(name, AgentStatus.FAILED)

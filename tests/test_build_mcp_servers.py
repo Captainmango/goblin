@@ -36,8 +36,9 @@ class TestBuildMcpServersDefaults:
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
         result = bp._build_mcp_servers(phase, {})
-        assert "gh" in result
-        assert result["gh"]["command"] == "npx"
+        assert "mcpServers" in result
+        assert "gh" in result["mcpServers"]
+        assert result["mcpServers"]["gh"]["command"] == "npx"
 
     def test_empty_when_no_defaults_no_phase(self):
         bp = _make_blueprint([{"id": "s1", "prompt": "do stuff"}])
@@ -60,7 +61,7 @@ class TestBuildMcpServersPhaseLevel:
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
         result = bp._build_mcp_servers(phase, {})
-        assert "jira" in result
+        assert "jira" in result["mcpServers"]
 
     def test_phase_overrides_default_by_name(self):
         bp = _make_blueprint(
@@ -70,7 +71,7 @@ class TestBuildMcpServersPhaseLevel:
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
         result = bp._build_mcp_servers(phase, {})
-        assert result["gh"]["command"] == "new"
+        assert result["mcpServers"]["gh"]["command"] == "new"
 
 
 # ---------------------------------------------------------------------------
@@ -87,8 +88,8 @@ class TestBuildMcpServersMerge:
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
         result = bp._build_mcp_servers(phase, {})
-        assert "gh" in result
-        assert "jira" in result
+        assert "gh" in result["mcpServers"]
+        assert "jira" in result["mcpServers"]
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +112,7 @@ class TestBuildMcpServersEnvResolution:
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
         result = bp._build_mcp_servers(phase, {})
-        assert result["gh"]["env"]["TOKEN"] == "secret"
+        assert result["mcpServers"]["gh"]["env"]["TOKEN"] == "secret"
 
     def test_env_var_in_url(self, monkeypatch):
         monkeypatch.setenv("HOST", "example.com")
@@ -121,7 +122,7 @@ class TestBuildMcpServersEnvResolution:
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
         result = bp._build_mcp_servers(phase, {})
-        assert result["api"]["url"] == "https://example.com/mcp"
+        assert result["mcpServers"]["api"]["url"] == "https://example.com/mcp"
 
     def test_env_var_in_headers(self, monkeypatch):
         monkeypatch.setenv("KEY", "abc")
@@ -139,7 +140,7 @@ class TestBuildMcpServersEnvResolution:
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
         result = bp._build_mcp_servers(phase, {})
-        assert result["api"]["headers"]["Auth"] == "Bearer abc"
+        assert result["mcpServers"]["api"]["headers"]["Auth"] == "Bearer abc"
 
     def test_missing_env_var_raises(self, monkeypatch):
         monkeypatch.delenv("MISSING", raising=False)
@@ -177,7 +178,7 @@ class TestBuildMcpServersContextInterpolation:
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
         result = bp._build_mcp_servers(phase, {"package": "@mcp/gh"})
-        assert "@mcp/gh" in result["gh"]["args"]
+        assert "@mcp/gh" in result["mcpServers"]["gh"]["args"]
 
     def test_context_var_in_url(self):
         bp = _make_blueprint(
@@ -186,7 +187,7 @@ class TestBuildMcpServersContextInterpolation:
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
         result = bp._build_mcp_servers(phase, {"host": "example.com"})
-        assert result["api"]["url"] == "https://example.com/mcp"
+        assert result["mcpServers"]["api"]["url"] == "https://example.com/mcp"
 
     def test_mixed_env_and_context(self, monkeypatch):
         monkeypatch.setenv("TOKEN", "secret123")
@@ -204,8 +205,51 @@ class TestBuildMcpServersContextInterpolation:
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
         result = bp._build_mcp_servers(phase, {"host": "example.com"})
-        assert result["api"]["url"] == "https://example.com/mcp"
-        assert result["api"]["headers"]["Auth"] == "Bearer secret123"
+        assert result["mcpServers"]["api"]["url"] == "https://example.com/mcp"
+        assert result["mcpServers"]["api"]["headers"]["Auth"] == "Bearer secret123"
+
+
+# ---------------------------------------------------------------------------
+# Parent env forwarding
+# ---------------------------------------------------------------------------
+
+
+class TestBuildMcpServersParentEnvForwarding:
+    def test_stdio_server_gets_parent_env(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"gh": {"command": "npx"}}}],
+        )
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
+        assert result["mcpServers"]["gh"]["env"]["GITHUB_TOKEN"] == "ghp_test"
+
+    def test_blueprint_env_overrides_parent_env(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_from_parent")
+        bp = _make_blueprint(
+            [
+                {
+                    "id": "s1",
+                    "prompt": "do stuff",
+                    "mcp_servers": {"gh": {"command": "npx", "env": {"GITHUB_TOKEN": "$GITHUB_TOKEN"}}},
+                }
+            ],
+        )
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
+        assert result["mcpServers"]["gh"]["env"]["GITHUB_TOKEN"] == "ghp_from_parent"
+
+    def test_http_server_does_not_get_parent_env(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
+        bp = _make_blueprint(
+            [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"api": {"type": "http", "url": "https://example.com/mcp"}}}],
+        )
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
+        assert "env" not in result["mcpServers"]["api"]
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +265,6 @@ class TestBuildMcpServersTypeInference:
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
         result = bp._build_mcp_servers(phase, {})
-        assert "gh" in result
-        assert "type" not in result["gh"]
-        assert result["gh"]["command"] == "npx"
+        assert "gh" in result["mcpServers"]
+        assert "type" not in result["mcpServers"]["gh"]
+        assert result["mcpServers"]["gh"]["command"] == "npx"

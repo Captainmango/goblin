@@ -33,23 +33,6 @@ def _clean_registry():
 
 
 class TestLoadProjectSettings:
-    def test_stores_settings_path(self, tmp_path):
-        settings_dir = tmp_path / ".claude"
-        settings_dir.mkdir()
-        settings_file = settings_dir / "settings.json"
-        settings_file.write_text(json.dumps({}))
-
-        bp = _make_blueprint()
-        bp._load_project(str(tmp_path))
-
-        assert bp.project_settings_path == str(settings_file)
-
-    def test_no_settings_file_leaves_path_none(self, tmp_path):
-        bp = _make_blueprint()
-        bp._load_project(str(tmp_path))
-
-        assert bp.project_settings_path is None
-
     def test_stores_project_path(self, tmp_path):
         bp = _make_blueprint()
         bp._load_project(str(tmp_path))
@@ -115,8 +98,8 @@ class TestLoadProjectAgents:
         bp._load_project(str(tmp_path))
 
         assert "reviewer" in bp.project_agents
-        assert bp.project_agents["reviewer"].prompt == "You are a code reviewer"
-        assert bp.project_agents["reviewer"].description == "reviewer"
+        assert bp.project_agents["reviewer"].system_prompt == "You are a code reviewer"
+        assert bp.project_agents["reviewer"].name == "reviewer"
 
     def test_loads_multiple_agents(self, tmp_path):
         agents_dir = tmp_path / ".claude" / "agents"

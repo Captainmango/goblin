@@ -7,14 +7,12 @@ from typing import Dict, Protocol, TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from openhands.sdk import Agent, LocalConversation, LocalWorkspace
+from openhands.sdk.conversation import get_agent_final_response
 from goblin.enums import LoadProjectStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, JSON_REPAIR_PROMPT
-
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    query,
-)
+from goblin.utils.llm import build_llm
+from goblin.utils.tool_map import build_tool_filter_regex, resolve_tools
 
 logger = logging.getLogger(__name__)
 
@@ -64,46 +62,38 @@ class PromptPhase(PhaseProtocol):
     async def run(self, context: dict) -> Dict:
         prompt = self.prompt_template.format(**context)
 
-        # Prepend history context if provided by the blueprint
         history_context = context.get("_history_context", "")
         if history_context:
             prompt = history_context + prompt
 
-        kwargs: dict = {
-            "system_prompt": BASE_SYSTEM_PROMPT,
-            "allowed_tools": self.allowed_tools,
-            "hooks": self._blueprint._build_hooks(self),
-            "env": {"CLAUDECODE": ""},
-        }
+        system_prompt = BASE_SYSTEM_PROMPT
+        if self._blueprint.project_refs:
+            system_prompt = system_prompt + "\n\n" + self._blueprint.project_refs
 
-        if self._blueprint.project_path:
-            kwargs["cwd"] = self._blueprint.project_path
-        if self._blueprint.project_settings_path:
-            kwargs["settings"] = self._blueprint.project_settings_path
+        llm = build_llm()
+        agent = Agent(  # pyrefly: ignore[missing-argument]
+            llm=llm,
+            tools=resolve_tools(self.allowed_tools),
+            mcp_config=self._blueprint._build_mcp_servers(self, context),
+            system_prompt=system_prompt,
+            filter_tools_regex=build_tool_filter_regex(self.allowed_tools),
+        )
 
-        if self._blueprint.project_agents:
-            kwargs["agents"] = self._blueprint.project_agents
+        conversation = LocalConversation(
+            agent=agent,
+            workspace=LocalWorkspace(working_dir=self._blueprint.project_path or "."),
+            hook_config=self._blueprint._build_hooks(self),
+        )
+        conversation.send_message(prompt)
+        await conversation.arun()
 
-        mcp_servers = self._blueprint._build_mcp_servers(self, context)
-        if mcp_servers:
-            kwargs["mcp_servers"] = mcp_servers
+        text = get_agent_final_response(conversation.state.events)
 
-        options = ClaudeAgentOptions(**kwargs)
-
-        text_blocks: list[str] = []
-
-        async for message in query(prompt=prompt, options=options):
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if hasattr(block, "text"):
-                        text_blocks.append(block.text)
-
-        if not text_blocks:
+        if not text:
             return {"success": False, "message": ["Agent produced no text output"], "prompt": prompt, "output": ""}
 
-        full_output = "\n".join(text_blocks)
-        parsed = await self._parse_response(text_blocks[-1])
-        return {**parsed, "prompt": prompt, "output": full_output}
+        parsed = await self._parse_response(text)
+        return {**parsed, "prompt": prompt, "output": text}
 
     async def _parse_response(self, text: str, retries: int = MAX_PARSE_RETRIES) -> Dict:
         """Parse agent response JSON, retrying with a repair prompt on failure."""
@@ -123,29 +113,18 @@ class PromptPhase(PhaseProtocol):
                         "error": str(exc),
                     },
                 )
-                # This variable is used. Each loop iter uses the previous run's text value
                 text = await self._request_json_repair(text)
         raise RuntimeError("all parse attempts exhausted")
 
     async def _request_json_repair(self, broken_text: str) -> str:
         """Ask the LLM to fix malformed JSON without re-running the phase."""
         repair_prompt = JSON_REPAIR_PROMPT.format(broken_text=broken_text)
-        options = ClaudeAgentOptions(
-            system_prompt=BASE_SYSTEM_PROMPT,
-            allowed_tools=[],
-            env={"CLAUDECODE": ""},
-        )
-
-        text_blocks: list[str] = []
-        async for message in query(prompt=repair_prompt, options=options):
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if hasattr(block, "text"):
-                        text_blocks.append(block.text)
-
-        if not text_blocks:
-            return broken_text
-        return text_blocks[-1]
+        llm = build_llm()
+        agent = Agent(llm=llm, tools=[], system_prompt=BASE_SYSTEM_PROMPT)  # pyrefly: ignore[missing-argument]
+        conversation = LocalConversation(agent=agent, workspace=LocalWorkspace(working_dir="."))
+        conversation.send_message(repair_prompt)
+        await conversation.arun()
+        return get_agent_final_response(conversation.state.events) or broken_text
 
 
 class LoadProjectPhase(PhaseProtocol):

@@ -7,21 +7,10 @@ class FailureAction(StrEnum):
     ABORT = "abort"
 
 
-class HookEventType(StrEnum):
-    PRE_TOOL_USE = "PreToolUse"
-    POST_TOOL_USE = "PostToolUse"
-
-
 class PhaseType(StrEnum):
     PROMPT = "prompt"
     LOAD_PROJECT = "load_project"
     SWARM = "swarm"
-
-
-class HookConfigKey(StrEnum):
-    PRE_TOOL = "pre_tool"
-    POST_TOOL = "post_tool"
-    MERGE = "merge"
 
 
 class SwarmDBTable(StrEnum):

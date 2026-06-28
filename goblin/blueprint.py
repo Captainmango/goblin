@@ -3,18 +3,15 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
 from typing import Any, Protocol, cast
 
 from jinja2 import Environment
 
-from claude_agent_sdk import (
-    AgentDefinition,
-    HookMatcher,
-)
+from openhands.sdk.hooks import HookConfig, HookDefinition, HookMatcher
+from openhands.sdk.subagent import AgentDefinition
 from goblin.checkpoint import Checkpoint
-from goblin.enums import FailureAction, HookConfigKey, HookEventType
-from goblin.hooks import HOOK_REGISTRY
+from goblin.enums import FailureAction
+from goblin.hooks import HOOK_REGISTRY, register_hook
 from goblin.utils.env import resolve_env_vars
 from goblin.phase import LoadProjectPhase, PromptPhase, PhaseProtocol
 from goblin.swarm import SwarmPhase
@@ -36,7 +33,6 @@ class V1Blueprint(Blueprint):
     def __init__(self, spec: dict):
         self.spec = spec
         self.project_path: str | None = None
-        self.project_settings_path: str | None = None
         self.project_refs: str = ""
         self.project_agents: dict[str, AgentDefinition] = {}
         self.phases: list[PhaseProtocol] = [self._parse_phase(s) for s in spec["phases"]]
@@ -104,35 +100,39 @@ class V1Blueprint(Blueprint):
 
         return "## Prior Phase Results\n\n" + "\n".join(sections) + "\n---\n\n"
 
-    def _build_hooks(self, phase: HookablePhase) -> dict:
+    def _build_hooks(self, phase: HookablePhase) -> HookConfig | None:
         defaults = self.spec.get("defaults", {}).get("hooks", {})
         phase_hooks = phase.hooks_config
 
-        # Resolve merge flag: phase-level wins, then blueprint-level, then False
-        blueprint_merge = defaults.get(HookConfigKey.MERGE, False)
-        merge = phase_hooks.get(HookConfigKey.MERGE, blueprint_merge)
+        blueprint_merge = defaults.get("merge", False)
+        merge = phase_hooks.get("merge", blueprint_merge)
 
-        default_pre = defaults.get(HookConfigKey.PRE_TOOL) or []
-        default_post = defaults.get(HookConfigKey.POST_TOOL) or []
-        phase_pre = phase_hooks.get(HookConfigKey.PRE_TOOL) or []
-        phase_post = phase_hooks.get(HookConfigKey.POST_TOOL) or []
+        default_pre = defaults.get("pre_tool") or []
+        default_post = defaults.get("post_tool") or []
+        phase_pre = phase_hooks.get("pre_tool") or []
+        phase_post = phase_hooks.get("post_tool") or []
 
         if merge:
             pre_names = [*default_pre, *phase_pre]
             post_names = [*default_post, *phase_post]
         else:
-            # Override mode: phase-level replaces defaults when present
-            pre_names = phase_pre if phase_hooks.get(HookConfigKey.PRE_TOOL) is not None else default_pre
-            post_names = phase_post if phase_hooks.get(HookConfigKey.POST_TOOL) is not None else default_post
+            pre_names = phase_pre if phase_hooks.get("pre_tool") is not None else default_pre
+            post_names = phase_post if phase_hooks.get("post_tool") is not None else default_post
 
-        return {
-            HookEventType.PRE_TOOL_USE: [
-                HookMatcher(hooks=[HOOK_REGISTRY[n] for n in pre_names if n in HOOK_REGISTRY])
-            ],
-            HookEventType.POST_TOOL_USE: [
-                HookMatcher(hooks=[HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY])
-            ],
-        }
+        pre_defs = [
+            HOOK_REGISTRY[n] for n in pre_names if n in HOOK_REGISTRY and isinstance(HOOK_REGISTRY[n], HookDefinition)
+        ]
+        post_defs = [
+            HOOK_REGISTRY[n] for n in post_names if n in HOOK_REGISTRY and isinstance(HOOK_REGISTRY[n], HookDefinition)
+        ]
+
+        if not pre_defs and not post_defs:
+            return None
+
+        return HookConfig(
+            pre_tool_use=[HookMatcher(hooks=pre_defs)] if pre_defs else [],
+            post_tool_use=[HookMatcher(hooks=post_defs)] if post_defs else [],
+        )
 
     def _build_mcp_servers(self, phase: HookablePhase, context: dict) -> dict:
         defaults = self.spec.get("defaults", {}).get("mcp_servers", {})
@@ -141,9 +141,20 @@ class V1Blueprint(Blueprint):
         if not merged:
             return {}
         resolved = resolve_env_vars(merged)
-        return cast(dict, self._interpolate_strings(resolved, context))
+        interpolated = cast(dict, self._interpolate_strings(resolved, context))
 
-    def _interpolate_strings(self, obj, context: dict):
+        # The mcp library only forwards a minimal env (HOME, PATH, etc.) to stdio
+        # subprocesses. Inject the full parent environment so MCP servers see the same
+        # tokens as goblin — matching Claude Code's behavior. Blueprint env: keys win.
+        parent_env = dict(os.environ)
+        for server_config in interpolated.values():
+            if isinstance(server_config, dict) and "command" in server_config:
+                explicit_env = server_config.get("env", {})
+                server_config["env"] = {**parent_env, **explicit_env}
+
+        return {"mcpServers": interpolated}
+
+    def _interpolate_strings(self, obj: Any, context: dict) -> Any:
         """Recursively apply {variable} interpolation to all string values."""
         if isinstance(obj, dict):
             return {k: self._interpolate_strings(v, context) for k, v in obj.items()}
@@ -166,7 +177,6 @@ class V1Blueprint(Blueprint):
         return [{"index": i} for i in range(n)]
 
     def _resolve(self, foreach_expr: str, results: dict, context: dict) -> list[dict]:
-        # Jinja mode — expression contains {{ }}
         if "{{" in foreach_expr:
             env = self._jinja_env()
             expr = foreach_expr.strip()
@@ -180,7 +190,6 @@ class V1Blueprint(Blueprint):
                 raise ValueError(f"foreach Jinja expression rendered to '{rendered}', which is not a valid integer")
             return self._resolve_foreach_count(n)
 
-        # Non-Jinja — interpolate with context, try integer
         interpolated = foreach_expr.format(**context)
         try:
             n = int(interpolated)
@@ -188,7 +197,6 @@ class V1Blueprint(Blueprint):
         except ValueError:
             pass
 
-        # File mode — resolve path and read lines
         path = interpolated
         if not os.path.isabs(path) and self.project_path:
             path = os.path.join(self.project_path, path)
@@ -213,9 +221,6 @@ class V1Blueprint(Blueprint):
         """
         env = self._jinja_env()
 
-        # Wrap the condition in {{ }} if it isn't already — allows bare
-        # expressions like `steps.clone_repo.success` alongside the full
-        # `{{ steps.clone_repo.success }}` syntax.
         expr = condition.strip()
         if not expr.startswith("{{"):
             expr = "{{ " + expr + " }}"
@@ -223,7 +228,6 @@ class V1Blueprint(Blueprint):
         template = env.from_string(expr)
         rendered = template.render(steps=results).strip()
 
-        # Jinja renders booleans as "True"/"False"; treat common truthy/falsy values
         return rendered.lower() not in ("false", "none", "0", "")
 
     def _load_project(self, path: str):
@@ -232,62 +236,45 @@ class V1Blueprint(Blueprint):
         Reads settings, CLAUDE.md references, and agent definitions from the
         project and stores them as instance state for subsequent prompt phases.
 
-        - Settings: stores path to .claude/settings.json (passed to SDK via settings param)
+        - Settings: reads .claude/settings.json and registers shell command hooks
         - References: reads CLAUDE.md and .claude/CLAUDE.md, concatenates into project_refs
         - Agents: scans .claude/agents/*.md, each becomes an AgentDefinition
-        - Hooks: registers subprocess-backed hooks as 'project_pre_tool'/'project_post_tool'
         """
         self.project_path = path
 
-        # Settings
         settings_path = os.path.join(path, ".claude", "settings.json")
         if os.path.isfile(settings_path):
-            self.project_settings_path = settings_path
             logger.info("Loaded project settings", extra={"event": "project.settings_loaded", "path": settings_path})
 
-            # Register subprocess-backed hooks from settings
             with open(settings_path) as f:
                 settings = json.load(f)
             hooks_config = settings.get("hooks", {})
-            for event_type, registry_name in (
-                (HookEventType.PRE_TOOL_USE, "project_pre_tool"),
-                (HookEventType.POST_TOOL_USE, "project_post_tool"),
+            for event_key, registry_name in (
+                ("PreToolUse", "project_pre_tool"),
+                ("PostToolUse", "project_post_tool"),
             ):
                 commands = [
                     hook_def["command"]
-                    for matcher_def in hooks_config.get(event_type, [])
+                    for matcher_def in hooks_config.get(event_key, [])
                     for hook_def in matcher_def.get("hooks", [])
                     if hook_def.get("type") == "command" and hook_def.get("command")
                 ]
                 if not commands:
                     continue
 
-                def make_runner(cmds, cwd):
-                    def run_project_hooks(tool_use):
-                        for cmd in cmds:
-                            result = subprocess.run(cmd, shell=True, cwd=cwd)
-                            if result.returncode != 0:
-                                logger.warning(
-                                    "Project hook failed",
-                                    extra={"event": "project.hook_failed", "cmd": cmd, "exit_code": result.returncode},
-                                )
-
-                    return run_project_hooks
-
-                HOOK_REGISTRY[registry_name] = make_runner(commands, path)
+                register_hook(registry_name, HookDefinition(command="; ".join(commands)))
                 logger.info(
                     "Registered project hooks",
                     extra={
                         "event": "project.hooks_registered",
                         "count": len(commands),
-                        "event_type": event_type,
+                        "event_key": event_key,
                         "registry_name": registry_name,
                     },
                 )
         else:
             logger.warning("No .claude/settings.json found", extra={"event": "project.settings_missing", "path": path})
 
-        # References (CLAUDE.md files)
         refs = []
         for ref_path in [
             os.path.join(path, "CLAUDE.md"),
@@ -299,7 +286,6 @@ class V1Blueprint(Blueprint):
                 logger.info("Loaded reference", extra={"event": "project.reference_loaded", "path": ref_path})
         self.project_refs = "\n\n".join(refs)
 
-        # Agent definitions
         agents_dir = os.path.join(path, ".claude", "agents")
         if os.path.isdir(agents_dir):
             for filename in os.listdir(agents_dir):
@@ -308,8 +294,8 @@ class V1Blueprint(Blueprint):
                     with open(os.path.join(agents_dir, filename)) as f:
                         content = f.read()
                     self.project_agents[agent_name] = AgentDefinition(
-                        description=agent_name,
-                        prompt=content,
+                        name=agent_name,
+                        system_prompt=content,
                     )
                     logger.info("Loaded agent definition", extra={"event": "project.agent_loaded", "agent": agent_name})
 
@@ -322,7 +308,9 @@ class V1Blueprint(Blueprint):
         logger.warning("Phase failed", extra={"event": "phase.failed", "phase_id": phase.id})
 
         if notify_hook and notify_hook in HOOK_REGISTRY:
-            HOOK_REGISTRY[notify_hook](results[phase.id])
+            hook_val = HOOK_REGISTRY[notify_hook]
+            if callable(hook_val):
+                hook_val(results[phase.id])
 
         if action == FailureAction.SKIP:
             logger.warning("Skipping failed phase", extra={"event": "phase.skip_on_failure", "phase_id": phase.id})
@@ -350,12 +338,10 @@ class V1Blueprint(Blueprint):
             )
             return False
 
-        # abort (default)
         logger.error("Aborting blueprint", extra={"event": "phase.abort", "phase_id": phase.id})
         return False
 
     async def run(self, context: dict | None = None, checkpoint: Checkpoint | None = None):
-        # Merge blueprint vars with caller context; caller context wins on conflicts
         blueprint_vars = self.spec.get("vars", {})
         context = {**blueprint_vars, **(context or {})}
 
@@ -365,7 +351,6 @@ class V1Blueprint(Blueprint):
             results = {}
 
         for phase in self.phases:
-            # Skip phases already completed in a previous run
             if checkpoint and phase.id in checkpoint.completed_phase_ids():
                 logger.info(
                     "Skipping phase — already completed",
@@ -373,7 +358,6 @@ class V1Blueprint(Blueprint):
                 )
                 continue
 
-            # Check conditions
             if phase.condition:
                 if not self._evaluate_condition(phase.condition, results):
                     logger.info(
@@ -384,7 +368,6 @@ class V1Blueprint(Blueprint):
                         checkpoint.phase_skipped(phase.id)
                     continue
 
-            # Handle foreach expansion
             if phase.foreach:
                 items = self._resolve(phase.foreach, results, context)
                 if checkpoint:
@@ -433,7 +416,6 @@ class V1Blueprint(Blueprint):
                             checkpoint.phase_failed(phase.id, results[phase.id])
                             checkpoint.mark_failed()
                         return results
-                    # Retry/skip succeeded — record final state
                     if checkpoint:
                         final = results[phase.id]
                         if final.get("success", True):
