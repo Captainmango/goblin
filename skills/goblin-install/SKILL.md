@@ -1,5 +1,5 @@
 ---
-name: goblin:install
+name: goblin-install
 description: Install the goblin CLI locally using pipx
 disable-model-invocation: true
 ---
