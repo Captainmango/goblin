@@ -71,12 +71,13 @@ class PromptPhase(PhaseProtocol):
             system_prompt = system_prompt + "\n\n" + self._blueprint.project_refs
 
         llm = build_llm()
-        agent = Agent(  # pyrefly: ignore[missing-argument]
+        agent = Agent(
             llm=llm,
             tools=resolve_tools(self.allowed_tools),
             mcp_config=self._blueprint._build_mcp_servers(self, context),
             system_prompt=system_prompt,
             filter_tools_regex=build_tool_filter_regex(self.allowed_tools),
+            critic=None
         )
 
         conversation = LocalConversation(
@@ -120,7 +121,7 @@ class PromptPhase(PhaseProtocol):
         """Ask the LLM to fix malformed JSON without re-running the phase."""
         repair_prompt = JSON_REPAIR_PROMPT.format(broken_text=broken_text)
         llm = build_llm()
-        agent = Agent(llm=llm, tools=[], system_prompt=BASE_SYSTEM_PROMPT)  # pyrefly: ignore[missing-argument]
+        agent = Agent(llm=llm, tools=[], system_prompt=BASE_SYSTEM_PROMPT, critic=None)
         conversation = LocalConversation(agent=agent, workspace=LocalWorkspace(working_dir="."))
         conversation.send_message(repair_prompt)
         await conversation.arun()

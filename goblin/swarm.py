@@ -162,11 +162,12 @@ class SwarmPhase(PhaseProtocol):
 
         db_path = os.path.join(self._workspace, "swarm.db")
         llm = build_llm()
-        agent = Agent(  # pyrefly: ignore[missing-argument]
+        agent = Agent(
             llm=llm,
             tools=resolve_tools(coordinator_tools),
             mcp_config=mcp_config,
             system_prompt=system_prompt,
+            critic=None,
         )
         conversation = LocalConversation(
             agent=agent,
@@ -227,11 +228,12 @@ class SwarmPhase(PhaseProtocol):
 
             db_path = os.path.join(self._workspace, "swarm.db")
             llm = build_llm()
-            agent = Agent(  # pyrefly: ignore[missing-argument]
+            agent = Agent(
                 llm=llm,
                 tools=resolve_tools(agent_tools),
                 mcp_config=mcp_config,
                 system_prompt=system_prompt,
+                critic=None
             )
             conversation = LocalConversation(
                 agent=agent,
