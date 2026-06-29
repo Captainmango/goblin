@@ -3,7 +3,7 @@
 ## Enhancements
 
 ### Blueprint Schema Validation at Load Time
-`WorkflowRunner` currently loads and runs blueprints without validating them against `spec/v1.json`. Adding `jsonschema` validation at load time would surface authoring errors (unknown fields, wrong types, missing required keys) immediately with clear messages instead of cryptic runtime failures.
+`BlueprintRunner` currently loads and runs blueprints without validating them against `spec/v1.json`. Adding `jsonschema` validation at load time would surface authoring errors (unknown fields, wrong types, missing required keys) immediately with clear messages instead of cryptic runtime failures.
 
 ### Dry-Run Mode
 A `--dry-run` CLI flag that parses and validates the blueprint, resolves foreach and condition expressions against an empty results dict, and prints a preview of which steps would execute and in what order — without invoking any agents.
@@ -11,7 +11,7 @@ A `--dry-run` CLI flag that parses and validates the blueprint, resolves foreach
 ### Structured Step Output Schema
 Allow steps to declare an `output_schema` (JSON Schema fragment) that the runner validates the agent's response against. This would make data flow between steps explicit and catch mis-shaped outputs early rather than letting a bad value silently propagate.
 
-### ~~Resume / Checkpointing~~ ✅
+### Resume / Checkpointing (REVIEW THIS WITH OPENHANDS)
 Implemented. Step inputs/outputs are persisted to `.goblin/run-<id>.json` after each step. The `--resume` CLI flag reloads the checkpoint and skips completed steps.
 
 ### Per-Step Model Selection
@@ -26,8 +26,9 @@ Add a `priority` column to the `tasks` table in `SwarmDB` and expose it in the `
 ### Swarm Agent Roles
 Allow swarm agents to declare a list of `roles` (e.g. `["backend", "database"]`) and allow tasks to specify a required `role`. The coordinator and agents would use this to assign and filter tasks by specialisation rather than relying entirely on agent names.
 
-### Hook Plugins from External Files
-Allow hook names in blueprints to reference hooks defined in external Python files (e.g. `hooks: {post_tool: ["./hooks/run_tests.py::run_tests"]}`). This would make hooks portable alongside workflow files without requiring users to modify the goblin package itself.
+### Generic Notifications system
+Currently relying on OpenHands' agent canvas for this. For POC that makes sense. If we want to make this useful for other people, we need a simple way to send messages for human-in-the-loop workflows and decision gates.
 
-### TUI Progress Dashboard
-A terminal UI (e.g. using `rich` or `textual`) that renders live step progress, agent turn counts, swarm task states, and hook output during workflow execution. Currently all feedback is interleaved `print()` output — a structured view would make long-running workflows much easier to monitor.
+### Cost tracking and spend limits
+Leverage OpenHands for this, but still needs to be implemented into the spec at PromptPhase and SwarmPhase agent and coordinator levels.
+
