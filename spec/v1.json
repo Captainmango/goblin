@@ -42,6 +42,7 @@
             }
           }
         },
+        "workspace": { "$ref": "#/definitions/workspace" },
         "phases": {
           "type": "array",
           "description": "Ordered list of phases to execute in the blueprint",
@@ -52,6 +53,44 @@
     }
   },
   "definitions": {
+    "workspace": {
+      "type": "object",
+      "description": "Workspace configuration for agent execution. Applies to all phases in the blueprint. Defaults to local filesystem if omitted.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["local", "remote"],
+          "description": "Workspace type. 'local' uses the host filesystem. 'remote' connects to an OpenHands agent server.",
+          "examples": ["local", "remote"]
+        },
+        "host": {
+          "type": "string",
+          "description": "Remote agent server URL. Required when type is 'remote'. Supports $VAR env var references and {variable} interpolation.",
+          "examples": ["https://agent-server.example.com", "http://localhost:3000"]
+        },
+        "working_dir": {
+          "type": "string",
+          "description": "Working directory for agent operations. For remote workspaces this is the path on the remote server. Supports {variable} interpolation.",
+          "examples": ["/workspace", ".", "{clone_dir}"]
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key for remote workspace authentication. Supports $VAR env var references.",
+          "examples": ["$REMOTE_API_KEY"]
+        },
+        "read_timeout": {
+          "type": "number",
+          "description": "HTTP read timeout in seconds for remote workspaces. Default: 600.",
+          "examples": [600, 1200]
+        },
+        "max_connections": {
+          "type": "integer",
+          "description": "Maximum HTTP connections for remote workspace client. Null means unlimited.",
+          "examples": [10, 100]
+        }
+      }
+    },
     "hooks": {
       "type": "object",
       "description": "Lifecycle hooks that run before or after tool calls. Set merge: true to append phase-level hooks to blueprint defaults rather than replacing them.",

@@ -7,7 +7,9 @@ from typing import Dict, Protocol, TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from openhands.sdk import Agent, LocalConversation, LocalWorkspace
+import asyncio
+
+from openhands.sdk import Agent, LocalConversation, LocalWorkspace, RemoteConversation, RemoteWorkspace
 from openhands.sdk.conversation import get_agent_final_response
 from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import LoadProjectStatus
@@ -91,26 +93,48 @@ class PromptPhase(PhaseProtocol):
             critic=None,
         )
 
-        conversation = LocalConversation(
-            agent=agent,
-            workspace=LocalWorkspace(working_dir=self._blueprint.project_path or "."),
-            hook_config=self._blueprint._build_hooks(self),
-            max_iteration_per_run=self.max_iterations or 500,
-            max_budget_per_run=self.max_cost,
-        )
-        conversation.send_message(prompt)
+        workspace = self._blueprint._get_workspace(context)
 
-        try:
-            await conversation.arun()
-            breaker.absorb(conversation)
-        except LimitExceeded as exc:
-            return {
-                "success": False,
-                "message": [f"Circuit breaker: {exc.reason} limit exceeded"],
-                "prompt": prompt,
-                "output": "",
-                "spend": exc.tracker,
-            }
+        if isinstance(workspace, RemoteWorkspace):
+            conversation = RemoteConversation(
+                agent=agent,
+                workspace=workspace,
+                hook_config=self._blueprint._build_hooks(self),
+                max_iteration_per_run=self.max_iterations or 500,
+                max_budget_per_run=self.max_cost,
+            )
+            conversation.send_message(prompt)
+            try:
+                await asyncio.to_thread(conversation.run)
+                breaker.absorb(conversation)
+            except LimitExceeded as exc:
+                return {
+                    "success": False,
+                    "message": [f"Circuit breaker: {exc.reason} limit exceeded"],
+                    "prompt": prompt,
+                    "output": "",
+                    "spend": exc.tracker,
+                }
+        else:
+            conversation = LocalConversation(
+                agent=agent,
+                workspace=workspace,
+                hook_config=self._blueprint._build_hooks(self),
+                max_iteration_per_run=self.max_iterations or 500,
+                max_budget_per_run=self.max_cost,
+            )
+            conversation.send_message(prompt)
+            try:
+                await conversation.arun()
+                breaker.absorb(conversation)
+            except LimitExceeded as exc:
+                return {
+                    "success": False,
+                    "message": [f"Circuit breaker: {exc.reason} limit exceeded"],
+                    "prompt": prompt,
+                    "output": "",
+                    "spend": exc.tracker,
+                }
 
         text = get_agent_final_response(conversation.state.events)
 

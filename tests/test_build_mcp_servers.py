@@ -117,7 +117,13 @@ class TestBuildMcpServersEnvResolution:
     def test_env_var_in_url(self, monkeypatch):
         monkeypatch.setenv("HOST", "example.com")
         bp = _make_blueprint(
-            [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"api": {"type": "http", "url": "https://${HOST}/mcp"}}}],
+            [
+                {
+                    "id": "s1",
+                    "prompt": "do stuff",
+                    "mcp_servers": {"api": {"type": "http", "url": "https://${HOST}/mcp"}},
+                }
+            ],
         )
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)

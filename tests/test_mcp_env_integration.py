@@ -7,7 +7,6 @@ that invalid $VAR (unbraced) syntax is rejected with a helpful message.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -258,6 +257,5 @@ class TestMcpReExpansionSafety:
 
         result = expanded["mcpServers"]["srv"]["env"]["SENSITIVE"]
         assert "${PATH}" in result, (
-            f"Expected nested ${'{PATH}'} to be preserved in resolved value; "
-            f"final value was {result!r}"
+            f"Expected nested ${'{PATH}'} to be preserved in resolved value; final value was {result!r}"
         )

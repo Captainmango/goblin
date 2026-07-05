@@ -9,7 +9,7 @@ import stat
 import textwrap
 from typing import TYPE_CHECKING, Dict
 
-from openhands.sdk import Agent, LocalConversation, LocalWorkspace
+from openhands.sdk import Agent, LocalConversation, RemoteConversation, RemoteWorkspace
 from openhands.sdk.conversation import get_agent_final_response
 from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
@@ -174,17 +174,32 @@ class SwarmPhase(PhaseProtocol):
             system_prompt=system_prompt,
             critic=None,
         )
-        conversation = LocalConversation(
-            agent=agent,
-            workspace=LocalWorkspace(working_dir=self._blueprint.project_path or "."),
-            hook_config=self._blueprint._build_hooks(self),
-            max_iteration_per_run=self.coordinator_config.get("max_iterations", 50),
-            max_budget_per_run=self.coordinator_config.get("max_cost"),
-            secrets={"SWARMDB_PATH": db_path},
-        )
-        conversation.send_message(prompt)
-        await conversation.arun()
-        breaker.absorb(conversation)
+        workspace = self._blueprint._get_workspace(context)
+
+        if isinstance(workspace, RemoteWorkspace):
+            conversation = RemoteConversation(
+                agent=agent,
+                workspace=workspace,
+                hook_config=self._blueprint._build_hooks(self),
+                max_iteration_per_run=self.coordinator_config.get("max_iterations", 50),
+                max_budget_per_run=self.coordinator_config.get("max_cost"),
+                secrets={"SWARMDB_PATH": db_path},
+            )
+            conversation.send_message(prompt)
+            await asyncio.to_thread(conversation.run)
+            breaker.absorb(conversation)
+        else:
+            conversation = LocalConversation(
+                agent=agent,
+                workspace=workspace,
+                hook_config=self._blueprint._build_hooks(self),
+                max_iteration_per_run=self.coordinator_config.get("max_iterations", 50),
+                max_budget_per_run=self.coordinator_config.get("max_cost"),
+                secrets={"SWARMDB_PATH": db_path},
+            )
+            conversation.send_message(prompt)
+            await conversation.arun()
+            breaker.absorb(conversation)
 
         text = get_agent_final_response(conversation.state.events)
         if not text:
@@ -244,17 +259,32 @@ class SwarmPhase(PhaseProtocol):
                 system_prompt=system_prompt,
                 critic=None,
             )
-            conversation = LocalConversation(
-                agent=agent,
-                workspace=LocalWorkspace(working_dir=self._blueprint.project_path or "."),
-                hook_config=hook_config,
-                max_iteration_per_run=agent_cfg.get("max_iterations", self.max_iterations or 100),
-                max_budget_per_run=agent_cfg.get("max_cost"),
-                secrets={"SWARMDB_PATH": db_path},
-            )
-            conversation.send_message(prompt)
-            await conversation.arun()
-            breaker.absorb(conversation)
+            workspace = self._blueprint._get_workspace(context)
+
+            if isinstance(workspace, RemoteWorkspace):
+                conversation = RemoteConversation(
+                    agent=agent,
+                    workspace=workspace,
+                    hook_config=hook_config,
+                    max_iteration_per_run=agent_cfg.get("max_iterations", self.max_iterations or 100),
+                    max_budget_per_run=agent_cfg.get("max_cost"),
+                    secrets={"SWARMDB_PATH": db_path},
+                )
+                conversation.send_message(prompt)
+                await asyncio.to_thread(conversation.run)
+                breaker.absorb(conversation)
+            else:
+                conversation = LocalConversation(
+                    agent=agent,
+                    workspace=workspace,
+                    hook_config=hook_config,
+                    max_iteration_per_run=agent_cfg.get("max_iterations", self.max_iterations or 100),
+                    max_budget_per_run=agent_cfg.get("max_cost"),
+                    secrets={"SWARMDB_PATH": db_path},
+                )
+                conversation.send_message(prompt)
+                await conversation.arun()
+                breaker.absorb(conversation)
 
             self._db.update_agent_status(name, AgentStatus.DONE)
             return get_agent_final_response(conversation.state.events) or ""

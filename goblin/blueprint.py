@@ -16,6 +16,7 @@ from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
 from goblin.phase import LoadProjectPhase, PromptPhase, PhaseProtocol
 from goblin.swarm import SwarmPhase
 from goblin.utils.jinja_helpers import filter_contains, filter_json_value
+from goblin.workspace import build_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,14 @@ class V1Blueprint(Blueprint):
         self.project_path: str | None = None
         self.project_refs: str = ""
         self.project_agents: dict[str, AgentDefinition] = {}
+
+        # Resolve blueprint-level workspace config (env vars + interpolation)
+        raw_workspace = spec.get("workspace")
+        self._workspace_config: dict | None = None
+        if raw_workspace is not None:
+            validate_env_var_syntax(raw_workspace)
+            self._workspace_config = cast(dict, resolve_env_vars(raw_workspace))
+
         self.phases: list[PhaseProtocol] = [self._parse_phase(s) for s in spec["phases"]]
         self._validate_history()
 
@@ -174,6 +183,15 @@ class V1Blueprint(Blueprint):
         if isinstance(obj, str):
             return obj.format(**context)
         return obj
+
+    def _get_workspace(self, context: dict):
+        """Return the workspace for this blueprint, applying context interpolation.
+
+        The workspace is built lazily so that {variable} interpolation can use
+        the runtime context (including vars from load_project and prior phases).
+        """
+        interpolated = self._interpolate_strings(self._workspace_config or {}, context)
+        return build_workspace(interpolated if interpolated else None, self.project_path)
 
     def _jinja_env(self) -> Environment:
         env = Environment()
