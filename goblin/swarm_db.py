@@ -28,6 +28,7 @@ class SwarmDB:
                 title TEXT NOT NULL,
                 description TEXT,
                 assigned_to TEXT,
+                required_role TEXT,
                 status TEXT NOT NULL DEFAULT 'pending',
                 result TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -63,6 +64,7 @@ class SwarmDB:
             CREATE TABLE IF NOT EXISTS agent_state (
                 name TEXT PRIMARY KEY,
                 status TEXT NOT NULL DEFAULT 'pending',
+                roles TEXT,
                 iterations INTEGER DEFAULT 0,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -127,15 +129,21 @@ class SwarmDB:
             )
         self._conn.commit()
 
-    def register_agent(self, name: str):
+    def register_agent(self, name: str, roles: list[str] | None = None):
+        import json
+
         self._conn.execute(
-            "INSERT OR IGNORE INTO agent_state (name, status) VALUES (?, ?)",
-            (name, AgentStatus.PENDING.value),
+            "INSERT OR IGNORE INTO agent_state (name, status, roles) VALUES (?, ?, ?)",
+            (name, AgentStatus.PENDING.value, json.dumps(roles) if roles else None),
         )
         self._conn.commit()
 
     def get_tasks(self) -> list[dict]:
         cursor = self._conn.execute("SELECT * FROM tasks")
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_pending_tasks(self) -> list[dict]:
+        cursor = self._conn.execute("SELECT * FROM tasks WHERE status = 'pending'")
         return [dict(row) for row in cursor.fetchall()]
 
     def get_artifacts(self) -> list[dict]:

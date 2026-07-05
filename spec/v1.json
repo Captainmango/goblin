@@ -508,6 +508,12 @@
           "type": "string",
           "description": "LLM model identifier for this worker agent. Overrides swarm phase-level model.",
           "examples": ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4", "openai/gpt-4o"]
+        },
+        "roles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of specialisation roles for this agent. Tasks can specify a required_role to be picked up only by agents with matching roles.",
+          "examples": [["backend", "database"]]
         }
       }
     }

@@ -129,7 +129,7 @@ class SwarmPhase(PhaseProtocol):
         self._db.init_schema()
 
         for agent_cfg in self.agents_config:
-            self._db.register_agent(agent_cfg["name"])
+            self._db.register_agent(agent_cfg["name"], agent_cfg.get("roles"))
 
         script_path = os.path.join(self._workspace, "swarmdb")
         with open(script_path, "w") as f:
@@ -142,8 +142,38 @@ class SwarmPhase(PhaseProtocol):
         lines = []
         for agent_cfg in self.agents_config:
             first_line = agent_cfg["prompt"].strip().split("\n")[0]
-            lines.append(f"- {agent_cfg['name']}: {first_line}")
+            roles = agent_cfg.get("roles")
+            roles_str = f" (roles: {', '.join(roles)})" if roles else ""
+            lines.append(f"- {agent_cfg['name']}{roles_str}: {first_line}")
         return "\n".join(lines)
+
+    def _get_agents_to_run(self) -> list[dict]:
+        assert self._db is not None
+        pending_tasks = self._db.get_pending_tasks()
+
+        if not pending_tasks:
+            return self.agents_config
+
+        agents_to_run = []
+        for agent_cfg in self.agents_config:
+            name = agent_cfg["name"]
+            roles = set(agent_cfg.get("roles", []))
+
+            for task in pending_tasks:
+                assigned_to = task.get("assigned_to")
+                required_role = task.get("required_role")
+
+                if assigned_to == name:
+                    agents_to_run.append(agent_cfg)
+                    break
+                elif required_role and required_role in roles:
+                    agents_to_run.append(agent_cfg)
+                    break
+                elif not required_role and not assigned_to:
+                    agents_to_run.append(agent_cfg)
+                    break
+
+        return agents_to_run
 
     async def _run_coordinator(self, context: dict, breaker: CircuitBreaker) -> dict:
         assert self._db is not None
@@ -298,9 +328,10 @@ class SwarmPhase(PhaseProtocol):
             return ""
 
     async def _run_agents(self, context: dict, breaker: CircuitBreaker):
+        agents_to_run = self._get_agents_to_run()
         async with asyncio.TaskGroup() as tg:
             tasks = []
-            for agent_cfg in self.agents_config:
+            for agent_cfg in agents_to_run:
                 t = tg.create_task(self._run_single_agent(agent_cfg, context, breaker))
                 tasks.append(t)
         return [t.result() for t in tasks]

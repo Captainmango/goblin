@@ -36,7 +36,7 @@ Commands:
 Only the tasks, artifacts, and signals tables are writable.
 
 Schema:
-- tasks (id, title, description, assigned_to, status, result, created_at, updated_at)
+- tasks (id, title, description, assigned_to, required_role, status, result, created_at, updated_at)
 - artifacts (id, task_id, agent, name, path, content, created_at)
 - signals (id, from_agent, to_agent, type, payload, created_at)
 
@@ -53,6 +53,9 @@ Your scratch space: {workspace}/agents/{agent_name}/
 - Register an artifact: `{workspace}/swarmdb execute "INSERT INTO artifacts (task_id, agent, name, path) VALUES (...)"`
 - Send a signal: `{workspace}/swarmdb execute "INSERT INTO signals (from_agent, to_agent, type, payload) VALUES (...)"`
 - Check for signals: `{workspace}/swarmdb query "SELECT * FROM signals WHERE to_agent='{agent_name}' OR to_agent IS NULL"`
+
+### Task Specialisation
+Tasks may specify `required_role`. Only claim tasks where `required_role` matches one of your roles, or where `required_role` is NULL. If a task is explicitly `assigned_to` another agent, do not claim it.
 
 When your assigned work is complete and you have no pending tasks, respond with your final status.
 """
@@ -79,12 +82,13 @@ Commands:
 Only the tasks, artifacts, and signals tables are writable.
 
 Schema:
-- tasks (id, title, description, assigned_to, status, result, created_at, updated_at)
+- tasks (id, title, description, assigned_to, required_role, status, result, created_at, updated_at)
 - artifacts (id, task_id, agent, name, path, content, created_at)
 - signals (id, from_agent, to_agent, type, payload, created_at)
 
 ### Conventions
-- Create a task: `{workspace}/swarmdb execute "INSERT INTO tasks (title, description, assigned_to, status) VALUES ('...', '...', '<agent_name>', 'pending')"`
+- Create a task assigned to a specific agent: `{workspace}/swarmdb execute "INSERT INTO tasks (title, description, assigned_to, status) VALUES ('...', '...', '<agent_name>', 'pending')"`
+- Create a task for a role: `{workspace}/swarmdb execute "INSERT INTO tasks (title, description, required_role, status) VALUES ('...', '...', '<role>', 'pending')"`
 - Check progress: `{workspace}/swarmdb query "SELECT * FROM tasks"`
 - Check artifacts: `{workspace}/swarmdb query "SELECT * FROM artifacts"`
 

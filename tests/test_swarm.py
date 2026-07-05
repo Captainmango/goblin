@@ -594,3 +594,193 @@ class TestBuildAgentRoster:
         assert "coder" in roster
         assert "tester" in roster
         assert "Implement assigned tasks." in roster
+
+    def test_roster_includes_roles(self):
+        raw = {
+            "id": "role_swarm",
+            "swarm": {
+                "goal": "Build a calculator",
+                "coordinator": {"prompt": "Break down the goal into tasks."},
+                "agents": [
+                    {"name": "coder", "prompt": "Implement assigned tasks.", "roles": ["backend", "database"]},
+                    {"name": "tester", "prompt": "Write tests for completed tasks."},
+                ],
+            },
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        roster = phase._build_agent_roster()
+        assert "coder" in roster
+        assert "(roles: backend, database)" in roster
+        assert "tester" in roster
+        assert "(roles:" not in roster.split("tester")[1]
+
+
+class TestSwarmAgentRolesParsing:
+    def test_parse_agent_with_roles(self):
+        raw = {
+            "id": "role_swarm",
+            "swarm": {
+                "goal": "Build a calculator",
+                "coordinator": {"prompt": "Break down the goal into tasks."},
+                "agents": [
+                    {"name": "coder", "prompt": "Implement.", "roles": ["backend", "database"]},
+                ],
+            },
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        assert phase.agents_config[0]["roles"] == ["backend", "database"]
+
+
+class TestSwarmDBRoles:
+    def test_register_agent_with_roles(self, tmp_path):
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        db.register_agent("coder", ["backend", "database"])
+        rows = db.query("SELECT * FROM agent_state WHERE name = 'coder'")
+        import json
+
+        assert json.loads(rows[0]["roles"]) == ["backend", "database"]
+        db.close()
+
+    def test_register_agent_without_roles(self, tmp_path):
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        db.register_agent("coder")
+        rows = db.query("SELECT * FROM agent_state WHERE name = 'coder'")
+        assert rows[0]["roles"] is None
+        db.close()
+
+    def test_tasks_table_has_required_role(self, tmp_path):
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        db.execute("INSERT INTO tasks (title, description, required_role, status) VALUES ('T1', 'd1', 'backend', 'pending')")
+        rows = db.query("SELECT * FROM tasks WHERE required_role = 'backend'")
+        assert len(rows) == 1
+        assert rows[0]["title"] == "T1"
+        db.close()
+
+    def test_get_pending_tasks(self, tmp_path):
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        db.execute("INSERT INTO tasks (title, status) VALUES ('T1', 'pending')")
+        db.execute("INSERT INTO tasks (title, status) VALUES ('T2', 'done')")
+        db.execute("INSERT INTO tasks (title, status) VALUES ('T3', 'pending')")
+        pending = db.get_pending_tasks()
+        assert len(pending) == 2
+        assert {t["title"] for t in pending} == {"T1", "T3"}
+        db.close()
+
+
+class TestSwarmPhaseAgentFiltering:
+    def test_get_agents_to_run_no_pending_tasks_runs_all(self, tmp_path):
+        raw = {
+            **MINIMAL_SWARM_RAW,
+            "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")},
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        agents = phase._get_agents_to_run()
+        assert len(agents) == 2
+        phase._db.close()
+
+    def test_get_agents_to_run_filters_by_required_role(self, tmp_path):
+        raw = {
+            "id": "role_swarm",
+            "swarm": {
+                "goal": "Build a calculator",
+                "coordinator": {"prompt": "Break down the goal into tasks."},
+                "workspace": str(tmp_path / "ws"),
+                "agents": [
+                    {"name": "backend_dev", "prompt": "Implement backend.", "roles": ["backend"]},
+                    {"name": "frontend_dev", "prompt": "Implement frontend.", "roles": ["frontend"]},
+                    {"name": "generalist", "prompt": "Help everywhere."},
+                ],
+            },
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, required_role, status) VALUES ('API', 'backend', 'pending')")
+        agents = phase._get_agents_to_run()
+        names = {a["name"] for a in agents}
+        assert names == {"backend_dev"}
+        phase._db.close()
+
+    def test_get_agents_to_run_filters_by_assigned_to(self, tmp_path):
+        raw = {
+            "id": "role_swarm",
+            "swarm": {
+                "goal": "Build a calculator",
+                "coordinator": {"prompt": "Break down the goal into tasks."},
+                "workspace": str(tmp_path / "ws"),
+                "agents": [
+                    {"name": "coder", "prompt": "Implement."},
+                    {"name": "tester", "prompt": "Write tests."},
+                ],
+            },
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, assigned_to, status) VALUES ('T1', 'tester', 'pending')")
+        agents = phase._get_agents_to_run()
+        names = {a["name"] for a in agents}
+        assert names == {"tester"}
+        phase._db.close()
+
+    def test_get_agents_to_run_general_tasks_run_all(self, tmp_path):
+        raw = {
+            "id": "role_swarm",
+            "swarm": {
+                "goal": "Build a calculator",
+                "coordinator": {"prompt": "Break down the goal into tasks."},
+                "workspace": str(tmp_path / "ws"),
+                "agents": [
+                    {"name": "coder", "prompt": "Implement.", "roles": ["backend"]},
+                    {"name": "tester", "prompt": "Write tests.", "roles": ["qa"]},
+                ],
+            },
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, status) VALUES ('T1', 'pending')")
+        agents = phase._get_agents_to_run()
+        names = {a["name"] for a in agents}
+        assert names == {"coder", "tester"}
+        phase._db.close()
+
+    def test_get_agents_to_run_mixed_tasks(self, tmp_path):
+        raw = {
+            "id": "role_swarm",
+            "swarm": {
+                "goal": "Build a calculator",
+                "coordinator": {"prompt": "Break down the goal into tasks."},
+                "workspace": str(tmp_path / "ws"),
+                "agents": [
+                    {"name": "backend_dev", "prompt": "Implement backend.", "roles": ["backend"]},
+                    {"name": "frontend_dev", "prompt": "Implement frontend.", "roles": ["frontend"]},
+                    {"name": "generalist", "prompt": "Help everywhere."},
+                ],
+            },
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, required_role, status) VALUES ('API', 'backend', 'pending')")
+        phase._db.execute("INSERT INTO tasks (title, status) VALUES ('Docs', 'pending')")
+        agents = phase._get_agents_to_run()
+        names = {a["name"] for a in agents}
+        # General tasks allow any agent to run; the backend task brings in backend_dev
+        assert names == {"backend_dev", "frontend_dev", "generalist"}
+        phase._db.close()

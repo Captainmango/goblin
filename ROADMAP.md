@@ -1,9 +1,10 @@
-# Goblin Roadmap
+# Goblin Roadmap to v1
 
-## Enhancements
+### CronScheduling tool
+Create a tool that allows an agent to schedule stuff in cron. The idea is that automations need to be push or pull, with push being easier to implement. Cron let's us do this on a schedule really easily so makes sense for V1
 
-### Swarm Agent Roles
-Allow swarm agents to declare a list of `roles` (e.g. `["backend", "database"]`) and allow tasks to specify a required `role`. The coordinator and agents would use this to assign and filter tasks by specialisation rather than relying entirely on agent names.
+### Slack tool
+Create a tool that allows bidirectional comms between the agent and user using Slack. This is fine for a POC, but probably needs more thought for the next step
 
-### Generic Notifications system
-Currently relying on OpenHands' agent canvas for this. For POC that makes sense. If we want to make this useful for other people, we need a simple way to send messages for human-in-the-loop workflows and decision gates.
+### Create a proper tool for the swarm db
+Currently the swarm db tool is a script emitted in the swarm folder. I'd like this to be a tool so that we can prepare for better toolsets passed to blueprints
