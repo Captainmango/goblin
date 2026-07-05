@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Dict
+from typing import Any
 
 # Only braced ${VAR} syntax is supported for MCP server config.
 _ENV_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -39,7 +39,7 @@ def validate_env_var_syntax(value):
     return
 
 
-def resolve_env_vars(value) -> Dict[str, Any]:
+def resolve_env_vars(value) -> Any:
     """Recursively resolve ${VAR} references from os.environ.
 
     Raises ValueError if a referenced environment variable is not set.

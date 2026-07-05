@@ -13,7 +13,7 @@ blueprint:
           - -y
           - "@modelcontextprotocol/server-github"
         env:
-          GITHUB_TOKEN: $GITHUB_TOKEN
+          GITHUB_TOKEN: ${GITHUB_TOKEN}
 
   phases:
     - id: clone_repo
@@ -21,6 +21,7 @@ blueprint:
       allowed_tools: [Bash]
       on_failure:
         action: abort
+      
     - id: load_project
       load_project: /tmp/justpark
     - id: list issues

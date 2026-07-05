@@ -5,6 +5,7 @@ import uuid
 import yaml
 from goblin.blueprint import Blueprint, V1Blueprint
 from goblin.checkpoint import Checkpoint
+from goblin.validation import format_errors, validate_blueprint
 
 logger = logging.getLogger(__name__)
 
@@ -13,10 +14,22 @@ BLUEPRINT_REGISTRY: dict[str, type] = {
 }
 
 
+def _raise_validation_error(blueprint_path: str, errors: list[dict]) -> None:
+    formatted = format_errors(errors)
+    raise ValueError(
+        f"Blueprint '{blueprint_path}' failed schema validation.\n"
+        f"Run 'goblin validate {blueprint_path}' for details.\n"
+        f"{formatted}"
+    )
+
+
 class BlueprintRunner:
     def __init__(self, blueprint_path: str, run_dir: str | None = None):
         with open(blueprint_path) as f:
             raw = yaml.safe_load(f)
+        errors = validate_blueprint(blueprint_path)
+        if errors:
+            _raise_validation_error(blueprint_path, errors)
         self.blueprint = self._load_blueprint(raw)
         self.blueprint_path = blueprint_path
         self._run_dir = run_dir or os.getcwd()
@@ -54,6 +67,10 @@ class BlueprintRunner:
 
         with open(blueprint_path) as f:
             raw = yaml.safe_load(f)
+
+        errors = validate_blueprint(blueprint_path)
+        if errors:
+            _raise_validation_error(blueprint_path, errors)
 
         runner = cls.__new__(cls)
         runner.blueprint = runner._load_blueprint(raw)

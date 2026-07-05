@@ -28,7 +28,3 @@ Allow swarm agents to declare a list of `roles` (e.g. `["backend", "database"]`)
 
 ### Generic Notifications system
 Currently relying on OpenHands' agent canvas for this. For POC that makes sense. If we want to make this useful for other people, we need a simple way to send messages for human-in-the-loop workflows and decision gates.
-
-### Cost tracking and spend limits
-Leverage OpenHands for this, but still needs to be implemented into the spec at PromptPhase and SwarmPhase agent and coordinator levels.
-

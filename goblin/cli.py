@@ -1,13 +1,25 @@
-from goblin.utils.click_helpers import JSON
+from __future__ import annotations
+
 import os
-import click
+import sys
 from typing import Any
+
+import click
 from dotenv import load_dotenv
-import asyncio
+
+from goblin.logging import configure_logging
 from goblin.runner import BlueprintRunner
+from goblin.utils.click_helpers import JSON
+from goblin.validation import format_errors, validate_blueprint
 
 
-@click.command()
+@click.group()
+def cli():
+    """GOBLIN — autonomous agent harness."""
+    pass
+
+
+@cli.command()
 @click.argument("blueprint_path", type=str, required=False, default=None)
 @click.option(
     "--context",
@@ -64,8 +76,6 @@ def run(
 ):
     load_dotenv()
 
-    from goblin.logging import configure_logging
-
     configure_logging(
         config_path=log_config or os.environ.get("GOBLIN_LOG_CONFIG"),
         log_level=log_level,
@@ -78,6 +88,8 @@ def run(
     if not resume and not blueprint_path:
         raise click.UsageError("Must specify either blueprint_path or --resume")
 
+    import asyncio
+
     if resume:
         asyncio.run(BlueprintRunner.resume(resume))
     else:
@@ -86,5 +98,24 @@ def run(
         asyncio.run(runner.run(context))
 
 
+@cli.command()
+@click.argument("blueprints", nargs=-1, required=True, type=click.Path(exists=True))
+def validate(blueprints: tuple[str, ...]):
+    """Validate one or more blueprint YAML files against the JSON Schema."""
+    all_valid = True
+
+    for path in blueprints:
+        errors = validate_blueprint(path)
+        if errors:
+            all_valid = False
+            click.echo(f"{path}: invalid")
+            click.echo(format_errors(errors))
+        else:
+            click.echo(f"{path}: valid")
+
+    if not all_valid:
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    run()
+    cli()

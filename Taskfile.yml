@@ -17,3 +17,8 @@ tasks:
     cmds:
       - uv run pyrefly check
     silent: true
+
+  validate:
+    cmds:
+      - uv run goblin validate blueprints/*.yaml
+    silent: true
