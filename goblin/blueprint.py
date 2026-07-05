@@ -453,7 +453,9 @@ class V1Blueprint(Blueprint):
         logger.error("Aborting blueprint", extra={"event": "phase.abort", "phase_id": phase.id})
         return False, phase_result
 
-    async def _run_single_phase(self, phase: PhaseProtocol, context: dict, results: dict, checkpoint: Checkpoint | None = None) -> dict | None:
+    async def _run_single_phase(
+        self, phase: PhaseProtocol, context: dict, results: dict, checkpoint: Checkpoint | None = None
+    ) -> dict | None:
         """Run a single phase including condition, foreach, history, checkpoint, and failure handling.
 
         Returns the phase result, or None if the phase was skipped (condition false or checkpoint already done).
@@ -579,10 +581,9 @@ class V1Blueprint(Blueprint):
 
         while pending and not self._failed_abort.is_set():
             ready = [
-                p for p in self.phases
-                if p.id in pending
-                and p.depends_on is not None
-                and all(dep in finished for dep in p.depends_on)
+                p
+                for p in self.phases
+                if p.id in pending and p.depends_on is not None and all(dep in finished for dep in p.depends_on)
             ]
 
             if not ready:
@@ -594,10 +595,9 @@ class V1Blueprint(Blueprint):
                 ready = [p for p in ready if isinstance(p, LoadProjectPhase)][:1]
 
             # Run all ready phases concurrently
-            wave_results = await asyncio.gather(*(
-                self._run_single_phase(p, context, results, checkpoint)
-                for p in ready
-            ))
+            wave_results = await asyncio.gather(
+                *(self._run_single_phase(p, context, results, checkpoint) for p in ready)
+            )
 
             for p, result in zip(ready, wave_results):
                 finished.add(p.id)

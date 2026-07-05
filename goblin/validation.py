@@ -31,19 +31,28 @@ def load_schema() -> dict[str, Any]:
     return _cached_schema
 
 
-def validate_blueprint(path: str) -> list[dict[str, Any]]:
+def validate_blueprint(path: str, raw: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Load a blueprint YAML file and validate it against the JSON Schema.
+
+    If *raw* is provided it is used directly (imports are assumed to already
+    be resolved).  Otherwise the file at *path* is loaded and imports are
+    resolved inline before schema validation.
 
     Returns a list of structured error dicts, each with:
       - path: JSON path to the offending field (e.g. "blueprint.phases[0].id")
       - message: human-readable error message
       - validator: the schema keyword that failed (e.g. "required", "type")
     """
-    with open(path) as f:
-        raw = yaml.safe_load(f)
-
     if raw is None:
-        return [{"path": "", "message": "File is empty or not valid YAML", "validator": "parse"}]
+        with open(path) as f:
+            raw = yaml.safe_load(f)
+
+        if raw is None:
+            return [{"path": "", "message": "File is empty or not valid YAML", "validator": "parse"}]
+
+        from goblin.import_resolver import resolve_imports
+
+        raw = resolve_imports(raw, os.path.dirname(path), os.path.dirname(path))
 
     validator = Draft7Validator(load_schema())
     errors: list[dict[str, Any]] = []

@@ -877,6 +877,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "filelock" },
     { name = "jinja2" },
     { name = "jsonschema" },
     { name = "openhands-sdk" },
@@ -898,6 +899,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.3.1" },
+    { name = "filelock", specifier = ">=3.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "jsonschema", specifier = ">=4.0" },
     { name = "openhands-sdk", specifier = ">=1.29.3" },

@@ -43,6 +43,28 @@
           }
         },
         "workspace": { "$ref": "#/definitions/workspace" },
+        "imports": {
+          "type": "array",
+          "description": "List of blueprints to import and merge inline before validation or execution",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Relative path to the blueprint file to import. Resolved relative to the importing blueprint's directory.",
+                "examples": ["./common/defaults.yaml", "./setup.yaml"]
+              },
+              "as": {
+                "type": "string",
+                "description": "Optional namespace prefix for imported phases. All phase IDs from the imported blueprint are prefixed with this value.",
+                "examples": ["common", "setup", "gh"]
+              }
+            }
+          },
+          "examples": [[{"path": "./common.yaml", "as": "common"}]]
+        },
         "phases": {
           "type": "array",
           "description": "Ordered list of phases to execute in the blueprint",

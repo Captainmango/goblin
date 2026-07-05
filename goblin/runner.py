@@ -5,6 +5,7 @@ import uuid
 import yaml
 from goblin.blueprint import Blueprint, V1Blueprint
 from goblin.checkpoint import Checkpoint
+from goblin.import_resolver import resolve_imports
 from goblin.validation import format_errors, validate_blueprint
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,9 @@ class BlueprintRunner:
     def __init__(self, blueprint_path: str, run_dir: str | None = None):
         with open(blueprint_path) as f:
             raw = yaml.safe_load(f)
-        errors = validate_blueprint(blueprint_path)
+        base_dir = os.path.dirname(os.path.abspath(blueprint_path))
+        raw = resolve_imports(raw, base_dir, base_dir)
+        errors = validate_blueprint(blueprint_path, raw=raw)
         if errors:
             _raise_validation_error(blueprint_path, errors)
         self.blueprint = self._load_blueprint(raw)
@@ -68,7 +71,9 @@ class BlueprintRunner:
         with open(blueprint_path) as f:
             raw = yaml.safe_load(f)
 
-        errors = validate_blueprint(blueprint_path)
+        base_dir = os.path.dirname(os.path.abspath(blueprint_path))
+        raw = resolve_imports(raw, base_dir, base_dir)
+        errors = validate_blueprint(blueprint_path, raw=raw)
         if errors:
             _raise_validation_error(blueprint_path, errors)
 
