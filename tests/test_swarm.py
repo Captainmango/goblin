@@ -35,12 +35,13 @@ def _make_blueprint_with_mock_phases(
 ) -> V1Blueprint:
     bp = _make_blueprint(phases_raw, vars, defaults)
     mock_phases = []
-    for raw in phases_raw:
+    for raw, real_phase in zip(phases_raw, bp.phases):
         phase = AsyncMock()
         phase.id = raw["id"]
         phase.condition = raw.get("condition")
         phase.foreach = raw.get("foreach")
         phase.on_failure = raw.get("on_failure")
+        phase.depends_on = real_phase.depends_on
         mock_phases.append(phase)
     bp.phases = mock_phases
     return bp

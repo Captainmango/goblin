@@ -299,6 +299,12 @@
           "description": "LLM model identifier for this phase. Overrides blueprint defaults.",
           "examples": ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4", "openai/gpt-4o"]
         },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Phase IDs that must finish before this phase starts. Omitted = sequential default.",
+          "examples": [["clone_repo"], ["lint", "test"]]
+        },
         "on_failure": {
           "type": "object",
           "description": "Behavior when this phase fails",

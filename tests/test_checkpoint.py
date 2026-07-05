@@ -204,3 +204,14 @@ class TestCheckpointConcurrency:
         assert data["phases"]["b"]["status"] == "completed"
         assert data["phases"]["c"]["status"] == "completed"
         assert await cp.completed_phase_ids() == {"a", "b", "c"}
+
+    @pytest.mark.asyncio
+    async def test_finished_phase_ids_includes_all_terminal_statuses(self, tmp_path):
+        cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
+        await cp.phase_started("a", {})
+        await cp.phase_completed("a", {"success": True})
+        await cp.phase_skipped("b")
+        await cp.phase_started("c", {})
+        await cp.phase_failed("c", {"success": False})
+
+        assert await cp.finished_phase_ids() == {"a", "b", "c"}

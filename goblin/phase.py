@@ -45,6 +45,7 @@ class PhaseProtocol(Protocol):
     condition: str | None
     foreach: str | None
     on_failure: dict | None
+    depends_on: list[str] | None
 
     async def run(self, context: dict) -> Dict: ...
 
@@ -64,6 +65,7 @@ class PromptPhase(PhaseProtocol):
         self.max_tokens: int | None = raw.get("max_tokens")
         self.max_cost: float | None = raw.get("max_cost")
         self.model: str | None = raw.get("model")
+        self.depends_on: list[str] | None = raw.get("depends_on")
         self._blueprint = blueprint
 
     async def run(self, context: dict) -> Dict:
@@ -189,6 +191,7 @@ class LoadProjectPhase(PhaseProtocol):
         self.condition: str | None = raw.get("condition")
         self.foreach: str | None = raw.get("foreach")
         self.on_failure: dict | None = raw.get("on_failure")
+        self.depends_on: list[str] | None = raw.get("depends_on")
         self._blueprint = blueprint
 
     async def run(self, context: dict) -> dict:

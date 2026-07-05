@@ -93,6 +93,7 @@ class SwarmPhase(PhaseProtocol):
         self.condition: str | None = raw.get("condition")
         self.foreach: str | None = raw.get("foreach")
         self.on_failure: dict | None = raw.get("on_failure")
+        self.depends_on: list[str] | None = raw.get("depends_on")
 
         swarm = raw["swarm"]
         self.goal: str = swarm["goal"]

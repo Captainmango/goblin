@@ -3,6 +3,7 @@ multi-phase sequencing, and on_failure handling (skip, retry, abort, notify)."""
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -31,12 +32,13 @@ def _make_blueprint_with_mock_phases(
 ) -> V1Blueprint:
     bp = _make_blueprint(phases_raw, vars, defaults)
     mock_phases = []
-    for raw in phases_raw:
+    for raw, real_phase in zip(phases_raw, bp.phases):
         phase = AsyncMock()
         phase.id = raw["id"]
         phase.condition = raw.get("condition")
         phase.foreach = raw.get("foreach")
         phase.on_failure = raw.get("on_failure")
+        phase.depends_on = real_phase.depends_on
         mock_phases.append(phase)
     bp.phases = mock_phases
     return bp
@@ -520,3 +522,183 @@ class TestRunNoSharedDefaultContext:
 
         assert results_first == results_second
         assert results_first is not results_second
+
+
+# ---------------------------------------------------------------------------
+# DAG validation
+# ---------------------------------------------------------------------------
+
+
+class TestValidateDependencies:
+    def test_cycle_detection_raises(self):
+        with pytest.raises(ValueError, match="Cycle detected"):
+            _make_blueprint(
+                [
+                    {"id": "a", "prompt": "go", "depends_on": ["b"]},
+                    {"id": "b", "prompt": "go", "depends_on": ["a"]},
+                ]
+            )
+
+    def test_missing_dependency_raises(self):
+        with pytest.raises(ValueError, match="dependency 'missing' does not exist"):
+            _make_blueprint(
+                [
+                    {"id": "a", "prompt": "go", "depends_on": ["missing"]},
+                ]
+            )
+
+    def test_self_dependency_raises(self):
+        with pytest.raises(ValueError, match="Cycle detected"):
+            _make_blueprint(
+                [
+                    {"id": "a", "prompt": "go", "depends_on": ["a"]},
+                ]
+            )
+
+
+# ---------------------------------------------------------------------------
+# Parallel execution
+# ---------------------------------------------------------------------------
+
+
+class TestRunParallelExecution:
+    @pytest.mark.asyncio
+    async def test_two_phases_run_concurrently(self):
+        started = [asyncio.Event(), asyncio.Event()]
+
+        async def run_a(ctx):
+            started[0].set()
+            await started[1].wait()
+            return {"success": True, "message": ["a done"]}
+
+        async def run_b(ctx):
+            started[1].set()
+            await started[0].wait()
+            return {"success": True, "message": ["b done"]}
+
+        bp = _make_blueprint_with_mock_phases(
+            [
+                {"id": "parent", "prompt": "go"},
+                {"id": "child_a", "prompt": "a", "depends_on": ["parent"]},
+                {"id": "child_b", "prompt": "b", "depends_on": ["parent"]},
+            ]
+        )
+        bp.phases[0].run.return_value = {"success": True}
+        bp.phases[1].run.side_effect = run_a
+        bp.phases[2].run.side_effect = run_b
+
+        results = await bp.run({})
+
+        assert bp.phases[1].run.called
+        assert bp.phases[2].run.called
+        assert results["child_a"]["success"] is True
+        assert results["child_b"]["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_dependency_chaining_waits_for_multiple_deps(self):
+        call_order = []
+
+        bp = _make_blueprint_with_mock_phases(
+            [
+                {"id": "a", "prompt": "first"},
+                {"id": "b", "prompt": "second", "depends_on": ["a"]},
+                {"id": "c", "prompt": "third", "depends_on": ["a", "b"]},
+            ]
+        )
+
+        for i, phase in enumerate(bp.phases):
+            phase.run.side_effect = lambda ctx, idx=i: call_order.append(idx) or {"success": True, "message": ["ok"]}
+
+        await bp.run({})
+
+        assert call_order == [0, 1, 2]
+
+
+# ---------------------------------------------------------------------------
+# Failure propagation in parallel
+# ---------------------------------------------------------------------------
+
+
+class TestRunParallelFailurePropagation:
+    @pytest.mark.asyncio
+    async def test_abort_stops_dependents_but_lets_siblings_finish(self):
+        bp = _make_blueprint_with_mock_phases(
+            [
+                {"id": "parent", "prompt": "go"},
+                {"id": "child_a", "prompt": "a", "depends_on": ["parent"]},
+                {"id": "child_b", "prompt": "b", "depends_on": ["parent"]},
+                {"id": "grandchild", "prompt": "c", "depends_on": ["child_a"]},
+            ]
+        )
+        bp.phases[0].run.return_value = {"success": True}
+
+        async def fail_after_yield(ctx):
+            await asyncio.sleep(0)
+            return {"success": False, "message": ["err"]}
+
+        bp.phases[1].run.side_effect = fail_after_yield
+        bp.phases[2].run.return_value = {"success": True}
+        bp.phases[3].run.return_value = {"success": True}
+
+        results = await bp.run({})
+
+        bp.phases[2].run.assert_called_once()
+        bp.phases[3].run.assert_not_called()
+        assert results["child_a"]["success"] is False
+        assert results["child_b"]["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_abort_event_stops_foreach_between_iterations(self):
+        bp = _make_blueprint_with_mock_phases(
+            [
+                {"id": "parent", "prompt": "go"},
+                {"id": "b", "prompt": "b {index}", "foreach": "5", "depends_on": ["parent"]},
+                {"id": "c", "prompt": "c", "depends_on": ["parent"]},
+            ]
+        )
+        bp.phases[0].run.return_value = {"success": True}
+
+        call_count = [0]
+
+        async def run_b(ctx):
+            call_count[0] += 1
+            await asyncio.sleep(0)  # yield so c can set abort between iterations
+            return {"success": True}
+
+        async def run_c(ctx):
+            # Fail immediately to set abort while b might be iterating
+            return {"success": False, "message": ["err"]}
+
+        bp.phases[1].run.side_effect = run_b
+        bp.phases[2].run.side_effect = run_c
+
+        await bp.run({})
+
+        # b should have started but stopped when abort was set
+        assert call_count[0] >= 1
+        assert call_count[0] < 5
+
+
+# ---------------------------------------------------------------------------
+# Immutable result safety
+# ---------------------------------------------------------------------------
+
+
+class TestRunImmutableResults:
+    @pytest.mark.asyncio
+    async def test_mutating_original_result_does_not_affect_results(self):
+        bp = _make_blueprint_with_mock_phases(
+            [
+                {"id": "parent", "prompt": "go"},
+                {"id": "child", "prompt": "do", "depends_on": ["parent"]},
+            ]
+        )
+        mutable = {"success": True, "items": [1]}
+        bp.phases[0].run.return_value = mutable
+        bp.phases[1].run.return_value = {"success": True}
+
+        results = await bp.run({})
+
+        assert results["parent"]["items"] == [1]
+        mutable["items"].append(2)
+        assert results["parent"]["items"] == [1]

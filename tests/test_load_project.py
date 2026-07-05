@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -182,3 +183,94 @@ class TestLoadProjectHooksFromSettings:
 
         assert "project_pre_tool" not in HOOK_REGISTRY
         assert "project_post_tool" not in HOOK_REGISTRY
+
+
+# ---------------------------------------------------------------------------
+# LoadProject DAG validation
+# ---------------------------------------------------------------------------
+
+
+class TestLoadProjectValidation:
+    def test_independent_load_project_phases_rejected(self):
+        with pytest.raises(ValueError, match="totally ordered"):
+            V1Blueprint(
+                {
+                    "name": "test_bp",
+                    "phases": [
+                        {"id": "load1", "load_project": "/path/1"},
+                        {"id": "load2", "load_project": "/path/2", "depends_on": []},
+                    ],
+                }
+            )
+
+    def test_load_project_phases_with_explicit_dep_allowed(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "phases": [
+                    {"id": "load1", "load_project": "/path/1"},
+                    {"id": "load2", "load_project": "/path/2", "depends_on": ["load1"]},
+                ],
+            }
+        )
+        assert bp.phases[0].depends_on == []
+        assert bp.phases[1].depends_on == ["load1"]
+
+
+# ---------------------------------------------------------------------------
+# LoadProject execution barrier
+# ---------------------------------------------------------------------------
+
+
+class TestLoadProjectBarrier:
+    @pytest.mark.asyncio
+    async def test_load_project_waits_for_running_prompt_phase(self):
+        from unittest.mock import AsyncMock
+
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "phases": [
+                    {"id": "prompt1", "prompt": "go"},
+                    {"id": "load1", "load_project": "/path", "depends_on": ["prompt1"]},
+                ],
+            }
+        )
+        # Replace with mocks but preserve depends_on
+        mock_phases = []
+        for real_phase in bp.phases:
+            phase = AsyncMock()
+            phase.id = real_phase.id
+            phase.condition = real_phase.condition
+            phase.foreach = real_phase.foreach
+            phase.on_failure = real_phase.on_failure
+            phase.depends_on = real_phase.depends_on
+            mock_phases.append(phase)
+        bp.phases = mock_phases
+
+        started = asyncio.Event()
+        finished = asyncio.Event()
+
+        async def slow_prompt(ctx):
+            started.set()
+            await finished.wait()
+            return {"success": True}
+
+        bp.phases[0].run.side_effect = slow_prompt
+        bp.phases[1].run.return_value = {"success": True}
+
+        async def runner():
+            results = await bp.run({})
+            return results
+
+        task = asyncio.create_task(runner())
+        await started.wait()
+
+        # At this point prompt1 is running. load1 should NOT have started yet
+        # because it depends on prompt1. But once prompt1 finishes, load1 runs.
+        assert bp.phases[1].run.call_count == 0
+        finished.set()
+        results = await task
+
+        bp.phases[1].run.assert_called_once()
+        assert results["load1"]["success"] is True

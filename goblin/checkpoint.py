@@ -88,6 +88,23 @@ class Checkpoint:
                 if phase_data["status"] == PhaseStatus.COMPLETED
             }
 
+    async def finished_phase_ids(self) -> set[str]:
+        """Return IDs of phases that are completed, skipped, or failed."""
+        async with self._lock:
+            return {
+                phase_id
+                for phase_id, phase_data in self._data["phases"].items()
+                if phase_data["status"] in (PhaseStatus.COMPLETED, PhaseStatus.SKIPPED, PhaseStatus.FAILED)
+            }
+
+    async def skipped_phase_ids(self) -> set[str]:
+        async with self._lock:
+            return {
+                phase_id
+                for phase_id, phase_data in self._data["phases"].items()
+                if phase_data["status"] == PhaseStatus.SKIPPED
+            }
+
     async def get_results(self) -> dict:
         async with self._lock:
             return {

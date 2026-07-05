@@ -33,6 +33,7 @@ def _make_blueprint_with_mock_phases(phases_raw: list[dict], vars: dict | None =
         phase.foreach = real_phase.foreach
         phase.on_failure = real_phase.on_failure
         phase.history = getattr(real_phase, "history", None)
+        phase.depends_on = real_phase.depends_on
         mock_phases.append(phase)
     bp.phases = mock_phases
     return bp
@@ -78,7 +79,7 @@ class TestValidateHistoryInvalid:
             )
 
     def test_reference_to_later_phase(self):
-        with pytest.raises(ValueError, match="not defined before this phase"):
+        with pytest.raises(ValueError, match="not in its dependency closure"):
             _make_blueprint(
                 [
                     {"id": "phase_a", "prompt": "do A", "history": ["phase_b"]},
@@ -116,6 +117,17 @@ class TestValidateHistoryInvalid:
         bp.phases[0].history = ["phase_b"]  # type: ignore[attr-defined]
         with pytest.raises(ValueError, match="only valid on prompt phases"):
             bp._validate_history()
+
+    def test_history_across_parallel_phases_rejected(self):
+        """A phase cannot reference history from a phase that could run in parallel."""
+        with pytest.raises(ValueError, match="not in its dependency closure"):
+            _make_blueprint(
+                [
+                    {"id": "parent", "prompt": "go"},
+                    {"id": "child_a", "prompt": "do A", "depends_on": ["parent"]},
+                    {"id": "child_b", "prompt": "do B", "depends_on": ["parent"], "history": ["child_a"]},
+                ]
+            )
 
 
 # ---------------------------------------------------------------------------
