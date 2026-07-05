@@ -145,7 +145,7 @@ class V1Blueprint(Blueprint):
 
         # The mcp library only forwards a minimal env (HOME, PATH, etc.) to stdio
         # subprocesses. Inject the full parent environment so MCP servers see the same
-        # tokens as goblin — matching Claude Code's behavior. Blueprint env: keys win.
+        # tokens as goblin — matching OpenHands' behavior. Blueprint env: keys win.
         parent_env = dict(os.environ)
         for server_config in interpolated.values():
             if isinstance(server_config, dict) and "command" in server_config:

@@ -15,7 +15,7 @@ Allow steps to declare an `output_schema` (JSON Schema fragment) that the runner
 Implemented. Step inputs/outputs are persisted to `.goblin/run-<id>.json` after each step. The `--resume` CLI flag reloads the checkpoint and skips completed steps.
 
 ### Per-Step Model Selection
-Allow blueprint authors to specify which Claude model a step runs against (e.g. `model: claude-opus-4-6` for critical steps, a faster model for lightweight ones). The spec and SDK options would need to carry this through.
+Allow blueprint authors to specify which model a step runs against (e.g. `model: anthropic/claude-opus-4-6` for critical steps, a faster model for lightweight ones). The spec and SDK options would need to carry this through.
 
 ### Blueprint Composition
 A top-level `import` or `include` directive that allows one blueprint to embed another as a sub-workflow. This would encourage reuse of common step sequences (clone repo, load project, run tests) across multiple workflow files without copy-paste.

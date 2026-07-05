@@ -78,7 +78,7 @@ Every step must have an `id` and exactly one of `prompt` or `load_project`. This
 
 ### Prompt Steps
 
-Runs a Claude agent with the given instruction.
+Runs an OpenHands agent with the given instruction.
 
 ```yaml
 - id: resolve_ticket

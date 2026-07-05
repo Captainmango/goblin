@@ -2,7 +2,7 @@
 
 ## Overview
 
-The swarm step type enables parallel agent execution within a single blueprint step. A team of concurrent Claude agents coordinates through a shared SQLite database and filesystem workspace to accomplish a high-level goal. A mandatory coordinator agent decomposes the goal into tasks, assigns them to worker agents, and evaluates completion across multiple rounds.
+The swarm step type enables parallel agent execution within a single blueprint step. A team of concurrent OpenHands agents coordinates through a shared SQLite database and filesystem workspace to accomplish a high-level goal. A mandatory coordinator agent decomposes the goal into tasks, assigns them to worker agents, and evaluates completion across multiple rounds.
 
 The swarm step is mutually exclusive with `prompt` and `load_project` — a step must have exactly one of the three.
 
@@ -311,7 +311,7 @@ async def run(self, context):
 2. Interpolate `{variable}` in the coordinator's prompt
 3. Ensure `Bash` is in the allowed tools list (needed for the `swarmdb` CLI)
 4. Build hooks and MCP servers via the blueprint
-5. Run the agent with `claude_agent_sdk.query()`, setting `env={"CLAUDECODE": "", "SWARMDB_PATH": "..."}` and optionally `cwd` to the project path
+5. Run the agent with the OpenHands SDK query method, setting `env={"SWARMDB_PATH": "..."}` and optionally `cwd` to the project path
 6. Parse the last text block as JSON. If it contains `"done": true`, the swarm proceeds to teardown. Otherwise, agents run.
 
 The coordinator prompt instructs it to:

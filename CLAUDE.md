@@ -1,6 +1,6 @@
 # Goblin
 
-Goblin is an autonomous coding agent harness that runs high-level definitions called **blueprints** (YAML files). The runner parses a blueprint, orchestrates phase execution via the Claude Agent SDK, and applies lifecycle hooks around tool calls.
+Goblin is an autonomous coding agent harness that runs high-level definitions called **blueprints** (YAML files). The runner parses a blueprint, orchestrates phase execution via the OpenHands SDK, and applies lifecycle hooks around tool calls.
 
 ## Project Layout
 
@@ -36,13 +36,13 @@ goblin/
 │   ├── test_parse_phase.py
 │   ├── test_run_orchestration.py
 │   └── test_swarm.py
-├── agents/                # Claude Code agents (symlinked into .claude/)
+├── agents/                # OpenHands agents (symlinked into .claude/)
 │   └── blueprint-maker.md
-├── commands/              # Claude Code commands (symlinked into .claude/)
+├── commands/              # OpenHands commands (symlinked into .claude/)
 │   └── run-blueprint.md
-├── references/            # Claude Code references (symlinked into .claude/)
+├── references/            # OpenHands references (symlinked into .claude/)
 │   └── blueprint_creation_guidance.md
-├── skills/                # Claude Code skills (symlinked into .claude/)
+├── skills/                # OpenHands skills (symlinked into .claude/)
 │   └── install/
 ├── blueprints/
 │   ├── test.yaml          # Example blueprint
@@ -58,7 +58,7 @@ goblin/
 - **Python 3.11+** — specified in `.python-version`
 - **uv** — package manager; use `uv run`, `uv add`, `uv sync` (never pip)
 - **Taskfile** — task runner; use `task lint`, `task format`, `task typecheck`
-- **claude-agent-sdk** — agent orchestration
+- **openhands** — agent orchestration
 - **click** — CLI framework
 - **jinja2** — template expressions in conditions and foreach
 - **pydantic** — response validation (PhaseResult model)
@@ -128,7 +128,7 @@ Phases are **prompt phases** (run an agent with a prompt), **load_project phases
 3. Hook resolution: phase-level hooks **override** (not merge) blueprint defaults
 4. Results stored as `results[phase_id]` and returned from `run()`
 5. External `context` dict is passed to `run()` by the caller and merged with blueprint `vars` for `{variable}` interpolation
-6. All agent calls set `env={"CLAUDECODE": ""}` to run in Claude Code mode
+6. All agent calls run through the OpenHands SDK
 
 **Key methods:**
 
@@ -166,7 +166,7 @@ def run_tests(tool_use):
     ...
 ```
 
-Hooks attach to `PreToolUse` and `PostToolUse` events on the Claude agent.
+Hooks attach to `PreToolUse` and `PostToolUse` events on the OpenHands agent.
 
 ### Logging (`goblin/logging.py`)
 
@@ -193,7 +193,7 @@ Users can supply a YAML config via `--log-config` or `GOBLIN_LOG_CONFIG` env var
 - MCP server secrets use `$VAR` / `${VAR}` syntax resolved from `os.environ` (loaded via `.env` / `load_dotenv()`)
 - All runtime messages use `logging.getLogger(__name__)`, never `print()`
 - Log calls include `extra={"event": "...", ...}` for structured context
-- **Plugin assets live at the project root, not in `.claude/`.** The top-level `agents/`, `commands/`, `references/`, and `skills/` directories are the source of truth for Claude Code plugin assets. The corresponding `.claude/` subdirectories are **symlinks** pointing to these outer folders — never edit or create files directly in `.claude/agents/`, `.claude/commands/`, `.claude/references/`, or `.claude/skills/`
+- **Plugin assets live at the project root, not in `.claude/`.** The top-level `agents/`, `commands/`, `references/`, and `skills/` directories are the source of truth for OpenHands plugin assets. The corresponding `.claude/` subdirectories are **symlinks** pointing to these outer folders — never edit or create files directly in `.claude/agents/`, `.claude/commands/`, `.claude/references/`, or `.claude/skills/`
 
 ## Commands
 

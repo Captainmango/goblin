@@ -17,7 +17,7 @@ Blueprint steps are fully isolated — each step launches a fresh agent session 
 
 ## Non-Goals
 
-- Session continuity or shared Claude Code sessions across steps. Each step is its own agent run.
+- Session continuity or shared OpenHands sessions across steps. Each step is its own agent run.
 - Replaying tool calls or making the agent believe it performed prior steps' work.
 - Real-time inter-step communication.
 - Conversation branching or tree structures.
@@ -41,7 +41,7 @@ Blueprint steps are fully isolated — each step launches a fresh agent session 
 The SDK's `query()` accepts `prompt: AsyncIterable[dict]` for streaming multiple user messages into a single CLI session. This was considered as a mechanism for history injection, but it doesn't fit:
 
 1. **Messages execute.** Each user message in the stream triggers a full agent turn — tool calls, reasoning, the works. Sending a prior step's prompt as message 1 would re-execute that step's work, paying full cost and time for work already done, with potentially different results.
-2. **Single set of options.** All messages in a stream share the same `ClaudeAgentOptions` — same `allowed_tools`, `hooks`, `system_prompt`. Steps with different tool permissions can't be combined.
+2. **Single set of options.** All messages in a stream share the same OpenHands agent options — same `allowed_tools`, `hooks`, `system_prompt`. Steps with different tool permissions can't be combined.
 3. **User messages only.** The format only supports `"type": "user"`. There's no way to inject a synthetic assistant response — you can only send user prompts and let the agent respond to each.
 4. **Unidirectional.** All messages are sent upfront, then all responses come back. You can't gate later messages on earlier results.
 
