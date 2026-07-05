@@ -105,7 +105,7 @@ class TestBuildMcpServersEnvResolution:
                 {
                     "id": "s1",
                     "prompt": "do stuff",
-                    "mcp_servers": {"gh": {"command": "npx", "env": {"TOKEN": "$MY_TOKEN"}}},
+                    "mcp_servers": {"gh": {"command": "npx", "env": {"TOKEN": "${MY_TOKEN}"}}},
                 }
             ],
         )
@@ -117,7 +117,7 @@ class TestBuildMcpServersEnvResolution:
     def test_env_var_in_url(self, monkeypatch):
         monkeypatch.setenv("HOST", "example.com")
         bp = _make_blueprint(
-            [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"api": {"type": "http", "url": "https://$HOST/mcp"}}}],
+            [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"api": {"type": "http", "url": "https://${HOST}/mcp"}}}],
         )
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)
@@ -132,7 +132,7 @@ class TestBuildMcpServersEnvResolution:
                     "id": "s1",
                     "prompt": "do stuff",
                     "mcp_servers": {
-                        "api": {"type": "http", "url": "https://x.co/mcp", "headers": {"Auth": "Bearer $KEY"}}
+                        "api": {"type": "http", "url": "https://x.co/mcp", "headers": {"Auth": "Bearer ${KEY}"}}
                     },
                 }
             ],
@@ -149,7 +149,7 @@ class TestBuildMcpServersEnvResolution:
                 {
                     "id": "s1",
                     "prompt": "do stuff",
-                    "mcp_servers": {"gh": {"command": "npx", "env": {"TOKEN": "$MISSING"}}},
+                    "mcp_servers": {"gh": {"command": "npx", "env": {"TOKEN": "${MISSING}"}}},
                 }
             ],
         )
@@ -197,7 +197,7 @@ class TestBuildMcpServersContextInterpolation:
                     "id": "s1",
                     "prompt": "do stuff",
                     "mcp_servers": {
-                        "api": {"type": "http", "url": "https://{host}/mcp", "headers": {"Auth": "Bearer $TOKEN"}}
+                        "api": {"type": "http", "url": "https://{host}/mcp", "headers": {"Auth": "Bearer ${TOKEN}"}}
                     },
                 }
             ],
@@ -232,7 +232,7 @@ class TestBuildMcpServersParentEnvForwarding:
                 {
                     "id": "s1",
                     "prompt": "do stuff",
-                    "mcp_servers": {"gh": {"command": "npx", "env": {"GITHUB_TOKEN": "$GITHUB_TOKEN"}}},
+                    "mcp_servers": {"gh": {"command": "npx", "env": {"GITHUB_TOKEN": "${GITHUB_TOKEN}"}}},
                 }
             ],
         )

@@ -12,7 +12,7 @@ from openhands.sdk.subagent import AgentDefinition
 from goblin.checkpoint import Checkpoint
 from goblin.enums import FailureAction
 from goblin.hooks import HOOK_REGISTRY, register_hook
-from goblin.utils.env import resolve_env_vars
+from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
 from goblin.phase import LoadProjectPhase, PromptPhase, PhaseProtocol
 from goblin.swarm import SwarmPhase
 from goblin.utils.jinja_helpers import filter_contains, filter_json_value
@@ -150,6 +150,7 @@ class V1Blueprint(Blueprint):
         merged = {**defaults, **phase_servers}
         if not merged:
             return {}
+        validate_env_var_syntax(merged)
         resolved = resolve_env_vars(merged)
         interpolated = cast(dict, self._interpolate_strings(resolved, context))
 
