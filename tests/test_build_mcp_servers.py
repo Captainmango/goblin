@@ -244,7 +244,13 @@ class TestBuildMcpServersParentEnvForwarding:
     def test_http_server_does_not_get_parent_env(self, monkeypatch):
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
         bp = _make_blueprint(
-            [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"api": {"type": "http", "url": "https://example.com/mcp"}}}],
+            [
+                {
+                    "id": "s1",
+                    "prompt": "do stuff",
+                    "mcp_servers": {"api": {"type": "http", "url": "https://example.com/mcp"}},
+                }
+            ],
         )
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Dict
 
 from openhands.sdk import Agent, LocalConversation, LocalWorkspace
 from openhands.sdk.conversation import get_agent_final_response
+from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDINATOR_PROMPT
 from goblin.phase import PhaseProtocol, _extract_json
@@ -100,6 +101,8 @@ class SwarmPhase(PhaseProtocol):
         self.agents_config: list[dict] = swarm["agents"]
         self.max_rounds: int = swarm.get("max_rounds", 5)
         self.max_iterations: int = swarm.get("max_iterations", 100)
+        self.max_tokens: int | None = swarm.get("max_tokens")
+        self.max_cost: float | None = swarm.get("max_cost")
         self.timeout: int | None = swarm.get("timeout")
         self.cleanup: CleanupPolicy = CleanupPolicy(swarm.get("cleanup", "on_success"))
         self.hooks_config: dict = raw.get("hooks", {})
@@ -140,7 +143,7 @@ class SwarmPhase(PhaseProtocol):
             lines.append(f"- {agent_cfg['name']}: {first_line}")
         return "\n".join(lines)
 
-    async def _run_coordinator(self, context: dict) -> dict:
+    async def _run_coordinator(self, context: dict, breaker: CircuitBreaker) -> dict:
         assert self._db is not None
         agent_roster = self._build_agent_roster()
 
@@ -173,10 +176,13 @@ class SwarmPhase(PhaseProtocol):
             agent=agent,
             workspace=LocalWorkspace(working_dir=self._blueprint.project_path or "."),
             hook_config=self._blueprint._build_hooks(self),
+            max_iteration_per_run=self.coordinator_config.get("max_iterations", 50),
+            max_budget_per_run=self.coordinator_config.get("max_cost"),
             secrets={"SWARMDB_PATH": db_path},
         )
         conversation.send_message(prompt)
         await conversation.arun()
+        breaker.absorb(conversation)
 
         text = get_agent_final_response(conversation.state.events)
         if not text:
@@ -187,7 +193,7 @@ class SwarmPhase(PhaseProtocol):
         except (json.JSONDecodeError, ValueError):
             return {"done": False, "message": [text]}
 
-    async def _run_single_agent(self, agent_cfg: dict, context: dict):
+    async def _run_single_agent(self, agent_cfg: dict, context: dict, breaker: CircuitBreaker):
         assert self._db is not None
         name = agent_cfg["name"]
         self._db.update_agent_status(name, AgentStatus.RUNNING)
@@ -233,35 +239,39 @@ class SwarmPhase(PhaseProtocol):
                 tools=resolve_tools(agent_tools),
                 mcp_config=mcp_config,
                 system_prompt=system_prompt,
-                critic=None
+                critic=None,
             )
             conversation = LocalConversation(
                 agent=agent,
                 workspace=LocalWorkspace(working_dir=self._blueprint.project_path or "."),
                 hook_config=hook_config,
-                max_iteration_per_run=self.max_iterations,
+                max_iteration_per_run=agent_cfg.get("max_iterations", self.max_iterations or 100),
+                max_budget_per_run=agent_cfg.get("max_cost"),
                 secrets={"SWARMDB_PATH": db_path},
             )
             conversation.send_message(prompt)
             await conversation.arun()
+            breaker.absorb(conversation)
 
             self._db.update_agent_status(name, AgentStatus.DONE)
             return get_agent_final_response(conversation.state.events) or ""
 
+        except LimitExceeded:
+            raise
         except Exception as e:
             self._db.update_agent_status(name, AgentStatus.FAILED)
             logger.error("Swarm agent failed", extra={"event": "swarm.agent_failed", "agent": name, "error": str(e)})
             return ""
 
-    async def _run_agents(self, context: dict):
+    async def _run_agents(self, context: dict, breaker: CircuitBreaker):
         async with asyncio.TaskGroup() as tg:
             tasks = []
             for agent_cfg in self.agents_config:
-                t = tg.create_task(self._run_single_agent(agent_cfg, context))
+                t = tg.create_task(self._run_single_agent(agent_cfg, context, breaker))
                 tasks.append(t)
         return [t.result() for t in tasks]
 
-    def _teardown(self) -> dict:
+    def _teardown(self, spend=None) -> dict:
         assert self._db is not None
         tasks = self._db.get_tasks()
         artifacts = self._db.get_artifacts()
@@ -278,6 +288,7 @@ class SwarmPhase(PhaseProtocol):
             "message": messages if messages else ["Swarm completed"],
             "tasks": tasks,
             "artifacts": artifacts,
+            "spend": spend,
         }
 
         self._db.close()
@@ -296,41 +307,55 @@ class SwarmPhase(PhaseProtocol):
         self._setup(context)
         assert self._db is not None
 
+        breaker = CircuitBreaker(
+            max_iterations=self.max_iterations,
+            max_tokens=self.max_tokens,
+            max_cost=self.max_cost,
+        )
+
         deadline = None
         if self.timeout:
             deadline = asyncio.get_running_loop().time() + self.timeout
 
-        while True:
-            state = self._db.get_state()
+        try:
+            while True:
+                state = self._db.get_state()
 
-            if deadline is not None and asyncio.get_running_loop().time() > deadline:
-                self._db.transition(SwarmState.TEARDOWN)
-                continue
+                if deadline is not None and asyncio.get_running_loop().time() > deadline:
+                    self._db.transition(SwarmState.TEARDOWN)
+                    continue
 
-            match state:
-                case SwarmState.SETUP:
-                    self._db.transition(SwarmState.COORDINATOR)
-
-                case SwarmState.COORDINATOR:
-                    result = await self._run_coordinator(context)
-                    if result.get("done"):
-                        self._db.transition(SwarmState.TEARDOWN)
-                    else:
-                        self._db.transition(SwarmState.AGENTS_RUNNING)
-
-                case SwarmState.AGENTS_RUNNING:
-                    await self._run_agents(context)
-                    self._db.transition(SwarmState.EVALUATING)
-
-                case SwarmState.EVALUATING:
-                    round_num = self._db.increment_round()
-                    if round_num >= self.max_rounds:
-                        self._db.transition(SwarmState.TEARDOWN)
-                    else:
+                match state:
+                    case SwarmState.SETUP:
                         self._db.transition(SwarmState.COORDINATOR)
 
-                case SwarmState.PAUSED:
-                    return {"success": False, "message": ["Swarm paused"], "paused": True}
+                    case SwarmState.COORDINATOR:
+                        result = await self._run_coordinator(context, breaker)
+                        if result.get("done"):
+                            self._db.transition(SwarmState.TEARDOWN)
+                        else:
+                            self._db.transition(SwarmState.AGENTS_RUNNING)
 
-                case SwarmState.TEARDOWN:
-                    return self._teardown()
+                    case SwarmState.AGENTS_RUNNING:
+                        await self._run_agents(context, breaker)
+                        self._db.transition(SwarmState.EVALUATING)
+
+                    case SwarmState.EVALUATING:
+                        round_num = self._db.increment_round()
+                        if round_num >= self.max_rounds:
+                            self._db.transition(SwarmState.TEARDOWN)
+                        else:
+                            self._db.transition(SwarmState.COORDINATOR)
+
+                    case SwarmState.PAUSED:
+                        return {"success": False, "message": ["Swarm paused"], "paused": True, "spend": breaker.tracker}
+
+                    case SwarmState.TEARDOWN:
+                        return self._teardown(spend=breaker.tracker)
+        except LimitExceeded as exc:
+            self._db.transition(SwarmState.TEARDOWN)
+            result = self._teardown(spend=exc.tracker)
+            result["success"] = False
+            result["message"].append(f"Circuit breaker: {exc.reason} limit exceeded")
+            result["spend"] = exc.tracker
+            return result

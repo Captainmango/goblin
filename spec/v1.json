@@ -229,6 +229,24 @@
           "items": { "type": "string" },
           "examples": [["phase_one"], ["analyze", "plan"]]
         },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum LLM turns for this phase. Default: 500 for prompt phases, 100 for swarm agents.",
+          "examples": [20, 50, 100]
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum cumulative prompt + completion tokens for this phase. Null means unlimited.",
+          "examples": [50000, 100000]
+        },
+        "max_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum cumulative cost in a given currency for the model used in this phase. Null means unlimited.",
+          "examples": [0.5, 1.0, 5.0]
+        },
         "swarm": { "$ref": "#/definitions/swarm" },
         "hooks": { "$ref": "#/definitions/hooks" },
         "mcp_servers": { "$ref": "#/definitions/mcpServers" },
@@ -290,8 +308,20 @@
         "max_iterations": {
           "type": "integer",
           "minimum": 1,
-          "description": "Maximum turns per agent per round. Default: 100",
+          "description": "Swarm-wide default maximum LLM turns per agent run. Used when an agent does not declare its own max_iterations. Default: 100",
           "examples": [50, 100]
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Swarm-wide total token budget (prompt + completion). Null means unlimited.",
+          "examples": [500000]
+        },
+        "max_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Swarm-wide total cost budget in USD. Null means unlimited.",
+          "examples": [5.0]
         },
         "timeout": {
           "type": "integer",
@@ -323,6 +353,24 @@
           "items": { "type": "string" },
           "description": "Tool whitelist for the coordinator agent",
           "examples": [["Read", "Write"]]
+        },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum LLM turns for a single coordinator run. Default: 50",
+          "examples": [10, 20]
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum tokens for a single coordinator run. Null means unlimited.",
+          "examples": [20000]
+        },
+        "max_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum cost in USD for a single coordinator run. Null means unlimited.",
+          "examples": [0.25]
         }
       }
     },
@@ -349,7 +397,25 @@
           "examples": [["Bash", "Read", "Write", "Edit"]]
         },
         "hooks": { "$ref": "#/definitions/hooks" },
-        "mcp_servers": { "$ref": "#/definitions/mcpServers" }
+        "mcp_servers": { "$ref": "#/definitions/mcpServers" },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum LLM turns for a single agent run. Defaults to swarm-level max_iterations.",
+          "examples": [50, 100]
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum tokens for a single agent run. Null means unlimited.",
+          "examples": [100000]
+        },
+        "max_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum cost in USD for a single agent run. Null means unlimited.",
+          "examples": [1.0]
+        }
       }
     }
   }

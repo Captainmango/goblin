@@ -63,11 +63,9 @@ def build_tool_filter_regex(names: list[str]) -> str | None:
     if not mcp_patterns:
         return None
 
-    builtin_names = sorted({
-        TOOL_NAME_MAP.get(n, Tool(name=n)).name
-        for n in names
-        if not n.startswith("mcp__") and "*" not in n
-    })
+    builtin_names = sorted(
+        {TOOL_NAME_MAP.get(n, Tool(name=n)).name for n in names if not n.startswith("mcp__") and "*" not in n}
+    )
     mcp_fragments = [_mcp_pattern_to_regex(p) for p in mcp_patterns]
 
     all_fragments = builtin_names + mcp_fragments

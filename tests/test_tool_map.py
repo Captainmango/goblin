@@ -95,6 +95,7 @@ class TestBuildToolFilterRegex:
         regex = build_tool_filter_regex(["mcp__github__list_issues"])
         assert regex is not None
         import re
+
         pattern = re.compile(regex)
         assert pattern.match("list_issues")
         assert not pattern.match("create_issue")
@@ -103,6 +104,7 @@ class TestBuildToolFilterRegex:
         regex = build_tool_filter_regex(["mcp__github__*"])
         assert regex is not None
         import re
+
         pattern = re.compile(regex)
         assert pattern.match("list_issues")
         assert pattern.match("create_pull_request")
@@ -112,6 +114,7 @@ class TestBuildToolFilterRegex:
         regex = build_tool_filter_regex(["Bash", "mcp__github__list_issues"])
         assert regex is not None
         import re
+
         pattern = re.compile(regex)
         assert pattern.match(TerminalTool.name)
         assert pattern.match("list_issues")
@@ -122,6 +125,7 @@ class TestBuildToolFilterRegex:
         regex = build_tool_filter_regex(["mcp__github__list_issues", "mcp__github__create_issue"])
         assert regex is not None
         import re
+
         pattern = re.compile(regex)
         assert pattern.match("list_issues")
         assert pattern.match("create_issue")
@@ -131,6 +135,7 @@ class TestBuildToolFilterRegex:
         regex = build_tool_filter_regex(["mcp__github__list_issues", "mcp__linear__create_issue"])
         assert regex is not None
         import re
+
         pattern = re.compile(regex)
         assert pattern.match("list_issues")
         assert pattern.match("create_issue")

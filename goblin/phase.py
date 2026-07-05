@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from openhands.sdk import Agent, LocalConversation, LocalWorkspace
 from openhands.sdk.conversation import get_agent_final_response
+from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import LoadProjectStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, JSON_REPAIR_PROMPT
 from goblin.utils.llm import build_llm
@@ -57,6 +58,9 @@ class PromptPhase(PhaseProtocol):
         self.on_failure: dict | None = raw.get("on_failure")
         self.mcp_servers_config: dict | None = raw.get("mcp_servers")
         self.history: list[str] | None = raw.get("history")
+        self.max_iterations: int | None = raw.get("max_iterations")
+        self.max_tokens: int | None = raw.get("max_tokens")
+        self.max_cost: float | None = raw.get("max_cost")
         self._blueprint = blueprint
 
     async def run(self, context: dict) -> Dict:
@@ -70,6 +74,12 @@ class PromptPhase(PhaseProtocol):
         if self._blueprint.project_refs:
             system_prompt = system_prompt + "\n\n" + self._blueprint.project_refs
 
+        breaker = CircuitBreaker(
+            max_iterations=self.max_iterations,
+            max_tokens=self.max_tokens,
+            max_cost=self.max_cost,
+        )
+
         llm = build_llm()
         agent = Agent(
             llm=llm,
@@ -77,24 +87,43 @@ class PromptPhase(PhaseProtocol):
             mcp_config=self._blueprint._build_mcp_servers(self, context),
             system_prompt=system_prompt,
             filter_tools_regex=build_tool_filter_regex(self.allowed_tools),
-            critic=None
+            critic=None,
         )
 
         conversation = LocalConversation(
             agent=agent,
             workspace=LocalWorkspace(working_dir=self._blueprint.project_path or "."),
             hook_config=self._blueprint._build_hooks(self),
+            max_iteration_per_run=self.max_iterations or 500,
+            max_budget_per_run=self.max_cost,
         )
         conversation.send_message(prompt)
-        await conversation.arun()
+
+        try:
+            await conversation.arun()
+            breaker.absorb(conversation)
+        except LimitExceeded as exc:
+            return {
+                "success": False,
+                "message": [f"Circuit breaker: {exc.reason} limit exceeded"],
+                "prompt": prompt,
+                "output": "",
+                "spend": exc.tracker,
+            }
 
         text = get_agent_final_response(conversation.state.events)
 
         if not text:
-            return {"success": False, "message": ["Agent produced no text output"], "prompt": prompt, "output": ""}
+            return {
+                "success": False,
+                "message": ["Agent produced no text output"],
+                "prompt": prompt,
+                "output": "",
+                "spend": breaker.tracker,
+            }
 
         parsed = await self._parse_response(text)
-        return {**parsed, "prompt": prompt, "output": text}
+        return {**parsed, "prompt": prompt, "output": text, "spend": breaker.tracker}
 
     async def _parse_response(self, text: str, retries: int = MAX_PARSE_RETRIES) -> Dict:
         """Parse agent response JSON, retrying with a repair prompt on failure."""
