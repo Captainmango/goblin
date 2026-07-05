@@ -107,6 +107,7 @@ class SwarmPhase(PhaseProtocol):
         self.cleanup: CleanupPolicy = CleanupPolicy(swarm.get("cleanup", "on_success"))
         self.hooks_config: dict = raw.get("hooks", {})
         self.mcp_servers_config: dict | None = raw.get("mcp_servers")
+        self.model: str | None = raw.get("model")
 
         self._blueprint = blueprint
         self._db: SwarmDB | None = None
@@ -164,7 +165,8 @@ class SwarmPhase(PhaseProtocol):
         mcp_config = self._blueprint._build_mcp_servers(self, context)
 
         db_path = os.path.join(self._workspace, "swarm.db")
-        llm = build_llm()
+        coordinator_model = self.coordinator_config.get("model") or self._blueprint._resolve_model(self)
+        llm = build_llm(model=coordinator_model)
         agent = Agent(
             llm=llm,
             tools=resolve_tools(coordinator_tools),
@@ -233,7 +235,8 @@ class SwarmPhase(PhaseProtocol):
                 mcp_config["mcpServers"] = existing
 
             db_path = os.path.join(self._workspace, "swarm.db")
-            llm = build_llm()
+            agent_model = agent_cfg.get("model") or self._blueprint._resolve_model(self)
+            llm = build_llm(model=agent_model)
             agent = Agent(
                 llm=llm,
                 tools=resolve_tools(agent_tools),

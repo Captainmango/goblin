@@ -34,7 +34,12 @@
           "additionalProperties": false,
           "properties": {
             "hooks": { "$ref": "#/definitions/hooks" },
-            "mcp_servers": { "$ref": "#/definitions/mcpServers" }
+            "mcp_servers": { "$ref": "#/definitions/mcpServers" },
+            "model": {
+              "type": "string",
+              "description": "Default LLM model identifier for all phases in this blueprint. Phase-level model overrides this.",
+              "examples": ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4", "openai/gpt-4o"]
+            }
           }
         },
         "phases": {
@@ -250,6 +255,11 @@
         "swarm": { "$ref": "#/definitions/swarm" },
         "hooks": { "$ref": "#/definitions/hooks" },
         "mcp_servers": { "$ref": "#/definitions/mcpServers" },
+        "model": {
+          "type": "string",
+          "description": "LLM model identifier for this phase. Overrides blueprint defaults.",
+          "examples": ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4", "openai/gpt-4o"]
+        },
         "on_failure": {
           "type": "object",
           "description": "Behavior when this phase fails",
@@ -371,6 +381,11 @@
           "minimum": 0,
           "description": "Maximum cost in USD for a single coordinator run. Null means unlimited.",
           "examples": [0.25]
+        },
+        "model": {
+          "type": "string",
+          "description": "LLM model identifier for the coordinator agent. Overrides swarm phase-level model.",
+          "examples": ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4", "openai/gpt-4o"]
         }
       }
     },
@@ -415,6 +430,11 @@
           "minimum": 0,
           "description": "Maximum cost in USD for a single agent run. Null means unlimited.",
           "examples": [1.0]
+        },
+        "model": {
+          "type": "string",
+          "description": "LLM model identifier for this worker agent. Overrides swarm phase-level model.",
+          "examples": ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4", "openai/gpt-4o"]
         }
       }
     }

@@ -100,6 +100,16 @@ class V1Blueprint(Blueprint):
 
         return "## Prior Phase Results\n\n" + "\n".join(sections) + "\n---\n\n"
 
+    def _resolve_model(self, phase: PhaseProtocol) -> str | None:
+        """Return the effective model for a phase.
+
+        Precedence: phase > blueprint defaults > None (falls back to hardcoded default).
+        """
+        phase_model = getattr(phase, "model", None)
+        if phase_model is not None:
+            return phase_model
+        return self.spec.get("defaults", {}).get("model")
+
     def _build_hooks(self, phase: HookablePhase) -> HookConfig | None:
         defaults = self.spec.get("defaults", {}).get("hooks", {})
         phase_hooks = phase.hooks_config
