@@ -2,20 +2,8 @@
 
 ## Enhancements
 
-### Blueprint Schema Validation at Load Time
-`BlueprintRunner` currently loads and runs blueprints without validating them against `spec/v1.json`. Adding `jsonschema` validation at load time would surface authoring errors (unknown fields, wrong types, missing required keys) immediately with clear messages instead of cryptic runtime failures.
-
-### Dry-Run Mode
-A `--dry-run` CLI flag that parses and validates the blueprint, resolves foreach and condition expressions against an empty results dict, and prints a preview of which steps would execute and in what order — without invoking any agents.
-
 ### Structured Step Output Schema
 Allow steps to declare an `output_schema` (JSON Schema fragment) that the runner validates the agent's response against. This would make data flow between steps explicit and catch mis-shaped outputs early rather than letting a bad value silently propagate.
-
-### Resume / Checkpointing (REVIEW THIS WITH OPENHANDS)
-Implemented. Step inputs/outputs are persisted to `.goblin/run-<id>.json` after each step. The `--resume` CLI flag reloads the checkpoint and skips completed steps.
-
-### Per-Step Model Selection
-Allow blueprint authors to specify which model a step runs against (e.g. `model: anthropic/claude-opus-4-6` for critical steps, a faster model for lightweight ones). The spec and SDK options would need to carry this through.
 
 ### Blueprint Composition
 A top-level `import` or `include` directive that allows one blueprint to embed another as a sub-workflow. This would encourage reuse of common step sequences (clone repo, load project, run tests) across multiple workflow files without copy-paste.

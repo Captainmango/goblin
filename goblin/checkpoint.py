@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from datetime import datetime, timezone
+
+from filelock import FileLock, Timeout
 
 from goblin.enums import RunStatus, PhaseStatus
 
@@ -20,75 +23,89 @@ class Checkpoint:
             "status": RunStatus.IN_PROGRESS,
             "phases": {},
         }
+        self._lock = asyncio.Lock()
+        self._file_lock_path = self._path + ".lock"
+        self._file_lock_timeout = 30.0
         self._flush()
 
-    def phase_started(self, phase_id: str, input_data: dict) -> None:
-        self._data["phases"][phase_id] = {
-            "status": PhaseStatus.RUNNING,
-            "input": input_data,
-            "output": None,
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "completed_at": None,
-        }
-        self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        self._flush()
+    async def phase_started(self, phase_id: str, input_data: dict) -> None:
+        async with self._lock:
+            self._data["phases"][phase_id] = {
+                "status": PhaseStatus.RUNNING,
+                "input": input_data,
+                "output": None,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "completed_at": None,
+            }
+            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await self._flush_async()
 
-    def phase_completed(self, phase_id: str, output: dict) -> None:
-        self._data["phases"][phase_id]["status"] = PhaseStatus.COMPLETED
-        self._data["phases"][phase_id]["output"] = output
-        self._data["phases"][phase_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
-        self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        self._flush()
+    async def phase_completed(self, phase_id: str, output: dict) -> None:
+        async with self._lock:
+            self._data["phases"][phase_id]["status"] = PhaseStatus.COMPLETED
+            self._data["phases"][phase_id]["output"] = output
+            self._data["phases"][phase_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await self._flush_async()
 
-    def phase_failed(self, phase_id: str, output: dict) -> None:
-        self._data["phases"][phase_id]["status"] = PhaseStatus.FAILED
-        self._data["phases"][phase_id]["output"] = output
-        self._data["phases"][phase_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
-        self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        self._flush()
+    async def phase_failed(self, phase_id: str, output: dict) -> None:
+        async with self._lock:
+            self._data["phases"][phase_id]["status"] = PhaseStatus.FAILED
+            self._data["phases"][phase_id]["output"] = output
+            self._data["phases"][phase_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await self._flush_async()
 
-    def phase_skipped(self, phase_id: str) -> None:
-        self._data["phases"][phase_id] = {
-            "status": PhaseStatus.SKIPPED,
-            "input": None,
-            "output": None,
-            "started_at": None,
-            "completed_at": None,
-        }
-        self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        self._flush()
+    async def phase_skipped(self, phase_id: str) -> None:
+        async with self._lock:
+            self._data["phases"][phase_id] = {
+                "status": PhaseStatus.SKIPPED,
+                "input": None,
+                "output": None,
+                "started_at": None,
+                "completed_at": None,
+            }
+            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await self._flush_async()
 
-    def mark_completed(self) -> None:
-        self._data["status"] = RunStatus.COMPLETED
-        self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        self._flush()
+    async def mark_completed(self) -> None:
+        async with self._lock:
+            self._data["status"] = RunStatus.COMPLETED
+            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await self._flush_async()
 
-    def mark_failed(self) -> None:
-        self._data["status"] = RunStatus.FAILED
-        self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        self._flush()
+    async def mark_failed(self) -> None:
+        async with self._lock:
+            self._data["status"] = RunStatus.FAILED
+            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await self._flush_async()
 
-    def completed_phase_ids(self) -> set[str]:
-        return {
-            phase_id
-            for phase_id, phase_data in self._data["phases"].items()
-            if phase_data["status"] == PhaseStatus.COMPLETED
-        }
+    async def completed_phase_ids(self) -> set[str]:
+        async with self._lock:
+            return {
+                phase_id
+                for phase_id, phase_data in self._data["phases"].items()
+                if phase_data["status"] == PhaseStatus.COMPLETED
+            }
 
-    def get_results(self) -> dict:
-        return {
-            phase_id: phase_data["output"]
-            for phase_id, phase_data in self._data["phases"].items()
-            if phase_data["status"] == PhaseStatus.COMPLETED and phase_data["output"] is not None
-        }
+    async def get_results(self) -> dict:
+        async with self._lock:
+            return {
+                phase_id: phase_data["output"]
+                for phase_id, phase_data in self._data["phases"].items()
+                if phase_data["status"] == PhaseStatus.COMPLETED and phase_data["output"] is not None
+            }
 
     @classmethod
-    def load(cls, path: str) -> Checkpoint:
-        with open(path) as f:
-            data = json.load(f)
-
+    async def load(cls, path: str) -> Checkpoint:
         instance = cls.__new__(cls)
         instance._path = path
+        instance._lock = asyncio.Lock()
+        instance._file_lock_path = path + ".lock"
+        instance._file_lock_timeout = 30.0
+
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(None, instance._read_locked, path)
         instance._data = data
 
         # Remove any phases that were still running when the process died
@@ -105,7 +122,28 @@ class Checkpoint:
         return self._path
 
     def _flush(self) -> None:
+        """Synchronous flush for internal use (init/load)."""
         tmp_path = self._path + ".tmp"
-        with open(tmp_path, "w") as f:
-            f.write(json.dumps(self._data, indent=2, default=str))
-        os.replace(tmp_path, self._path)
+        payload = json.dumps(self._data, indent=2, default=str)
+        lock = FileLock(self._file_lock_path)
+        try:
+            with lock.acquire(timeout=self._file_lock_timeout):
+                with open(tmp_path, "w") as f:
+                    f.write(payload)
+                os.replace(tmp_path, self._path)
+        except Timeout:
+            raise TimeoutError(f"Checkpoint lock acquisition timed out: {self._file_lock_path}")
+
+    async def _flush_async(self) -> None:
+        """Asynchronous flush that yields the event loop while writing."""
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._flush)
+
+    def _read_locked(self, path: str) -> dict:
+        lock = FileLock(self._file_lock_path)
+        try:
+            with lock.acquire(timeout=self._file_lock_timeout):
+                with open(path) as f:
+                    return json.load(f)
+        except Timeout:
+            raise TimeoutError(f"Checkpoint lock acquisition timed out: {self._file_lock_path}")

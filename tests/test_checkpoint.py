@@ -1,9 +1,12 @@
-"""Tests for Checkpoint — init, phase lifecycle, run status, queries, load, and atomic writes."""
+"""Tests for Checkpoint — init, phase lifecycle, run status, queries, load, atomic writes, and concurrency."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+
+import pytest
 
 from goblin.checkpoint import Checkpoint
 
@@ -36,32 +39,36 @@ class TestCheckpointInit:
 
 
 class TestCheckpointPhaseLifecycle:
-    def test_phase_started_records_running(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_phase_started_records_running(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_started("s1", {"context": {"x": 1}})
+        await cp.phase_started("s1", {"context": {"x": 1}})
         data = _read_checkpoint(cp.path)
         assert data["phases"]["s1"]["status"] == "running"
         assert data["phases"]["s1"]["input"] == {"context": {"x": 1}}
 
-    def test_phase_completed_records_output(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_phase_completed_records_output(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_started("s1", {})
-        cp.phase_completed("s1", {"success": True, "message": ["ok"]})
+        await cp.phase_started("s1", {})
+        await cp.phase_completed("s1", {"success": True, "message": ["ok"]})
         data = _read_checkpoint(cp.path)
         assert data["phases"]["s1"]["status"] == "completed"
         assert data["phases"]["s1"]["output"]["success"] is True
         assert data["phases"]["s1"]["completed_at"] is not None
 
-    def test_phase_failed_records_output(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_phase_failed_records_output(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_started("s1", {})
-        cp.phase_failed("s1", {"success": False})
+        await cp.phase_started("s1", {})
+        await cp.phase_failed("s1", {"success": False})
         data = _read_checkpoint(cp.path)
         assert data["phases"]["s1"]["status"] == "failed"
 
-    def test_phase_skipped_records_skipped(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_phase_skipped_records_skipped(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_skipped("s1")
+        await cp.phase_skipped("s1")
         data = _read_checkpoint(cp.path)
         assert data["phases"]["s1"]["status"] == "skipped"
         assert data["phases"]["s1"]["input"] is None
@@ -74,15 +81,17 @@ class TestCheckpointPhaseLifecycle:
 
 
 class TestCheckpointRunStatus:
-    def test_mark_completed(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_mark_completed(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.mark_completed()
+        await cp.mark_completed()
         data = _read_checkpoint(cp.path)
         assert data["status"] == "completed"
 
-    def test_mark_failed(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_mark_failed(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.mark_failed()
+        await cp.mark_failed()
         data = _read_checkpoint(cp.path)
         assert data["status"] == "failed"
 
@@ -93,25 +102,27 @@ class TestCheckpointRunStatus:
 
 
 class TestCheckpointQueries:
-    def test_completed_phase_ids(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_completed_phase_ids(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_started("s1", {})
-        cp.phase_completed("s1", {"success": True})
-        cp.phase_started("s2", {})
-        cp.phase_completed("s2", {"success": True})
-        cp.phase_started("s3", {})
-        cp.phase_failed("s3", {"success": False})
-        assert cp.completed_phase_ids() == {"s1", "s2"}
+        await cp.phase_started("s1", {})
+        await cp.phase_completed("s1", {"success": True})
+        await cp.phase_started("s2", {})
+        await cp.phase_completed("s2", {"success": True})
+        await cp.phase_started("s3", {})
+        await cp.phase_failed("s3", {"success": False})
+        assert await cp.completed_phase_ids() == {"s1", "s2"}
 
-    def test_get_results(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_get_results(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_started("s1", {})
-        cp.phase_completed("s1", {"success": True, "message": ["a"]})
-        cp.phase_started("s2", {})
-        cp.phase_completed("s2", {"success": True, "message": ["b"]})
-        cp.phase_started("s3", {})
-        cp.phase_failed("s3", {"success": False})
-        assert cp.get_results() == {
+        await cp.phase_started("s1", {})
+        await cp.phase_completed("s1", {"success": True, "message": ["a"]})
+        await cp.phase_started("s2", {})
+        await cp.phase_completed("s2", {"success": True, "message": ["b"]})
+        await cp.phase_started("s3", {})
+        await cp.phase_failed("s3", {"success": False})
+        assert await cp.get_results() == {
             "s1": {"success": True, "message": ["a"]},
             "s2": {"success": True, "message": ["b"]},
         }
@@ -123,29 +134,32 @@ class TestCheckpointQueries:
 
 
 class TestCheckpointLoad:
-    def test_load_round_trip(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_load_round_trip(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {"key": "val"})
-        cp.phase_started("s1", {})
-        cp.phase_completed("s1", {"success": True, "message": ["done"]})
+        await cp.phase_started("s1", {})
+        await cp.phase_completed("s1", {"success": True, "message": ["done"]})
 
-        loaded = Checkpoint.load(cp.path)
-        assert loaded.completed_phase_ids() == {"s1"}
-        assert loaded.get_results()["s1"] == {"success": True, "message": ["done"]}
+        loaded = await Checkpoint.load(cp.path)
+        assert await loaded.completed_phase_ids() == {"s1"}
+        assert (await loaded.get_results())["s1"] == {"success": True, "message": ["done"]}
 
-    def test_load_resets_running_phases(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_load_resets_running_phases(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_started("s1", {})
+        await cp.phase_started("s1", {})
         # s1 is still "running" — not completed
 
-        loaded = Checkpoint.load(cp.path)
-        assert "s1" not in loaded.completed_phase_ids()
+        loaded = await Checkpoint.load(cp.path)
+        assert "s1" not in await loaded.completed_phase_ids()
         assert "s1" not in loaded._data["phases"]
 
-    def test_load_sets_status_in_progress(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_load_sets_status_in_progress(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.mark_completed()
+        await cp.mark_completed()
 
-        loaded = Checkpoint.load(cp.path)
+        loaded = await Checkpoint.load(cp.path)
         assert loaded._data["status"] == "in_progress"
 
 
@@ -155,9 +169,38 @@ class TestCheckpointLoad:
 
 
 class TestCheckpointAtomicWrite:
-    def test_no_tmp_file_left_after_flush(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_no_tmp_file_left_after_flush(self, tmp_path):
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_started("s1", {})
-        cp.phase_completed("s1", {"success": True})
+        await cp.phase_started("s1", {})
+        await cp.phase_completed("s1", {"success": True})
         assert os.path.exists(cp.path)
         assert not os.path.exists(cp.path + ".tmp")
+
+
+# ---------------------------------------------------------------------------
+# Concurrency
+# ---------------------------------------------------------------------------
+
+
+class TestCheckpointConcurrency:
+    @pytest.mark.asyncio
+    async def test_concurrent_phase_updates_are_safe(self, tmp_path):
+        cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
+
+        async def complete_phase(phase_id: str):
+            await cp.phase_started(phase_id, {})
+            await asyncio.sleep(0)  # yield to interleave with other tasks
+            await cp.phase_completed(phase_id, {"success": True})
+
+        await asyncio.gather(
+            complete_phase("a"),
+            complete_phase("b"),
+            complete_phase("c"),
+        )
+
+        data = _read_checkpoint(cp.path)
+        assert data["phases"]["a"]["status"] == "completed"
+        assert data["phases"]["b"]["status"] == "completed"
+        assert data["phases"]["c"]["status"] == "completed"
+        assert await cp.completed_phase_ids() == {"a", "b", "c"}

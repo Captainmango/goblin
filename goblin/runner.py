@@ -61,7 +61,7 @@ class BlueprintRunner:
 
     @classmethod
     async def resume(cls, checkpoint_path: str) -> dict:
-        checkpoint = Checkpoint.load(checkpoint_path)
+        checkpoint = await Checkpoint.load(checkpoint_path)
         blueprint_path = checkpoint._data["blueprint_path"]
         context = checkpoint._data["context"]
 

@@ -375,12 +375,12 @@ class V1Blueprint(Blueprint):
         context = {**blueprint_vars, **(context or {})}
 
         if checkpoint:
-            results = checkpoint.get_results()
+            results = await checkpoint.get_results()
         else:
             results = {}
 
         for phase in self.phases:
-            if checkpoint and phase.id in checkpoint.completed_phase_ids():
+            if checkpoint and phase.id in await checkpoint.completed_phase_ids():
                 logger.info(
                     "Skipping phase — already completed",
                     extra={"event": "phase.checkpoint_skip", "phase_id": phase.id},
@@ -394,13 +394,13 @@ class V1Blueprint(Blueprint):
                         extra={"event": "phase.condition_skip", "phase_id": phase.id},
                     )
                     if checkpoint:
-                        checkpoint.phase_skipped(phase.id)
+                        await checkpoint.phase_skipped(phase.id)
                     continue
 
             if phase.foreach:
                 items = self._resolve(phase.foreach, results, context)
                 if checkpoint:
-                    checkpoint.phase_started(phase.id, {"foreach": phase.foreach, "item_count": len(items)})
+                    await checkpoint.phase_started(phase.id, {"foreach": phase.foreach, "item_count": len(items)})
                 iteration_results = []
                 for item in items:
                     phase_context = {**context, **item}
@@ -416,8 +416,8 @@ class V1Blueprint(Blueprint):
                                 "success": False,
                             }
                             if checkpoint:
-                                checkpoint.phase_failed(phase.id, results[phase.id])
-                                checkpoint.mark_failed()
+                                await checkpoint.phase_failed(phase.id, results[phase.id])
+                                await checkpoint.mark_failed()
                             return results
                 results[phase.id] = {
                     "iterations": iteration_results,
@@ -425,16 +425,16 @@ class V1Blueprint(Blueprint):
                 }
                 if checkpoint:
                     if results[phase.id].get("success", True):
-                        checkpoint.phase_completed(phase.id, results[phase.id])
+                        await checkpoint.phase_completed(phase.id, results[phase.id])
                     else:
-                        checkpoint.phase_failed(phase.id, results[phase.id])
+                        await checkpoint.phase_failed(phase.id, results[phase.id])
             else:
                 phase_context = context
                 if hasattr(phase, "history") and phase.history:
                     history_context = self._build_history_context(phase.history, results)
                     phase_context = {**context, "_history_context": history_context}
                 if checkpoint:
-                    checkpoint.phase_started(
+                    await checkpoint.phase_started(
                         phase.id, {"context": {k: v for k, v in phase_context.items() if k != "_history_context"}}
                     )
                 result = await phase.run(phase_context)
@@ -442,20 +442,20 @@ class V1Blueprint(Blueprint):
                 if not result.get("success", True):
                     if not await self._handle_phase_failure(phase, context, results):
                         if checkpoint:
-                            checkpoint.phase_failed(phase.id, results[phase.id])
-                            checkpoint.mark_failed()
+                            await checkpoint.phase_failed(phase.id, results[phase.id])
+                            await checkpoint.mark_failed()
                         return results
                     if checkpoint:
                         final = results[phase.id]
                         if final.get("success", True):
-                            checkpoint.phase_completed(phase.id, final)
+                            await checkpoint.phase_completed(phase.id, final)
                         else:
-                            checkpoint.phase_failed(phase.id, final)
+                            await checkpoint.phase_failed(phase.id, final)
                 else:
                     if checkpoint:
-                        checkpoint.phase_completed(phase.id, result)
+                        await checkpoint.phase_completed(phase.id, result)
 
         if checkpoint:
-            checkpoint.mark_completed()
+            await checkpoint.mark_completed()
 
         return results

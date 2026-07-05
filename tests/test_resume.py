@@ -62,8 +62,8 @@ class TestResumeSkipsCompletedPhases:
         bp.phases[2].run.return_value = {"success": True, "message": ["c done"]}
 
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_started("a", {})
-        cp.phase_completed("a", {"success": True, "message": ["done"]})
+        await cp.phase_started("a", {})
+        await cp.phase_completed("a", {"success": True, "message": ["done"]})
 
         results = await bp.run({}, checkpoint=cp)
 
@@ -84,10 +84,10 @@ class TestResumeSkipsCompletedPhases:
         bp.phases[1].run.return_value = {"success": True}
 
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_started("a", {})
-        cp.phase_completed("a", {"success": True, "message": ["a"]})
-        cp.phase_started("b", {})
-        cp.phase_completed("b", {"success": True, "message": ["b"]})
+        await cp.phase_started("a", {})
+        await cp.phase_completed("a", {"success": True, "message": ["a"]})
+        await cp.phase_started("b", {})
+        await cp.phase_completed("b", {"success": True, "message": ["b"]})
 
         results = await bp.run({}, checkpoint=cp)
 
@@ -114,8 +114,8 @@ class TestResumePreloadsResults:
         bp.phases[1].run.return_value = {"success": True, "message": ["ok"]}
 
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_started("a", {})
-        cp.phase_completed("a", {"success": True, "message": ["ok"]})
+        await cp.phase_started("a", {})
+        await cp.phase_completed("a", {"success": True, "message": ["ok"]})
 
         await bp.run({}, checkpoint=cp)
 
@@ -133,8 +133,8 @@ class TestResumePreloadsResults:
         bp.phases[1].run.return_value = {"success": True, "message": ["ok"]}
 
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        cp.phase_started("a", {})
-        cp.phase_completed("a", {"success": False, "message": ["err"]})
+        await cp.phase_started("a", {})
+        await cp.phase_completed("a", {"success": False, "message": ["err"]})
 
         await bp.run({}, checkpoint=cp)
 
