@@ -327,6 +327,12 @@
           "description": "Phase IDs that must finish before this phase starts. Omitted = sequential default.",
           "examples": [["clone_repo"], ["lint", "test"]]
         },
+        "output_schema": {
+          "type": "object",
+          "description": "JSON Schema fragment that the agent's response must conform to. When provided, the runner validates the extracted JSON response against this schema and fails the phase if validation does not pass.",
+          "additionalProperties": true,
+          "examples": [{"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"]}]
+        },
         "on_failure": {
           "type": "object",
           "description": "Behavior when this phase fails",

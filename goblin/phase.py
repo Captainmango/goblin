@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Dict, Protocol, TYPE_CHECKING
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 import asyncio
 
@@ -24,8 +24,17 @@ MAX_PARSE_RETRIES = 3
 
 
 class PhaseResult(BaseModel):
+    model_config = ConfigDict(extra="allow")
     success: bool
     message: list
+
+
+def _validate_output_schema(data: dict, schema: dict) -> list[str]:
+    """Validate *data* against a JSON Schema fragment and return human-readable errors."""
+    from jsonschema import Draft7Validator
+
+    validator = Draft7Validator(schema)
+    return [e.message for e in validator.iter_errors(data)]
 
 
 def _extract_json(text: str) -> dict:
@@ -66,6 +75,7 @@ class PromptPhase(PhaseProtocol):
         self.max_cost: float | None = raw.get("max_cost")
         self.model: str | None = raw.get("model")
         self.depends_on: list[str] | None = raw.get("depends_on")
+        self.output_schema: dict | None = raw.get("output_schema")
         self._blueprint = blueprint
 
     async def run(self, context: dict) -> Dict:
@@ -150,6 +160,26 @@ class PromptPhase(PhaseProtocol):
             }
 
         parsed = await self._parse_response(text)
+
+        if self.output_schema is not None:
+            schema_errors = _validate_output_schema(parsed, self.output_schema)
+            if schema_errors:
+                logger.warning(
+                    "Output schema validation failed",
+                    extra={
+                        "event": "phase.output_schema_failed",
+                        "phase_id": self.id,
+                        "errors": schema_errors,
+                    },
+                )
+                return {
+                    "success": False,
+                    "message": [f"Output schema validation failed: {e}" for e in schema_errors],
+                    "prompt": prompt,
+                    "output": text,
+                    "spend": breaker.tracker,
+                }
+
         return {**parsed, "prompt": prompt, "output": text, "spend": breaker.tracker}
 
     async def _parse_response(self, text: str, retries: int = MAX_PARSE_RETRIES) -> Dict:
