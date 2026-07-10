@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-import copy
 import json
 import logging
 import os
@@ -12,9 +10,11 @@ from jinja2 import Environment
 from openhands.sdk.hooks import HookConfig, HookDefinition, HookMatcher
 from openhands.sdk.subagent import AgentDefinition
 from goblin.checkpoint import Checkpoint
-from goblin.enums import FailureAction
+from goblin.dependency_graph import DependencyGraph
 from goblin.hooks import HOOK_REGISTRY, register_hook
+from goblin.orchestrator import PhaseOrchestrator
 from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
+from goblin.utils.tree import walk_strings
 from goblin.phase import LoadProjectPhase, PromptPhase, PhaseProtocol
 from goblin.swarm import SwarmPhase
 from goblin.utils.jinja_helpers import filter_contains, filter_json_value
@@ -47,12 +47,7 @@ class V1Blueprint(Blueprint):
             self._workspace_config = cast(dict, resolve_env_vars(raw_workspace))
 
         self.phases: list[PhaseProtocol] = [self._parse_phase(s) for s in spec["phases"]]
-        self._compute_default_dependencies()
-        self._validate_dependencies()
-        self._validate_history()
-
-        self._checkpoint_lock = asyncio.Lock()
-        self._failed_abort = asyncio.Event()
+        self._dependency_graph = DependencyGraph(self.phases)
 
     def _parse_phase(self, raw: dict) -> PhaseProtocol:
         match raw:
@@ -64,110 +59,6 @@ class V1Blueprint(Blueprint):
                 return SwarmPhase(raw, self)
             case _:
                 raise ValueError(f"Phase '{raw.get('id', '?')}' must have 'prompt', 'load_project', or 'swarm'")
-
-    def _compute_default_dependencies(self):
-        """Set default depends_on for phases that don't explicitly declare it."""
-        for i, phase in enumerate(self.phases):
-            if phase.depends_on is None:
-                if i == 0:
-                    phase.depends_on = []
-                else:
-                    phase.depends_on = [self.phases[i - 1].id]
-
-    def _validate_dependencies(self):
-        """Validate phase dependencies: existence, cycles, and load_project ordering."""
-        phase_ids = {p.id for p in self.phases}
-
-        # Existence check
-        for phase in self.phases:
-            assert phase.depends_on is not None
-            for dep_id in phase.depends_on:
-                if dep_id not in phase_ids:
-                    raise ValueError(f"Phase '{phase.id}': dependency '{dep_id}' does not exist")
-
-        # Cycle detection
-        self._detect_cycles()
-
-        # LoadProject total ordering
-        load_project_phases = [p for p in self.phases if isinstance(p, LoadProjectPhase)]
-        for i, lp1 in enumerate(load_project_phases):
-            for lp2 in load_project_phases[i + 1 :]:
-                deps1 = self._transitive_deps(lp1.id)
-                deps2 = self._transitive_deps(lp2.id)
-                if lp2.id not in deps1 and lp1.id not in deps2:
-                    raise ValueError(
-                        f"LoadProject phases '{lp1.id}' and '{lp2.id}' are independent. "
-                        "All load_project phases must be totally ordered by dependencies."
-                    )
-
-    def _detect_cycles(self):
-        """Detect cycles in the dependency graph using DFS."""
-        id_to_phase = {p.id: p for p in self.phases}
-        WHITE, GRAY, BLACK = 0, 1, 2
-        color = {p.id: WHITE for p in self.phases}
-
-        def dfs(node_id: str):
-            color[node_id] = GRAY
-            deps = id_to_phase[node_id].depends_on
-            assert deps is not None
-            for dep_id in deps:
-                if color[dep_id] == GRAY:
-                    raise ValueError(f"Cycle detected in phase dependencies involving '{node_id}' and '{dep_id}'")
-                if color[dep_id] == WHITE:
-                    dfs(dep_id)
-            color[node_id] = BLACK
-
-        for phase in self.phases:
-            if color[phase.id] == WHITE:
-                dfs(phase.id)
-
-    def _transitive_deps(self, phase_id: str) -> set[str]:
-        """Compute transitive dependency closure for a phase."""
-        id_to_phase = {p.id: p for p in self.phases}
-        visited: set[str] = set()
-
-        def dfs(node_id: str):
-            deps = id_to_phase[node_id].depends_on
-            assert deps is not None
-            for dep_id in deps:
-                if dep_id not in visited:
-                    visited.add(dep_id)
-                    dfs(dep_id)
-
-        dfs(phase_id)
-        return visited
-
-    def _validate_history(self):
-        """Validate history references at parse time."""
-        foreach_phase_ids: set[str] = set()
-
-        for phase in self.phases:
-            history = getattr(phase, "history", None)
-            if history:
-                if not isinstance(phase, PromptPhase):
-                    raise ValueError(f"Phase '{phase.id}': history is only valid on prompt phases")
-                for ref_id in history:
-                    if ref_id not in {p.id for p in self.phases}:
-                        raise ValueError(
-                            f"Phase '{phase.id}': history references '{ref_id}' which is not defined before this phase"
-                        )
-                    if ref_id in foreach_phase_ids:
-                        raise ValueError(f"Phase '{phase.id}': history cannot reference foreach phase '{ref_id}'")
-                    referenced = next(s for s in self.phases if s.id == ref_id)
-                    if not isinstance(referenced, PromptPhase):
-                        raise ValueError(
-                            f"Phase '{phase.id}': history can only reference prompt "
-                            f"phases, but '{ref_id}' is a {type(referenced).__name__}"
-                        )
-                    # History reference must be in transitive dependency closure
-                    if ref_id not in self._transitive_deps(phase.id):
-                        raise ValueError(
-                            f"Phase '{phase.id}': history references '{ref_id}' which is not in its dependency closure. "
-                            "History can only reference phases that are guaranteed to finish before this phase."
-                        )
-
-            if phase.foreach:
-                foreach_phase_ids.add(phase.id)
 
     def _build_history_context(self, history_ids: list[str], results: dict) -> str:
         """Build a context string from prior phases' prompts and outputs."""
@@ -259,13 +150,7 @@ class V1Blueprint(Blueprint):
 
     def _interpolate_strings(self, obj: Any, context: dict) -> Any:
         """Recursively apply {variable} interpolation to all string values."""
-        if isinstance(obj, dict):
-            return {k: self._interpolate_strings(v, context) for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [self._interpolate_strings(item, context) for item in obj]
-        if isinstance(obj, str):
-            return obj.format(**context)
-        return obj
+        return walk_strings(obj, lambda s: s.format(**context))
 
     def _get_workspace(self, context: dict):
         """Return the workspace for this blueprint, applying context interpolation.
@@ -411,201 +296,8 @@ class V1Blueprint(Blueprint):
                     )
                     logger.info("Loaded agent definition", extra={"event": "project.agent_loaded", "agent": agent_name})
 
-    async def _handle_phase_failure(self, phase: PhaseProtocol, context: dict, phase_result: dict) -> tuple[bool, dict]:
-        """Handle a failed phase. Returns (should_continue, final_result)."""
-        on_failure = phase.on_failure or {}
-        action = FailureAction(on_failure.get("action", FailureAction.ABORT))
-        notify_hook = on_failure.get("notify")
-
-        logger.warning("Phase failed", extra={"event": "phase.failed", "phase_id": phase.id})
-
-        if notify_hook and notify_hook in HOOK_REGISTRY:
-            hook_val = HOOK_REGISTRY[notify_hook]
-            if callable(hook_val):
-                hook_val(phase_result)
-
-        if action == FailureAction.SKIP:
-            logger.warning("Skipping failed phase", extra={"event": "phase.skip_on_failure", "phase_id": phase.id})
-            return True, phase_result
-
-        if action == FailureAction.RETRY:
-            max_retries = on_failure.get("max_retries", 1)
-            result = phase_result
-            for attempt in range(1, max_retries + 1):
-                logger.warning(
-                    "Retrying phase",
-                    extra={
-                        "event": "phase.retry",
-                        "phase_id": phase.id,
-                        "attempt": attempt,
-                        "max_retries": max_retries,
-                    },
-                )
-                result = await phase.run(context)
-                if result.get("success", True):
-                    return True, result
-            logger.error(
-                "Phase failed after retries",
-                extra={"event": "phase.retry_exhausted", "phase_id": phase.id, "max_retries": max_retries},
-            )
-            return False, result
-
-        logger.error("Aborting blueprint", extra={"event": "phase.abort", "phase_id": phase.id})
-        return False, phase_result
-
-    async def _run_single_phase(
-        self, phase: PhaseProtocol, context: dict, results: dict, checkpoint: Checkpoint | None = None
-    ) -> dict | None:
-        """Run a single phase including condition, foreach, history, checkpoint, and failure handling.
-
-        Returns the phase result, or None if the phase was skipped (condition false or checkpoint already done).
-        """
-        if self._failed_abort.is_set():
-            return None
-
-        # Checkpoint resume: skip completed and skipped phases
-        if checkpoint:
-            completed = await checkpoint.completed_phase_ids()
-            skipped = await checkpoint.skipped_phase_ids()
-            if phase.id in completed | skipped:
-                logger.info(
-                    "Skipping phase — already completed",
-                    extra={"event": "phase.checkpoint_skip", "phase_id": phase.id},
-                )
-                return None
-
-        # Condition evaluation
-        if phase.condition:
-            if not self._evaluate_condition(phase.condition, results):
-                logger.info(
-                    "Skipping phase — condition not met",
-                    extra={"event": "phase.condition_skip", "phase_id": phase.id},
-                )
-                if checkpoint:
-                    async with self._checkpoint_lock:
-                        await checkpoint.phase_skipped(phase.id)
-                return None
-
-        if phase.foreach:
-            items = self._resolve(phase.foreach, results, context)
-            if checkpoint:
-                async with self._checkpoint_lock:
-                    await checkpoint.phase_started(phase.id, {"foreach": phase.foreach, "item_count": len(items)})
-            iteration_results = []
-            for item in items:
-                if self._failed_abort.is_set():
-                    break
-                phase_context = {**context, **item}
-                if hasattr(phase, "history") and phase.history:
-                    history_context = self._build_history_context(phase.history, results)
-                    phase_context = {**phase_context, "_history_context": history_context}
-                result = await phase.run(phase_context)
-                iteration_results.append(result)
-                if not result.get("success", True):
-                    should_continue, final = await self._handle_phase_failure(phase, phase_context, result)
-                    if not should_continue:
-                        final_result = {
-                            "iterations": iteration_results,
-                            "success": False,
-                        }
-                        if checkpoint:
-                            async with self._checkpoint_lock:
-                                await checkpoint.phase_failed(phase.id, final_result)
-                                await checkpoint.mark_failed()
-                        self._failed_abort.set()
-                        return final_result
-                    # For skip or retry-success, continue foreach loop
-            final_result = {
-                "iterations": iteration_results,
-                "success": all(r.get("success", True) for r in iteration_results),
-            }
-            if checkpoint:
-                async with self._checkpoint_lock:
-                    if final_result.get("success", True):
-                        await checkpoint.phase_completed(phase.id, final_result)
-                    else:
-                        await checkpoint.phase_failed(phase.id, final_result)
-            return final_result
-        else:
-            phase_context = context
-            if hasattr(phase, "history") and phase.history:
-                history_context = self._build_history_context(phase.history, results)
-                phase_context = {**context, "_history_context": history_context}
-            if checkpoint:
-                async with self._checkpoint_lock:
-                    await checkpoint.phase_started(
-                        phase.id, {"context": {k: v for k, v in phase_context.items() if k != "_history_context"}}
-                    )
-            result = await phase.run(phase_context)
-            if not result.get("success", True):
-                should_continue, final = await self._handle_phase_failure(phase, phase_context, result)
-                if not should_continue:
-                    if checkpoint:
-                        async with self._checkpoint_lock:
-                            await checkpoint.phase_failed(phase.id, final)
-                            await checkpoint.mark_failed()
-                    self._failed_abort.set()
-                    return final
-                if checkpoint:
-                    async with self._checkpoint_lock:
-                        if final.get("success", True):
-                            await checkpoint.phase_completed(phase.id, final)
-                        else:
-                            await checkpoint.phase_failed(phase.id, final)
-                return final
-            else:
-                if checkpoint:
-                    async with self._checkpoint_lock:
-                        await checkpoint.phase_completed(phase.id, result)
-                return result
-
     async def run(self, context: dict | None = None, checkpoint: Checkpoint | None = None):
         blueprint_vars = self.spec.get("vars", {})
         context = {**blueprint_vars, **(context or {})}
-
-        if checkpoint:
-            results = await checkpoint.get_results()
-            # On resume, only skip completed and skipped phases.
-            # Failed phases are re-run to preserve original behavior.
-            completed = await checkpoint.completed_phase_ids()
-            skipped = await checkpoint.skipped_phase_ids()
-            finished = completed | skipped
-        else:
-            results = {}
-            finished = set()
-
-        pending = {p.id for p in self.phases}
-        pending -= finished
-
-        self._failed_abort = asyncio.Event()
-
-        while pending and not self._failed_abort.is_set():
-            ready = [
-                p
-                for p in self.phases
-                if p.id in pending and p.depends_on is not None and all(dep in finished for dep in p.depends_on)
-            ]
-
-            if not ready:
-                break
-
-            # LoadProject barrier: if a load_project is ready, only run load_project phases,
-            # and at most one per wave.
-            if any(isinstance(p, LoadProjectPhase) for p in ready):
-                ready = [p for p in ready if isinstance(p, LoadProjectPhase)][:1]
-
-            # Run all ready phases concurrently
-            wave_results = await asyncio.gather(
-                *(self._run_single_phase(p, context, results, checkpoint) for p in ready)
-            )
-
-            for p, result in zip(ready, wave_results):
-                finished.add(p.id)
-                pending.discard(p.id)
-                if result is not None:
-                    results[p.id] = copy.deepcopy(result)
-
-        if checkpoint and not self._failed_abort.is_set():
-            await checkpoint.mark_completed()
-
-        return results
+        orchestrator = PhaseOrchestrator(self)
+        return await orchestrator.run(self.phases, context, checkpoint)

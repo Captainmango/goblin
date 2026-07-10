@@ -69,7 +69,7 @@ class TestPromptPhaseLocalWorkspace:
         with (
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.LocalConversation", return_value=mock_local_conversation) as mock_conv_cls,
+            patch("goblin.conversation.LocalConversation", return_value=mock_local_conversation) as mock_conv_cls,
             patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
         ):
             mock_agent_cls.return_value = MagicMock()
@@ -90,7 +90,7 @@ class TestPromptPhaseLocalWorkspace:
         with (
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.LocalConversation", return_value=mock_local_conversation),
+            patch("goblin.conversation.LocalConversation", return_value=mock_local_conversation),
             patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
         ):
             mock_agent_cls.return_value = MagicMock()
@@ -118,8 +118,8 @@ class TestPromptPhaseRemoteWorkspace:
         with (
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.RemoteWorkspace", _FakeRemoteWorkspace),
-            patch("goblin.phase.RemoteConversation", return_value=mock_remote_conversation) as mock_conv_cls,
+            patch("goblin.conversation.RemoteWorkspace", _FakeRemoteWorkspace),
+            patch("goblin.conversation.RemoteConversation", return_value=mock_remote_conversation) as mock_conv_cls,
             patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
         ):
             mock_agent_cls.return_value = MagicMock()
@@ -139,9 +139,9 @@ class TestPromptPhaseRemoteWorkspace:
         with (
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.RemoteWorkspace", _FakeRemoteWorkspace),
-            patch("goblin.phase.RemoteConversation", return_value=mock_remote_conversation),
-            patch("goblin.phase.asyncio.to_thread") as mock_to_thread,
+            patch("goblin.conversation.RemoteWorkspace", _FakeRemoteWorkspace),
+            patch("goblin.conversation.RemoteConversation", return_value=mock_remote_conversation),
+            patch("goblin.conversation.asyncio.to_thread") as mock_to_thread,
             patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
         ):
             mock_agent_cls.return_value = MagicMock()
@@ -168,7 +168,7 @@ class TestPromptPhaseGetWorkspaceCalled:
         with (
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.LocalConversation", return_value=mock_local_conversation),
+            patch("goblin.conversation.LocalConversation", return_value=mock_local_conversation),
             patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
         ):
             mock_agent_cls.return_value = MagicMock()

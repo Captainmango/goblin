@@ -77,7 +77,7 @@ class TestPromptPhaseModel:
         with (
             patch("goblin.phase.build_llm") as mock_build_llm,
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.LocalConversation", return_value=conversation),
+            patch("goblin.conversation.LocalConversation", return_value=conversation),
             patch(
                 "goblin.phase.get_agent_final_response",
                 return_value='{"success": true, "message": ["ok"]}',
@@ -168,7 +168,7 @@ class TestSwarmPhaseModel:
         with (
             patch("goblin.swarm.build_llm") as mock_build_llm,
             patch("goblin.swarm.Agent") as mock_agent_cls,
-            patch("goblin.swarm.LocalConversation") as mock_conv_cls,
+            patch("goblin.conversation.LocalConversation") as mock_conv_cls,
             patch("goblin.swarm.get_agent_final_response", return_value='{"done": true}'),
         ):
             mock_agent_cls.return_value = MagicMock()
@@ -204,7 +204,7 @@ class TestSwarmPhaseModel:
         with (
             patch("goblin.swarm.build_llm") as mock_build_llm,
             patch("goblin.swarm.Agent") as mock_agent_cls,
-            patch("goblin.swarm.LocalConversation") as mock_conv_cls,
+            patch("goblin.conversation.LocalConversation") as mock_conv_cls,
             patch("goblin.swarm.get_agent_final_response", return_value='{"done": true}'),
         ):
             mock_agent_cls.return_value = MagicMock()
@@ -236,7 +236,7 @@ class TestSwarmPhaseModel:
         with (
             patch("goblin.swarm.build_llm") as mock_build_llm,
             patch("goblin.swarm.Agent") as mock_agent_cls,
-            patch("goblin.swarm.LocalConversation") as mock_conv_cls,
+            patch("goblin.conversation.LocalConversation") as mock_conv_cls,
             patch("goblin.swarm.get_agent_final_response", return_value="done"),
         ):
             mock_agent_cls.return_value = MagicMock()
@@ -272,7 +272,7 @@ class TestSwarmPhaseModel:
         with (
             patch("goblin.swarm.build_llm") as mock_build_llm,
             patch("goblin.swarm.Agent") as mock_agent_cls,
-            patch("goblin.swarm.LocalConversation") as mock_conv_cls,
+            patch("goblin.conversation.LocalConversation") as mock_conv_cls,
             patch("goblin.swarm.get_agent_final_response", return_value="done"),
         ):
             mock_agent_cls.return_value = MagicMock()
@@ -313,7 +313,7 @@ class TestSwarmPhaseModel:
         with (
             patch("goblin.swarm.build_llm") as mock_build_llm,
             patch("goblin.swarm.Agent") as mock_agent_cls,
-            patch("goblin.swarm.LocalConversation") as mock_conv_cls,
+            patch("goblin.conversation.LocalConversation") as mock_conv_cls,
             patch("goblin.swarm.get_agent_final_response", return_value='{"done": true}'),
         ):
             mock_agent_cls.return_value = MagicMock()

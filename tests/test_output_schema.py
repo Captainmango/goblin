@@ -75,7 +75,7 @@ def _mock_llm_infra():
 
     patch_build_llm = patch("goblin.phase.build_llm", return_value=mock_llm)
     patch_agent = patch("goblin.phase.Agent", return_value=mock_agent)
-    patch_local_conv = patch("goblin.phase.LocalConversation", return_value=mock_conversation)
+    patch_local_conv = patch("goblin.conversation.LocalConversation", return_value=mock_conversation)
     patch_get_final = patch("goblin.phase.get_agent_final_response", return_value="mocked response")
     patch_workspace = patch.object(V1Blueprint, "_get_workspace", return_value=MagicMock())
 
@@ -132,9 +132,7 @@ class TestPromptPhaseOutputSchema:
             p3,
             p4,
             p5,
-            patch.object(
-                phase, "_parse_response", return_value={"success": True, "message": ["ok"]}
-            ),
+            patch.object(phase, "_parse_response", return_value={"success": True, "message": ["ok"]}),
         ):
             result = await phase.run({})
 
@@ -152,9 +150,7 @@ class TestPromptPhaseOutputSchema:
             p3,
             p4,
             p5,
-            patch.object(
-                phase, "_parse_response", return_value={"success": True, "message": ["ok"], "extra": 123}
-            ),
+            patch.object(phase, "_parse_response", return_value={"success": True, "message": ["ok"], "extra": 123}),
         ):
             result = await phase.run({})
 
@@ -178,9 +174,7 @@ class TestPromptPhaseOutputSchema:
             p3,
             p4,
             p5,
-            patch.object(
-                phase, "_parse_response", return_value={"success": True, "message": ["ok"]}
-            ),
+            patch.object(phase, "_parse_response", return_value={"success": True, "message": ["ok"]}),
         ):
             result = await phase.run({})
 

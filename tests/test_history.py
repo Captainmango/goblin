@@ -116,7 +116,7 @@ class TestValidateHistoryInvalid:
         # Manually set history on the load_project phase to test the validator
         bp.phases[0].history = ["phase_b"]  # type: ignore[attr-defined]
         with pytest.raises(ValueError, match="only valid on prompt phases"):
-            bp._validate_history()
+            bp._dependency_graph._validate_history()
 
     def test_history_across_parallel_phases_rejected(self):
         """A phase cannot reference history from a phase that could run in parallel."""

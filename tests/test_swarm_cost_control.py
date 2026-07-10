@@ -218,7 +218,7 @@ class TestSwarmPhaseRunCostControl:
             return conv
 
         with (
-            patch("goblin.swarm.LocalConversation", side_effect=fake_local_conversation),
+            patch("goblin.conversation.LocalConversation", side_effect=fake_local_conversation),
             patch("goblin.swarm.build_llm"),
             patch("goblin.swarm.Agent") as mock_agent_cls,
             patch("goblin.swarm.get_agent_final_response", return_value=""),
@@ -266,7 +266,7 @@ class TestSwarmCoordinatorLimits:
             return conv
 
         with (
-            patch("goblin.swarm.LocalConversation", side_effect=fake_local_conversation),
+            patch("goblin.conversation.LocalConversation", side_effect=fake_local_conversation),
             patch("goblin.swarm.build_llm"),
             patch("goblin.swarm.Agent") as mock_agent_cls,
             patch("goblin.swarm.get_agent_final_response", return_value='{"done": true}'),

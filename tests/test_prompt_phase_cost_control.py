@@ -74,7 +74,7 @@ class TestPromptPhaseRunCostControl:
         with (
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
+            patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
             patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
         ):
             mock_agent_cls.return_value = MagicMock()
@@ -96,7 +96,7 @@ class TestPromptPhaseRunCostControl:
         with (
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
+            patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
             patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
         ):
             mock_agent_cls.return_value = MagicMock()
@@ -113,7 +113,7 @@ class TestPromptPhaseRunCostControl:
         with (
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
+            patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
             patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
         ):
             mock_agent_cls.return_value = MagicMock()
@@ -130,7 +130,7 @@ class TestPromptPhaseRunCostControl:
         with (
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.LocalConversation", return_value=mock_conversation),
+            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
         ):
             mock_agent_cls.return_value = MagicMock()
             result = await phase.run({})
@@ -152,7 +152,7 @@ class TestPromptPhaseRunCostControl:
         with (
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.LocalConversation", return_value=conversation),
+            patch("goblin.conversation.LocalConversation", return_value=conversation),
         ):
             mock_agent_cls.return_value = MagicMock()
             # With max_iterations=1, the breaker fires after the first (and only) arun()
@@ -168,7 +168,7 @@ class TestPromptPhaseRunCostControl:
         with (
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.LocalConversation", return_value=mock_conversation),
+            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
             patch("goblin.phase.get_agent_final_response", return_value=None),
         ):
             mock_agent_cls.return_value = MagicMock()

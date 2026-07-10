@@ -4,6 +4,8 @@ import os
 import re
 from typing import Any
 
+from goblin.utils.tree import walk_strings
+
 # Only braced ${VAR} syntax is supported for MCP server config.
 _ENV_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -16,27 +18,22 @@ def validate_env_var_syntax(value):
 
     Raises ValueError if any unbraced $VAR pattern is found.
     """
-    if isinstance(value, dict):
-        for k, v in value.items():
-            validate_env_var_syntax(v)
-        return
-    if isinstance(value, list):
-        for item in value:
-            validate_env_var_syntax(item)
-        return
-    if isinstance(value, str):
+
+    def _check(s: str) -> str:
         # Find unbraced $VAR references, but ignore already-braced ${VAR}
         # by checking the character before each match isn't '{'.
-        for match in _UNBRACED_VAR_RE.finditer(value):
+        for match in _UNBRACED_VAR_RE.finditer(s):
             start = match.start()
-            if start > 0 and value[start - 1] == "{":
+            if start > 0 and s[start - 1] == "{":
                 continue  # part of ${VAR}, not $VAR
             var_name = match.group(1)
             raise ValueError(
                 f"Invalid env-var syntax '${var_name}' in MCP server config. "
                 f"Use '${{{var_name}}}' (braced) syntax instead."
             )
-    return
+        return s
+
+    walk_strings(value, _check)
 
 
 def resolve_env_vars(value) -> Any:
@@ -44,12 +41,8 @@ def resolve_env_vars(value) -> Any:
 
     Raises ValueError if a referenced environment variable is not set.
     """
-    if isinstance(value, dict):
-        return {k: resolve_env_vars(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [resolve_env_vars(item) for item in value]
-    if isinstance(value, str):
 
+    def _resolve(s: str) -> str:
         def _replace(match):
             var_name = match.group(1)
             val = os.environ.get(var_name)
@@ -57,5 +50,6 @@ def resolve_env_vars(value) -> Any:
                 raise ValueError(f"Environment variable '{var_name}' is not set (referenced in MCP server config)")
             return val
 
-        return _ENV_VAR_RE.sub(_replace, value)
-    return value
+        return _ENV_VAR_RE.sub(_replace, s)
+
+    return walk_strings(value, _resolve)

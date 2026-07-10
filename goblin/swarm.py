@@ -9,13 +9,14 @@ import stat
 import textwrap
 from typing import TYPE_CHECKING, Dict
 
-from openhands.sdk import Agent, LocalConversation, RemoteConversation, RemoteWorkspace
+from openhands.sdk import Agent
 from openhands.sdk.conversation import get_agent_final_response
+from goblin.conversation import run_conversation
 from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDINATOR_PROMPT
 from goblin.phase import PhaseProtocol, _extract_json
-from goblin.swarm_db import SwarmDB
+from goblin.swarm_db import SwarmDB, get_write_validation_rules
 from goblin.utils.llm import build_llm
 from goblin.utils.tool_map import resolve_tools
 
@@ -25,14 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_SWARMDB_CLI_SCRIPT = textwrap.dedent("""\
-    #!/usr/bin/env python3
-    import json, os, re, sqlite3, sys
-
-    ALLOWED_WRITE_TABLES = {"tasks", "artifacts", "signals"}
-    WRITE_RE = re.compile(r"^\\s*(INSERT|UPDATE|DELETE)\\b", re.IGNORECASE)
-    TABLE_RE = re.compile(r"(?:INSERT\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+(\\w+)", re.IGNORECASE)
-
+_SWARMDB_CLI_SCRIPT_BODY = textwrap.dedent("""\
     def main():
         if len(sys.argv) < 3:
             print("Usage: swarmdb <query|execute> <sql>", file=sys.stderr)
@@ -85,6 +79,29 @@ _SWARMDB_CLI_SCRIPT = textwrap.dedent("""\
 
     main()
 """)
+
+
+def _build_swarmdb_cli_script() -> str:
+    """Render the swarmdb CLI script, embedding the write-validation rules
+    from goblin.swarm_db so there is exactly one place those rules are
+    hand-written. The rendered script is still fully self-contained
+    (stdlib-only) because it may run inside a remote/sandboxed workspace
+    where the goblin package is not installed.
+    """
+    allowed_tables, write_pattern, table_pattern = get_write_validation_rules()
+    preamble = textwrap.dedent(f"""\
+        #!/usr/bin/env python3
+        import json, os, re, sqlite3, sys
+
+        ALLOWED_WRITE_TABLES = {set(allowed_tables)!r}
+        WRITE_RE = re.compile({write_pattern!r}, re.IGNORECASE)
+        TABLE_RE = re.compile({table_pattern!r}, re.IGNORECASE)
+
+    """)
+    return preamble + _SWARMDB_CLI_SCRIPT_BODY
+
+
+_SWARMDB_CLI_SCRIPT = _build_swarmdb_cli_script()
 
 
 class SwarmPhase(PhaseProtocol):
@@ -147,6 +164,17 @@ class SwarmPhase(PhaseProtocol):
             lines.append(f"- {agent_cfg['name']}{roles_str}: {first_line}")
         return "\n".join(lines)
 
+    def _task_matches_agent(self, task: dict, agent_cfg: dict) -> bool:
+        assigned_to = task.get("assigned_to")
+        if assigned_to:
+            return assigned_to == agent_cfg["name"]
+
+        required_role = task.get("required_role")
+        if required_role:
+            return required_role in set(agent_cfg.get("roles", []))
+
+        return True
+
     def _get_agents_to_run(self) -> list[dict]:
         assert self._db is not None
         pending_tasks = self._db.get_pending_tasks()
@@ -154,26 +182,11 @@ class SwarmPhase(PhaseProtocol):
         if not pending_tasks:
             return self.agents_config
 
-        agents_to_run = []
-        for agent_cfg in self.agents_config:
-            name = agent_cfg["name"]
-            roles = set(agent_cfg.get("roles", []))
-
-            for task in pending_tasks:
-                assigned_to = task.get("assigned_to")
-                required_role = task.get("required_role")
-
-                if assigned_to == name:
-                    agents_to_run.append(agent_cfg)
-                    break
-                elif required_role and required_role in roles:
-                    agents_to_run.append(agent_cfg)
-                    break
-                elif not required_role and not assigned_to:
-                    agents_to_run.append(agent_cfg)
-                    break
-
-        return agents_to_run
+        return [
+            agent_cfg
+            for agent_cfg in self.agents_config
+            if any(self._task_matches_agent(task, agent_cfg) for task in pending_tasks)
+        ]
 
     async def _run_coordinator(self, context: dict, breaker: CircuitBreaker) -> dict:
         assert self._db is not None
@@ -207,30 +220,16 @@ class SwarmPhase(PhaseProtocol):
         )
         workspace = self._blueprint._get_workspace(context)
 
-        if isinstance(workspace, RemoteWorkspace):
-            conversation = RemoteConversation(
-                agent=agent,
-                workspace=workspace,
-                hook_config=self._blueprint._build_hooks(self),
-                max_iteration_per_run=self.coordinator_config.get("max_iterations", 50),
-                max_budget_per_run=self.coordinator_config.get("max_cost"),
-                secrets={"SWARMDB_PATH": db_path},
-            )
-            conversation.send_message(prompt)
-            await asyncio.to_thread(conversation.run)
-            breaker.absorb(conversation)
-        else:
-            conversation = LocalConversation(
-                agent=agent,
-                workspace=workspace,
-                hook_config=self._blueprint._build_hooks(self),
-                max_iteration_per_run=self.coordinator_config.get("max_iterations", 50),
-                max_budget_per_run=self.coordinator_config.get("max_cost"),
-                secrets={"SWARMDB_PATH": db_path},
-            )
-            conversation.send_message(prompt)
-            await conversation.arun()
-            breaker.absorb(conversation)
+        conversation = await run_conversation(
+            agent,
+            workspace,
+            prompt,
+            hook_config=self._blueprint._build_hooks(self),
+            max_iterations=self.coordinator_config.get("max_iterations", 50),
+            max_cost=self.coordinator_config.get("max_cost"),
+            secrets={"SWARMDB_PATH": db_path},
+        )
+        breaker.absorb(conversation)
 
         text = get_agent_final_response(conversation.state.events)
         if not text:
@@ -292,30 +291,16 @@ class SwarmPhase(PhaseProtocol):
             )
             workspace = self._blueprint._get_workspace(context)
 
-            if isinstance(workspace, RemoteWorkspace):
-                conversation = RemoteConversation(
-                    agent=agent,
-                    workspace=workspace,
-                    hook_config=hook_config,
-                    max_iteration_per_run=agent_cfg.get("max_iterations", self.max_iterations or 100),
-                    max_budget_per_run=agent_cfg.get("max_cost"),
-                    secrets={"SWARMDB_PATH": db_path},
-                )
-                conversation.send_message(prompt)
-                await asyncio.to_thread(conversation.run)
-                breaker.absorb(conversation)
-            else:
-                conversation = LocalConversation(
-                    agent=agent,
-                    workspace=workspace,
-                    hook_config=hook_config,
-                    max_iteration_per_run=agent_cfg.get("max_iterations", self.max_iterations or 100),
-                    max_budget_per_run=agent_cfg.get("max_cost"),
-                    secrets={"SWARMDB_PATH": db_path},
-                )
-                conversation.send_message(prompt)
-                await conversation.arun()
-                breaker.absorb(conversation)
+            conversation = await run_conversation(
+                agent,
+                workspace,
+                prompt,
+                hook_config=hook_config,
+                max_iterations=agent_cfg.get("max_iterations", self.max_iterations or 100),
+                max_cost=agent_cfg.get("max_cost"),
+                secrets={"SWARMDB_PATH": db_path},
+            )
+            breaker.absorb(conversation)
 
             self._db.update_agent_status(name, AgentStatus.DONE)
             return get_agent_final_response(conversation.state.events) or ""
@@ -358,13 +343,9 @@ class SwarmPhase(PhaseProtocol):
 
         self._db.close()
 
-        match self.cleanup:
-            case CleanupPolicy.ON_SUCCESS if success:
-                shutil.rmtree(self._workspace, ignore_errors=True)
-            case CleanupPolicy.ALWAYS:
-                shutil.rmtree(self._workspace, ignore_errors=True)
-            case _:
-                pass
+        should_cleanup = self.cleanup == CleanupPolicy.ALWAYS or (self.cleanup == CleanupPolicy.ON_SUCCESS and success)
+        if should_cleanup:
+            shutil.rmtree(self._workspace, ignore_errors=True)
 
         return result
 

@@ -657,7 +657,9 @@ class TestSwarmDBRoles:
     def test_tasks_table_has_required_role(self, tmp_path):
         db = SwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
-        db.execute("INSERT INTO tasks (title, description, required_role, status) VALUES ('T1', 'd1', 'backend', 'pending')")
+        db.execute(
+            "INSERT INTO tasks (title, description, required_role, status) VALUES ('T1', 'd1', 'backend', 'pending')"
+        )
         rows = db.query("SELECT * FROM tasks WHERE required_role = 'backend'")
         assert len(rows) == 1
         assert rows[0]["title"] == "T1"

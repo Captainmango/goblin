@@ -13,6 +13,15 @@ _TABLE_RE = re.compile(
 )
 
 
+def get_write_validation_rules() -> tuple[frozenset[str], str, str]:
+    """Return the write-validation rules as plain data (a table-name set and
+    two regex pattern strings) so callers outside this module — notably the
+    generated swarmdb CLI script in goblin/swarm.py — can embed them without
+    depending on this module being importable at the point of use.
+    """
+    return frozenset(_ALLOWED_WRITE_TABLES), _WRITE_RE.pattern, _TABLE_RE.pattern
+
+
 class SwarmDB:
     def __init__(self, db_path: str):
         self.db_path = db_path
