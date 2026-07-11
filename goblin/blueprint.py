@@ -93,6 +93,19 @@ class V1Blueprint(Blueprint):
             return phase_model
         return self.spec.get("defaults", {}).get("model")
 
+    def _resolve_worktree_config(self, phase: PhaseProtocol) -> dict | None:
+        """Return the effective worktree config for a phase.
+
+        Precedence: phase > blueprint defaults > None. Returns None when no
+        worktree configuration is declared anywhere.
+        """
+        defaults = self.spec.get("defaults", {}).get("worktree")
+        phase_config = getattr(phase, "worktree_config", None)
+        if defaults is None and phase_config is None:
+            return None
+        merged = {**(defaults or {}), **(phase_config or {})}
+        return merged
+
     def _build_hooks(self, phase: HookablePhase) -> HookConfig | None:
         defaults = self.spec.get("defaults", {}).get("hooks", {})
         phase_hooks = phase.hooks_config

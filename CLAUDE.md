@@ -32,10 +32,14 @@ goblin/
 │       ├── env.py             # $VAR / ${VAR} env var resolution
 │       ├── jinja_helpers.py   # Jinja2 custom filters (contains, json_value)
 │       ├── llm.py             # build_llm(): resolves model config into an OpenHands LLM
+│       ├── swarm_agent_tool.py   # Typed swarm-database tool for worker agents
+│       ├── swarmdb_tool.py       # Typed task-board tool for swarm coordinators
+│       ├── worktree_tool.py      # Typed git worktree tool for isolated working copies
 │       └── tree.py            # walk_strings(): shared recursive string-transform over dict/list structures
 ├── spec/
 │   └── v1.json             # JSON Schema for blueprints (evolving standard)
 ├── tests/                  # pytest suite, one file per module/behavior (see goblin/ list above)
+│   └── test_worktree_tool.py     # Unit tests for the Worktree tool
 ├── blueprints/
 │   ├── test.yaml           # Example blueprint
 │   └── swarm_example.yaml  # Example swarm blueprint
@@ -85,3 +89,37 @@ goblin/
 - `task typecheck` - Run typechecking for the project
 - `task validate` - Validate the example blueprints against `spec/v1.json`
 - If a command is missing that you feel is necessary, feel free to add it and explain why
+
+## Built-in tools
+
+Phases whitelist tools via `allowed_tools`. Besides the OpenHands file-editor, terminal, `Glob`, and `Grep` tools, Goblin registers:
+
+- `SwarmTasks` / `SwarmAgent` — swarm coordination database tools (see `goblin/utils/swarmdb_tool.py` and `goblin/utils/swarm_agent_tool.py`).
+- `Worktree` — typed git worktree operations (`list`, `create`, `remove`, `prune`, `link_deps`).
+
+### Worktree configuration
+
+The `Worktree` tool is opt-in. A phase may list it in `allowed_tools` only when a `worktree` configuration object is present. Configuration can be declared globally in `blueprint.defaults.worktree` and overridden per phase in `phase.worktree`:
+
+```yaml
+blueprint:
+  defaults:
+    worktree:
+      base_dir: ".goblin/worktrees"
+      deps: ["node_modules", ".venv"]
+      auto_link: true
+  phases:
+    - id: explore
+      prompt: "..."
+      allowed_tools: ["Worktree"]
+      worktree:
+        auto_link: false
+```
+
+Keys:
+
+- `base_dir` — directory under which all managed worktrees are created (relative to the repo root). Default: `.goblin/worktrees`.
+- `deps` — list of dependency directory names that may be symlinked from the main worktree. There is no built-in default; users must opt in explicitly.
+- `auto_link` — whether `create` automatically symlinks the configured `deps` after creating a worktree. Default: `false`.
+
+If `Worktree` appears in `allowed_tools` but no `worktree` config is defined, the phase fails fast with a clear error.

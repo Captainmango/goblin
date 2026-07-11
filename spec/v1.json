@@ -35,6 +35,7 @@
           "properties": {
             "hooks": { "$ref": "#/definitions/hooks" },
             "mcp_servers": { "$ref": "#/definitions/mcpServers" },
+            "worktree": { "$ref": "#/definitions/worktree" },
             "model": {
               "type": "string",
               "description": "Default LLM model identifier for all phases in this blueprint. Phase-level model overrides this.",
@@ -316,6 +317,7 @@
         "swarm": { "$ref": "#/definitions/swarm" },
         "hooks": { "$ref": "#/definitions/hooks" },
         "mcp_servers": { "$ref": "#/definitions/mcpServers" },
+        "worktree": { "$ref": "#/definitions/worktree" },
         "model": {
           "type": "string",
           "description": "LLM model identifier for this phase. Overrides blueprint defaults.",
@@ -356,6 +358,32 @@
               "examples": ["slack_notify"]
             }
           }
+        }
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "description": "Configuration for the Worktree tool. Required when a phase lists `Worktree` in `allowed_tools`.",
+      "additionalProperties": false,
+      "properties": {
+        "base_dir": {
+          "type": "string",
+          "description": "Directory under which all managed worktrees live. Relative to the repository root.",
+          "default": ".goblin/worktrees",
+          "examples": [".goblin/worktrees", "worktrees"]
+        },
+        "deps": {
+          "type": "array",
+          "description": "Dependency directory names that may be symlinked from the main worktree into new worktrees. There is no built-in default list; users must opt in explicitly.",
+          "items": { "type": "string" },
+          "default": [],
+          "examples": [["node_modules", ".venv"]]
+        },
+        "auto_link": {
+          "type": "boolean",
+          "description": "Whether `create` should automatically symlink the configured `deps` after creating a worktree.",
+          "default": false,
+          "examples": [true, false]
         }
       }
     },

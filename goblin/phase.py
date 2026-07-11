@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Dict, Protocol, TYPE_CHECKING
 
@@ -75,6 +76,7 @@ class PromptPhase(PhaseProtocol):
         self.model: str | None = raw.get("model")
         self.depends_on: list[str] | None = raw.get("depends_on")
         self.output_schema: dict | None = raw.get("output_schema")
+        self.worktree_config: dict | None = raw.get("worktree")
         self._blueprint = blueprint
 
     async def run(self, context: dict) -> Dict:
@@ -83,6 +85,28 @@ class PromptPhase(PhaseProtocol):
         history_context = context.get("_history_context", "")
         if history_context:
             prompt = history_context + prompt
+
+        worktree_config = self._blueprint._resolve_worktree_config(self)
+        if "Worktree" in self.allowed_tools and worktree_config is None:
+            return {
+                "success": False,
+                "message": [
+                    "Worktree tool is listed in allowed_tools but no worktree configuration is defined. "
+                    "Add `defaults.worktree` or `phase.worktree` to the blueprint."
+                ],
+                "prompt": prompt,
+                "output": "",
+                "spend": {},
+            }
+
+        tool_params: dict[str, dict] = {}
+        if worktree_config is not None and "Worktree" in self.allowed_tools:
+            tool_params["Worktree"] = {
+                "repo_root": self._blueprint.project_path or os.getcwd(),
+                "base_dir": worktree_config.get("base_dir", ".goblin/worktrees"),
+                "deps": worktree_config.get("deps", []),
+                "auto_link": worktree_config.get("auto_link", False),
+            }
 
         system_prompt = BASE_SYSTEM_PROMPT
         if self._blueprint.project_refs:
@@ -97,7 +121,7 @@ class PromptPhase(PhaseProtocol):
         llm = build_llm(model=self._blueprint._resolve_model(self))
         agent = Agent(
             llm=llm,
-            tools=resolve_tools(self.allowed_tools),
+            tools=resolve_tools(self.allowed_tools, tool_params=tool_params),
             mcp_config=self._blueprint._build_mcp_servers(self, context),
             system_prompt=system_prompt,
             filter_tools_regex=build_tool_filter_regex(self.allowed_tools),
