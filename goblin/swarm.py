@@ -5,8 +5,6 @@ import json
 import logging
 import os
 import shutil
-import stat
-import textwrap
 from typing import TYPE_CHECKING, Dict
 
 from openhands.sdk import Agent
@@ -16,7 +14,7 @@ from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDINATOR_PROMPT
 from goblin.phase import PhaseProtocol, _extract_json
-from goblin.swarm_db import SwarmDB, get_write_validation_rules
+from goblin.swarm_db import SwarmDB
 from goblin.utils.llm import build_llm
 from goblin.utils.tool_map import resolve_tools
 
@@ -24,84 +22,6 @@ if TYPE_CHECKING:
     from goblin.blueprint import V1Blueprint
 
 logger = logging.getLogger(__name__)
-
-
-_SWARMDB_CLI_SCRIPT_BODY = textwrap.dedent("""\
-    def main():
-        if len(sys.argv) < 3:
-            print("Usage: swarmdb <query|execute> <sql>", file=sys.stderr)
-            sys.exit(1)
-
-        db_path = os.environ.get("SWARMDB_PATH")
-        if not db_path:
-            print("Error: SWARMDB_PATH not set", file=sys.stderr)
-            sys.exit(1)
-
-        action = sys.argv[1]
-        sql = sys.argv[2]
-
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-
-        try:
-            if action == "query":
-                if not sql.strip().upper().startswith("SELECT"):
-                    print("Error: query only accepts SELECT statements", file=sys.stderr)
-                    sys.exit(1)
-                cursor = conn.execute(sql)
-                rows = [dict(row) for row in cursor.fetchall()]
-                print(json.dumps(rows, default=str))
-            elif action == "execute":
-                stripped = sql.strip()
-                if not WRITE_RE.match(stripped):
-                    print("Error: execute only accepts INSERT, UPDATE, or DELETE", file=sys.stderr)
-                    sys.exit(1)
-                match = TABLE_RE.search(stripped)
-                if not match:
-                    print("Error: could not determine target table", file=sys.stderr)
-                    sys.exit(1)
-                table = match.group(1).lower()
-                if table not in ALLOWED_WRITE_TABLES:
-                    print(f"Error: cannot write to '{table}'", file=sys.stderr)
-                    sys.exit(1)
-                cursor = conn.execute(stripped)
-                conn.commit()
-                print(f"OK, {cursor.rowcount} row(s) affected")
-            else:
-                print(f"Error: unknown action '{action}'", file=sys.stderr)
-                sys.exit(1)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-        finally:
-            conn.close()
-
-    main()
-""")
-
-
-def _build_swarmdb_cli_script() -> str:
-    """Render the swarmdb CLI script, embedding the write-validation rules
-    from goblin.swarm_db so there is exactly one place those rules are
-    hand-written. The rendered script is still fully self-contained
-    (stdlib-only) because it may run inside a remote/sandboxed workspace
-    where the goblin package is not installed.
-    """
-    allowed_tables, write_pattern, table_pattern = get_write_validation_rules()
-    preamble = textwrap.dedent(f"""\
-        #!/usr/bin/env python3
-        import json, os, re, sqlite3, sys
-
-        ALLOWED_WRITE_TABLES = {set(allowed_tables)!r}
-        WRITE_RE = re.compile({write_pattern!r}, re.IGNORECASE)
-        TABLE_RE = re.compile({table_pattern!r}, re.IGNORECASE)
-
-    """)
-    return preamble + _SWARMDB_CLI_SCRIPT_BODY
-
-
-_SWARMDB_CLI_SCRIPT = _build_swarmdb_cli_script()
 
 
 class SwarmPhase(PhaseProtocol):
@@ -142,16 +62,12 @@ class SwarmPhase(PhaseProtocol):
         for agent_cfg in self.agents_config:
             os.makedirs(os.path.join(self._workspace, "agents", agent_cfg["name"]), exist_ok=True)
 
-        self._db = SwarmDB(os.path.join(self._workspace, "swarm.db"))
+        db_path = os.path.join(self._workspace, "swarm.db")
+        self._db = SwarmDB.from_config({"db_path": db_path})
         self._db.init_schema()
 
         for agent_cfg in self.agents_config:
             self._db.register_agent(agent_cfg["name"], agent_cfg.get("roles"))
-
-        script_path = os.path.join(self._workspace, "swarmdb")
-        with open(script_path, "w") as f:
-            f.write(_SWARMDB_CLI_SCRIPT)
-        os.chmod(script_path, os.stat(script_path).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
         self._db.transition(SwarmState.COORDINATOR)
 
@@ -244,11 +160,12 @@ class SwarmPhase(PhaseProtocol):
         mcp_config = self._blueprint._build_mcp_servers(self, context)
 
         db_path = os.path.join(self._workspace, "swarm.db")
+        db_config = {"db_path": db_path}
         coordinator_model = self.coordinator_config.get("model") or self._blueprint._resolve_model(self)
         llm = build_llm(model=coordinator_model)
         agent = Agent(
             llm=llm,
-            tools=resolve_tools(coordinator_tools, tool_params={"SwarmTasks": {"db_path": db_path}}),
+            tools=resolve_tools(coordinator_tools, tool_params={"SwarmTasks": {"db_config": db_config}}),
             mcp_config=mcp_config,
             system_prompt=system_prompt,
             critic=None,
@@ -262,7 +179,6 @@ class SwarmPhase(PhaseProtocol):
             hook_config=self._blueprint._build_hooks(self),
             max_iterations=self.coordinator_config.get("max_iterations", 50),
             max_cost=self.coordinator_config.get("max_cost"),
-            secrets={"SWARMDB_PATH": db_path},
         )
         breaker.absorb(conversation)
 
@@ -294,6 +210,8 @@ class SwarmPhase(PhaseProtocol):
             prompt = agent_cfg["prompt"].format(**context)
 
             agent_tools = list(agent_cfg.get("allowed_tools", []))
+            if "SwarmAgent" not in agent_tools:
+                agent_tools.append("SwarmAgent")
             if "Bash" not in agent_tools:
                 agent_tools.append("Bash")
 
@@ -315,11 +233,15 @@ class SwarmPhase(PhaseProtocol):
                 mcp_config["mcpServers"] = existing
 
             db_path = os.path.join(self._workspace, "swarm.db")
+            db_config = {"db_path": db_path}
             agent_model = agent_cfg.get("model") or self._blueprint._resolve_model(self)
             llm = build_llm(model=agent_model)
             agent = Agent(
                 llm=llm,
-                tools=resolve_tools(agent_tools),
+                tools=resolve_tools(
+                    agent_tools,
+                    tool_params={"SwarmAgent": {"db_config": db_config, "agent_name": name}},
+                ),
                 mcp_config=mcp_config,
                 system_prompt=system_prompt,
                 critic=None,
@@ -333,7 +255,6 @@ class SwarmPhase(PhaseProtocol):
                 hook_config=hook_config,
                 max_iterations=agent_cfg.get("max_iterations", self.max_iterations or 100),
                 max_cost=agent_cfg.get("max_cost"),
-                secrets={"SWARMDB_PATH": db_path},
             )
             breaker.absorb(conversation)
 

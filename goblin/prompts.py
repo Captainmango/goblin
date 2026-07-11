@@ -27,13 +27,17 @@ SWARM_AGENT_PROMPT = """
 You are agent "{agent_name}" in a swarm working toward: {goal}
 
 ### Coordination Database
-Use the `swarmdb` CLI tool (via Bash) to query and update the shared coordination database.
+Use the `swarm_agent` tool to query and update the shared coordination database. You do not need Bash for database operations.
 
-Commands:
-- Read: `{workspace}/swarmdb query "SELECT ..."`
-- Write: `{workspace}/swarmdb execute "INSERT INTO ... / UPDATE ... / DELETE ..."`
+Available commands:
+- `query`: run a read-only SELECT statement (e.g. `SELECT * FROM tasks`).
+- `claim_task`: claim a pending task by id; it will be assigned to you and marked `in_progress`.
+- `complete_task`: mark a task you claimed as `done` and record a result summary.
+- `create_artifact`: register a deliverable in the shared artifacts table.
+- `send_signal`: send a message/signal to another agent (use `to_agent` = recipient name).
+- `check_signals`: read signals addressed to you or broadcast to all agents.
 
-Only the tasks, artifacts, and signals tables are writable.
+You can only write to the `tasks`, `artifacts`, and `signals` tables. You cannot mutate `swarm_state` or `agent_state`.
 
 Schema:
 - tasks (id, title, description, assigned_to, required_role, status, result, created_at, updated_at)
@@ -48,11 +52,11 @@ Your scratch space: {workspace}/agents/{agent_name}/
 {agent_roster}
 
 ### Conventions
-- Claim a task: `{workspace}/swarmdb execute "UPDATE tasks SET status='in_progress', assigned_to='{agent_name}' WHERE id=<id> AND status='pending'"`
-- Complete a task: `{workspace}/swarmdb execute "UPDATE tasks SET status='done', result='<summary>' WHERE id=<id>"`
-- Register an artifact: `{workspace}/swarmdb execute "INSERT INTO artifacts (task_id, agent, name, path) VALUES (...)"`
-- Send a signal: `{workspace}/swarmdb execute "INSERT INTO signals (from_agent, to_agent, type, payload) VALUES (...)"`
-- Check for signals: `{workspace}/swarmdb query "SELECT * FROM signals WHERE to_agent='{agent_name}' OR to_agent IS NULL"`
+- Claim a task: use `claim_task` with the task `id`.
+- Complete a task: use `complete_task` with the task `id` and a `result` summary.
+- Register an artifact: use `create_artifact` with `name`, `path`, and optional `content`.
+- Send a signal: use `send_signal` with `to_agent`, `signal_type`, and optional `payload`.
+- Check for signals: use `check_signals`.
 
 ### Task Specialisation
 Tasks may specify `required_role`. Only claim tasks where `required_role` matches one of your roles, or where `required_role` is NULL. If a task is explicitly `assigned_to` another agent, do not claim it.

@@ -4,6 +4,7 @@ from openhands.tools.glob import GlobTool
 from openhands.tools.grep import GrepTool
 from openhands.tools.terminal import TerminalTool
 
+from goblin.utils.swarm_agent_tool import SwarmAgentTool
 from goblin.utils.swarmdb_tool import SwarmTasksTool
 
 TOOL_NAME_MAP: dict[str, Tool] = {
@@ -16,6 +17,7 @@ TOOL_NAME_MAP: dict[str, Tool] = {
     "Glob": Tool(name=GlobTool.name),
     "Grep": Tool(name=GrepTool.name),
     "SwarmTasks": Tool(name=SwarmTasksTool.name),
+    "SwarmAgent": Tool(name=SwarmAgentTool.name),
 }
 
 

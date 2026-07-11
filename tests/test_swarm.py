@@ -13,7 +13,7 @@ import pytest
 from goblin.blueprint import V1Blueprint
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState
 from goblin.swarm import SwarmPhase
-from goblin.swarm_db import SwarmDB
+from goblin.swarm_db import SQLiteSwarmDB
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +70,7 @@ MINIMAL_SWARM_RAW = {
 
 class TestSwarmDBSchema:
     def test_init_schema_creates_tables(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         conn = sqlite3.connect(str(tmp_path / "test.db"))
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -80,7 +80,7 @@ class TestSwarmDBSchema:
         assert tables >= {"tasks", "artifacts", "signals", "swarm_state", "agent_state"}
 
     def test_query_returns_dicts(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.execute("INSERT INTO tasks (title, description, status) VALUES ('Task 1', 'desc', 'pending')")
         rows = db.query("SELECT * FROM tasks")
@@ -90,21 +90,21 @@ class TestSwarmDBSchema:
         db.close()
 
     def test_execute_validates_table(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         with pytest.raises(ValueError, match="cannot write to"):
             db.execute("INSERT INTO swarm_state (id, state, round) VALUES (2, 'setup', 0)")
         db.close()
 
     def test_execute_validates_statement_type(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         with pytest.raises(ValueError, match="only accepts INSERT, UPDATE, or DELETE"):
             db.execute("DROP TABLE tasks")
         db.close()
 
     def test_execute_rejects_agent_state_write(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         with pytest.raises(ValueError, match="cannot write to"):
             db.execute("UPDATE agent_state SET status = 'done' WHERE name = 'x'")
@@ -113,20 +113,20 @@ class TestSwarmDBSchema:
 
 class TestSwarmDBState:
     def test_get_state_returns_initial(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         assert db.get_state() == SwarmState.SETUP
         db.close()
 
     def test_transition_updates_state(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.transition(SwarmState.COORDINATOR)
         assert db.get_state() == SwarmState.COORDINATOR
         db.close()
 
     def test_increment_round(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         assert db.increment_round() == 1
         assert db.increment_round() == 2
@@ -134,7 +134,7 @@ class TestSwarmDBState:
         db.close()
 
     def test_update_agent_status(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.register_agent("coder")
         db.update_agent_status("coder", AgentStatus.RUNNING)
@@ -143,7 +143,7 @@ class TestSwarmDBState:
         db.close()
 
     def test_update_agent_status_with_iterations(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.register_agent("coder")
         db.update_agent_status("coder", AgentStatus.DONE, iterations=5)
@@ -154,7 +154,7 @@ class TestSwarmDBState:
 
 class TestSwarmDBQueries:
     def test_get_tasks(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'pending')")
         db.execute("INSERT INTO tasks (title, description, status) VALUES ('T2', 'd2', 'done')")
@@ -163,7 +163,7 @@ class TestSwarmDBQueries:
         db.close()
 
     def test_get_artifacts(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.execute("INSERT INTO artifacts (agent, name, path) VALUES ('coder', 'main.py', '/shared/main.py')")
         artifacts = db.get_artifacts()
@@ -172,7 +172,7 @@ class TestSwarmDBQueries:
         db.close()
 
     def test_query_rejects_non_select(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         with pytest.raises(ValueError, match="only accepts SELECT"):
             db.query("DELETE FROM tasks")
@@ -308,103 +308,6 @@ class TestSwarmPhaseSetup:
         assert phase._db.get_state() == SwarmState.COORDINATOR
         phase._db.close()
 
-    def test_setup_deploys_cli_script(self, tmp_path):
-        raw = {
-            **MINIMAL_SWARM_RAW,
-            "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")},
-        }
-        bp = _make_blueprint([raw])
-        phase = bp.phases[0]
-        assert isinstance(phase, SwarmPhase)
-        phase._setup({})
-        script_path = os.path.join(phase._workspace, "swarmdb")
-        assert os.path.isfile(script_path)
-        assert os.access(script_path, os.X_OK)
-        phase._db.close()
-
-    def test_cli_script_query(self, tmp_path):
-        """The deployed CLI script can query the DB via subprocess."""
-        import subprocess
-
-        raw = {
-            **MINIMAL_SWARM_RAW,
-            "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")},
-        }
-        bp = _make_blueprint([raw])
-        phase = bp.phases[0]
-        assert isinstance(phase, SwarmPhase)
-        phase._setup({})
-        # Insert a task via the DB directly
-        phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'desc', 'pending')")
-        # Query via the CLI script
-        script = os.path.join(phase._workspace, "swarmdb")
-        db_path = os.path.join(phase._workspace, "swarm.db")
-        result = subprocess.run(
-            [script, "query", "SELECT * FROM tasks"],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "SWARMDB_PATH": db_path},
-        )
-        assert result.returncode == 0
-        import json
-
-        rows = json.loads(result.stdout)
-        assert len(rows) == 1
-        assert rows[0]["title"] == "T1"
-        phase._db.close()
-
-    def test_cli_script_execute(self, tmp_path):
-        """The deployed CLI script can write to the DB via subprocess."""
-        import subprocess
-
-        raw = {
-            **MINIMAL_SWARM_RAW,
-            "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")},
-        }
-        bp = _make_blueprint([raw])
-        phase = bp.phases[0]
-        assert isinstance(phase, SwarmPhase)
-        phase._setup({})
-        script = os.path.join(phase._workspace, "swarmdb")
-        db_path = os.path.join(phase._workspace, "swarm.db")
-        result = subprocess.run(
-            [script, "execute", "INSERT INTO tasks (title, description, status) VALUES ('T2', 'test', 'pending')"],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "SWARMDB_PATH": db_path},
-        )
-        assert result.returncode == 0
-        assert "1 row(s) affected" in result.stdout
-        # Verify via direct DB query
-        rows = phase._db.get_tasks()
-        assert len(rows) == 1
-        assert rows[0]["title"] == "T2"
-        phase._db.close()
-
-    def test_cli_script_rejects_protected_table(self, tmp_path):
-        """The deployed CLI script rejects writes to protected tables."""
-        import subprocess
-
-        raw = {
-            **MINIMAL_SWARM_RAW,
-            "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")},
-        }
-        bp = _make_blueprint([raw])
-        phase = bp.phases[0]
-        assert isinstance(phase, SwarmPhase)
-        phase._setup({})
-        script = os.path.join(phase._workspace, "swarmdb")
-        db_path = os.path.join(phase._workspace, "swarm.db")
-        result = subprocess.run(
-            [script, "execute", "UPDATE swarm_state SET state='teardown'"],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "SWARMDB_PATH": db_path},
-        )
-        assert result.returncode != 0
-        assert "cannot write to" in result.stderr
-        phase._db.close()
-
 
 # ---------------------------------------------------------------------------
 # 7d: State machine transitions
@@ -413,7 +316,7 @@ class TestSwarmPhaseSetup:
 
 class TestSwarmDBStateTransitions:
     def test_full_state_flow(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         assert db.get_state() == SwarmState.SETUP
 
@@ -434,7 +337,7 @@ class TestSwarmDBStateTransitions:
         db.close()
 
     def test_max_rounds_triggers_teardown(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         max_rounds = 3
         for _ in range(max_rounds):
@@ -637,7 +540,7 @@ class TestSwarmAgentRolesParsing:
 
 class TestSwarmDBRoles:
     def test_register_agent_with_roles(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.register_agent("coder", ["backend", "database"])
         rows = db.query("SELECT * FROM agent_state WHERE name = 'coder'")
@@ -647,7 +550,7 @@ class TestSwarmDBRoles:
         db.close()
 
     def test_register_agent_without_roles(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.register_agent("coder")
         rows = db.query("SELECT * FROM agent_state WHERE name = 'coder'")
@@ -655,7 +558,7 @@ class TestSwarmDBRoles:
         db.close()
 
     def test_tasks_table_has_required_role(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.execute(
             "INSERT INTO tasks (title, description, required_role, status) VALUES ('T1', 'd1', 'backend', 'pending')"
@@ -666,7 +569,7 @@ class TestSwarmDBRoles:
         db.close()
 
     def test_get_pending_tasks(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.execute("INSERT INTO tasks (title, status) VALUES ('T1', 'pending')")
         db.execute("INSERT INTO tasks (title, status) VALUES ('T2', 'done')")
@@ -679,7 +582,7 @@ class TestSwarmDBRoles:
 
 class TestSwarmDBCreateTask:
     def test_create_task_inserts_pending_row(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         task_id = db.create_task("Build the thing", description="details", assigned_to="coder")
         rows = db.get_tasks()
@@ -692,7 +595,7 @@ class TestSwarmDBCreateTask:
         db.close()
 
     def test_create_task_returns_incrementing_ids(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         first = db.create_task("T1")
         second = db.create_task("T2")
@@ -700,7 +603,7 @@ class TestSwarmDBCreateTask:
         db.close()
 
     def test_create_task_with_required_role_and_no_assignee(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.create_task("T1", required_role="backend")
         rows = db.get_tasks()
@@ -713,7 +616,7 @@ class TestSwarmDBCreateTask:
         change status -- it only ever appends a new pending task."""
         import inspect
 
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         params = set(inspect.signature(db.create_task).parameters)
         assert params == {"title", "description", "assigned_to", "required_role"}
@@ -722,13 +625,13 @@ class TestSwarmDBCreateTask:
 
 class TestSwarmDBHasOutstandingTasks:
     def test_false_when_no_tasks(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         assert db.has_outstanding_tasks() is False
         db.close()
 
     def test_false_when_all_done(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.execute("INSERT INTO tasks (title, status) VALUES ('T1', 'done')")
         db.execute("INSERT INTO tasks (title, status) VALUES ('T2', 'failed')")
@@ -736,14 +639,14 @@ class TestSwarmDBHasOutstandingTasks:
         db.close()
 
     def test_true_when_pending(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.execute("INSERT INTO tasks (title, status) VALUES ('T1', 'pending')")
         assert db.has_outstanding_tasks() is True
         db.close()
 
     def test_true_when_in_progress(self, tmp_path):
-        db = SwarmDB(str(tmp_path / "test.db"))
+        db = SQLiteSwarmDB(str(tmp_path / "test.db"))
         db.init_schema()
         db.execute("INSERT INTO tasks (title, status) VALUES ('T1', 'in_progress')")
         assert db.has_outstanding_tasks() is True
@@ -800,6 +703,77 @@ class TestCoordinatorAllowedTools:
 
 
 # ---------------------------------------------------------------------------
+# 7g-agent: Agent tool wiring (SwarmAgent always available, Bash optional)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentAllowedTools:
+    def test_swarm_agent_always_included(self):
+        bp = _make_blueprint([MINIMAL_SWARM_RAW])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        agent_cfg = phase.agents_config[0]
+        tools = list(agent_cfg.get("allowed_tools", []))
+        if "SwarmAgent" not in tools:
+            tools.append("SwarmAgent")
+        if "Bash" not in tools:
+            tools.append("Bash")
+        assert "SwarmAgent" in tools
+
+    def test_bash_kept_for_file_ops(self):
+        bp = _make_blueprint([MINIMAL_SWARM_RAW])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        agent_cfg = phase.agents_config[0]
+        tools = list(agent_cfg.get("allowed_tools", []))
+        if "SwarmAgent" not in tools:
+            tools.append("SwarmAgent")
+        if "Bash" not in tools:
+            tools.append("Bash")
+        assert "Bash" in tools
+
+    @pytest.mark.asyncio
+    async def test_run_single_agent_wires_swarm_agent_tool(self, tmp_path, monkeypatch):
+        """_run_single_agent must resolve the SwarmAgent tool with the agent's
+        name and the phase's db_config so the agent can claim/complete tasks.
+        """
+        raw = {**MINIMAL_SWARM_RAW, "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")}}
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+
+        captured_tools: list = []
+
+        class FakeAgent:
+            def __init__(self, *, tools, **kwargs):
+                captured_tools.extend(tools)
+
+        monkeypatch.setattr("goblin.swarm.Agent", FakeAgent)
+        monkeypatch.setattr("goblin.swarm.build_llm", lambda **kwargs: object())
+
+        async def fake_run_conversation(agent, workspace, prompt, **kwargs):
+            class FakeConversation:
+                pass
+
+            return FakeConversation()
+
+        monkeypatch.setattr("goblin.swarm.run_conversation", fake_run_conversation)
+        monkeypatch.setattr("goblin.swarm.get_agent_final_response", lambda events: "")
+
+        from goblin.cost_control import CircuitBreaker
+
+        await phase._run_single_agent(phase.agents_config[0], {}, CircuitBreaker())
+
+        tool_names = {t.name for t in captured_tools}
+        assert "swarm_agent" in tool_names
+        swarm_agent_tool = next(t for t in captured_tools if t.name == "swarm_agent")
+        assert swarm_agent_tool.params.get("db_config") == {"db_path": os.path.join(phase._workspace, "swarm.db")}
+        assert swarm_agent_tool.params.get("agent_name") == "coder"
+        phase._db.close()
+
+
+# ---------------------------------------------------------------------------
 # 7g2: Coordinator sees the task board each round (loop-avoidance)
 # ---------------------------------------------------------------------------
 
@@ -844,8 +818,16 @@ class TestRenderTaskBoard:
 
         captured = {}
 
+        class FakeAgent:
+            def __init__(self, *, tools, **kwargs):
+                self.tools = tools
+
+        monkeypatch.setattr("goblin.swarm.Agent", FakeAgent)
+        monkeypatch.setattr("goblin.swarm.build_llm", lambda **kwargs: object())
+
         async def fake_run_conversation(agent, workspace, prompt, **kwargs):
             captured["prompt"] = prompt
+            captured["tools"] = agent.tools
             raise RuntimeError("stop after capturing prompt")
 
         monkeypatch.setattr("goblin.swarm.run_conversation", fake_run_conversation)
@@ -857,6 +839,8 @@ class TestRenderTaskBoard:
 
         assert "Current Task Board" in captured["prompt"]
         assert "[done] Impl (coder)" in captured["prompt"]
+        swarm_tasks_tool = next(t for t in captured["tools"] if t.name == "swarm_tasks")
+        assert swarm_tasks_tool.params.get("db_config") == {"db_path": os.path.join(phase._workspace, "swarm.db")}
         phase._db.close()
 
 

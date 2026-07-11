@@ -4,8 +4,8 @@ Replaces the Bash + swarmdb-CLI access the coordinator used to have. The
 executor only ever calls SwarmDB.create_task() (INSERT) and SwarmDB.get_tasks()
 (SELECT) -- there is no code path here to UPDATE/DELETE a task or write an
 artifact, so the coordinator is physically incapable of marking its own
-tasks done or forging results. Worker agents keep Bash + the swarmdb CLI for
-that (see goblin/swarm.py:_run_single_agent).
+tasks done or forging results. Worker agents use the typed SwarmAgent tool
+for that (see goblin/utils/swarm_agent_tool.py).
 """
 
 from __future__ import annotations
@@ -60,17 +60,18 @@ You cannot mark a task done, edit a task, or write artifacts yourself -- only th
 
 
 class SwarmTasksExecutor(ToolExecutor[SwarmTasksAction, SwarmTasksObservation]):
-    """Opens its own SwarmDB connection to `db_path`.
+    """Opens its own SwarmDB connection from `db_config`.
 
     A live SwarmDB can't be threaded through `Tool.params` -- that dict gets
     JSON-serialized into the conversation's persisted state snapshot, and
-    SwarmDB isn't serializable. `db_path` is just a string, so it survives
-    that round-trip; SwarmDB's WAL mode makes a second connection to the same
-    file safe alongside the SwarmPhase orchestrator's own connection.
+    SwarmDB isn't serializable. `db_config` is a plain dict (e.g.
+    `{"db_path": "..."}`), so it survives that round-trip; SwarmDB's WAL mode
+    makes a second connection to the same file safe alongside the SwarmPhase
+    orchestrator's own connection.
     """
 
-    def __init__(self, db_path: str):
-        self._db = SwarmDB(db_path)
+    def __init__(self, db_config: dict):
+        self._db = SwarmDB.from_config(db_config)
 
     def close(self) -> None:
         self._db.close()
@@ -102,7 +103,7 @@ class SwarmTasksTool(ToolDefinition[SwarmTasksAction, SwarmTasksObservation]):
 
     @classmethod
     def create(cls, *args: Any, **kwargs: Any) -> Sequence["SwarmTasksTool"]:
-        db_path: str = kwargs["db_path"]
+        db_config: dict = kwargs["db_config"]
         return [
             cls(
                 description=TOOL_DESCRIPTION,
@@ -115,7 +116,7 @@ class SwarmTasksTool(ToolDefinition[SwarmTasksAction, SwarmTasksObservation]):
                     idempotentHint=False,
                     openWorldHint=False,
                 ),
-                executor=SwarmTasksExecutor(db_path),
+                executor=SwarmTasksExecutor(db_config),
             )
         ]
 

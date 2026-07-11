@@ -8,6 +8,7 @@ from openhands.tools.glob import GlobTool
 from openhands.tools.grep import GrepTool
 from openhands.tools.terminal import TerminalTool
 
+from goblin.utils.swarm_agent_tool import SwarmAgentTool
 from goblin.utils.swarmdb_tool import SwarmTasksTool
 from goblin.utils.tool_map import TOOL_NAME_MAP, build_tool_filter_regex, resolve_tools
 
@@ -33,6 +34,9 @@ class TestToolNameMap:
 
     def test_swarm_tasks_maps_to_swarm_tasks_tool(self):
         assert TOOL_NAME_MAP["SwarmTasks"].name == SwarmTasksTool.name
+
+    def test_swarm_agent_maps_to_swarm_agent_tool(self):
+        assert TOOL_NAME_MAP["SwarmAgent"].name == SwarmAgentTool.name
 
 
 class TestResolveTools:
@@ -88,19 +92,28 @@ class TestResolveTools:
         assert result[0].name == TerminalTool.name
 
     def test_tool_params_injected_for_named_tool(self):
-        result = resolve_tools(["SwarmTasks"], tool_params={"SwarmTasks": {"db_path": "fake-db-path"}})
+        result = resolve_tools(["SwarmTasks"], tool_params={"SwarmTasks": {"db_config": {"db_path": "fake-db-path"}}})
         assert len(result) == 1
         assert result[0].name == SwarmTasksTool.name
-        assert result[0].params == {"db_path": "fake-db-path"}
+        assert result[0].params == {"db_config": {"db_path": "fake-db-path"}}
 
     def test_tool_params_ignored_for_unlisted_tool(self):
-        result = resolve_tools(["Bash"], tool_params={"SwarmTasks": {"db_path": "fake-db-path"}})
+        result = resolve_tools(["Bash"], tool_params={"SwarmTasks": {"db_config": {"db_path": "fake-db-path"}}})
         assert len(result) == 1
         assert result[0].params == {}
 
     def test_no_tool_params_defaults_to_empty_params(self):
         result = resolve_tools(["SwarmTasks"])
         assert result[0].params == {}
+
+    def test_swarm_agent_tool_params_injected(self):
+        result = resolve_tools(
+            ["SwarmAgent"],
+            tool_params={"SwarmAgent": {"db_config": {"db_path": "fake-db-path"}, "agent_name": "coder"}},
+        )
+        assert len(result) == 1
+        assert result[0].name == SwarmAgentTool.name
+        assert result[0].params == {"db_config": {"db_path": "fake-db-path"}, "agent_name": "coder"}
 
 
 class TestBuildToolFilterRegex:

@@ -16,18 +16,18 @@ from goblin.utils.swarmdb_tool import (
 )
 
 
-def _make_db_path(tmp_path) -> str:
+def _make_db_config(tmp_path) -> dict:
     db_path = str(tmp_path / "swarm.db")
-    db = SwarmDB(db_path)
+    db = SwarmDB.from_config({"db_path": db_path})
     db.init_schema()
     db.close()
-    return db_path
+    return {"db_path": db_path}
 
 
 class TestSwarmTasksExecutorCreateTask:
     def test_create_task_inserts_pending_row(self, tmp_path):
-        db_path = _make_db_path(tmp_path)
-        executor = SwarmTasksExecutor(db_path)
+        db_config = _make_db_config(tmp_path)
+        executor = SwarmTasksExecutor(db_config)
 
         obs = executor(SwarmTasksAction(command="create_task", title="Implement feature"))
 
@@ -36,7 +36,7 @@ class TestSwarmTasksExecutorCreateTask:
         assert obs.task_id is not None
         executor.close()
 
-        db = SwarmDB(db_path)
+        db = SwarmDB.from_config(db_config)
         rows = db.get_tasks()
         assert len(rows) == 1
         assert rows[0]["title"] == "Implement feature"
@@ -44,8 +44,8 @@ class TestSwarmTasksExecutorCreateTask:
         db.close()
 
     def test_create_task_with_assignment_and_role(self, tmp_path):
-        db_path = _make_db_path(tmp_path)
-        executor = SwarmTasksExecutor(db_path)
+        db_config = _make_db_config(tmp_path)
+        executor = SwarmTasksExecutor(db_config)
 
         executor(
             SwarmTasksAction(
@@ -58,7 +58,7 @@ class TestSwarmTasksExecutorCreateTask:
         )
         executor.close()
 
-        db = SwarmDB(db_path)
+        db = SwarmDB.from_config(db_config)
         rows = db.get_tasks()
         assert rows[0]["assigned_to"] == "tester"
         assert rows[0]["required_role"] == "qa"
@@ -66,23 +66,23 @@ class TestSwarmTasksExecutorCreateTask:
         db.close()
 
     def test_create_task_without_title_errors(self, tmp_path):
-        db_path = _make_db_path(tmp_path)
-        executor = SwarmTasksExecutor(db_path)
+        db_config = _make_db_config(tmp_path)
+        executor = SwarmTasksExecutor(db_config)
 
         obs = executor(SwarmTasksAction(command="create_task"))
 
         assert obs.is_error is True
         executor.close()
 
-        db = SwarmDB(db_path)
+        db = SwarmDB.from_config(db_config)
         assert db.get_tasks() == []
         db.close()
 
 
 class TestSwarmTasksExecutorListTasks:
     def test_list_tasks_empty(self, tmp_path):
-        db_path = _make_db_path(tmp_path)
-        executor = SwarmTasksExecutor(db_path)
+        db_config = _make_db_config(tmp_path)
+        executor = SwarmTasksExecutor(db_config)
 
         obs = executor(SwarmTasksAction(command="list_tasks"))
 
@@ -91,14 +91,14 @@ class TestSwarmTasksExecutorListTasks:
 
     def test_list_tasks_reflects_worker_updates(self, tmp_path):
         """The coordinator's tool can observe status changes made by workers
-        through the separate Bash+swarmdb-CLI path, but cannot cause them."""
-        db_path = _make_db_path(tmp_path)
-        db = SwarmDB(db_path)
+        through the typed SwarmAgent tool, but cannot cause them."""
+        db_config = _make_db_config(tmp_path)
+        db = SwarmDB.from_config(db_config)
         task_id = db.create_task("Ship it")
-        db.execute(f"UPDATE tasks SET status = 'done' WHERE id = {task_id}")
+        db.execute("UPDATE tasks SET status = 'done' WHERE id = ?", (task_id,))
         db.close()
 
-        executor = SwarmTasksExecutor(db_path)
+        executor = SwarmTasksExecutor(db_config)
         obs = executor(SwarmTasksAction(command="list_tasks"))
 
         assert len(obs.tasks) == 1
@@ -131,9 +131,9 @@ class TestSwarmTasksExecutorHasNoWriteCapabilityBeyondCreate:
 
 class TestSwarmTasksToolCreate:
     def test_create_returns_tool_with_executor(self, tmp_path):
-        db_path = _make_db_path(tmp_path)
+        db_config = _make_db_config(tmp_path)
 
-        tools = SwarmTasksTool.create(conv_state=None, db_path=db_path)
+        tools = SwarmTasksTool.create(conv_state=None, db_config=db_config)
 
         assert len(tools) == 1
         tool = tools[0]
@@ -142,14 +142,14 @@ class TestSwarmTasksToolCreate:
         tool.executor.close()
 
     def test_created_tool_is_callable_end_to_end(self, tmp_path):
-        db_path = _make_db_path(tmp_path)
-        tool = SwarmTasksTool.create(conv_state=None, db_path=db_path)[0]
+        db_config = _make_db_config(tmp_path)
+        tool = SwarmTasksTool.create(conv_state=None, db_config=db_config)[0]
 
         obs = tool(SwarmTasksAction(command="create_task", title="End to end"))
 
         assert obs.task_id is not None
         tool.executor.close()
 
-        db = SwarmDB(db_path)
+        db = SwarmDB.from_config(db_config)
         assert db.get_tasks()[0]["title"] == "End to end"
         db.close()
