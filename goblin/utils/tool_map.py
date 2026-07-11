@@ -4,6 +4,8 @@ from openhands.tools.glob import GlobTool
 from openhands.tools.grep import GrepTool
 from openhands.tools.terminal import TerminalTool
 
+from goblin.utils.swarmdb_tool import SwarmTasksTool
+
 TOOL_NAME_MAP: dict[str, Tool] = {
     "Bash": Tool(name=TerminalTool.name),
     "terminal": Tool(name=TerminalTool.name),
@@ -13,22 +15,30 @@ TOOL_NAME_MAP: dict[str, Tool] = {
     "MultiEdit": Tool(name=FileEditorTool.name),
     "Glob": Tool(name=GlobTool.name),
     "Grep": Tool(name=GrepTool.name),
+    "SwarmTasks": Tool(name=SwarmTasksTool.name),
 }
 
 
-def resolve_tools(names: list[str]) -> list[Tool]:
+def resolve_tools(names: list[str], tool_params: dict[str, dict] | None = None) -> list[Tool]:
     """Map blueprint tool names to OpenHands Tool specs.
 
     MCP tool patterns (mcp__* or wildcards) are skipped — MCP tools are
     wired in via mcp_config, not the tools list.
     Deduplicates by resolved tool name so Read+Write+Edit all collapse to one FileEditorTool.
+
+    `tool_params` optionally supplies per-blueprint-name `.create()` params
+    (e.g. `{"SwarmTasks": {"db": swarm_db_instance}}`) for tools that need
+    caller-provided state that can't live in the static TOOL_NAME_MAP.
     """
+    tool_params = tool_params or {}
     seen: set[str] = set()
     result: list[Tool] = []
     for name in names:
         if "*" in name or name.startswith("mcp__"):
             continue
         tool = TOOL_NAME_MAP.get(name, Tool(name=name))
+        if name in tool_params:
+            tool = Tool(name=tool.name, params=tool_params[name])
         if tool.name not in seen:
             result.append(tool)
             seen.add(tool.name)

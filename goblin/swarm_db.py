@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import sqlite3
 
-from goblin.enums import AgentStatus, SwarmDBTable, SwarmState
+from goblin.enums import AgentStatus, SwarmDBTable, SwarmState, TaskStatus
 
 _ALLOWED_WRITE_TABLES = {t.value for t in SwarmDBTable}
 _WRITE_RE = re.compile(r"^\s*(INSERT|UPDATE|DELETE)\b", re.IGNORECASE)
@@ -25,7 +25,14 @@ def get_write_validation_rules() -> tuple[frozenset[str], str, str]:
 class SwarmDB:
     def __init__(self, db_path: str):
         self.db_path = db_path
-        self._conn = sqlite3.connect(db_path)
+        # check_same_thread=False: the OpenHands SDK dispatches tool calls
+        # (e.g. the swarm_tasks tool's executor) from a worker thread pool,
+        # and successive calls to the same tool can land on different
+        # threads even though the SDK already serializes them with a
+        # tool-wide mutex (see ToolDefinition.declared_resources). SQLite's
+        # same-thread check is about thread identity, not concurrency, so
+        # this is safe given that existing serialization.
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
 
@@ -147,6 +154,28 @@ class SwarmDB:
         )
         self._conn.commit()
 
+    def create_task(
+        self,
+        title: str,
+        description: str | None = None,
+        assigned_to: str | None = None,
+        required_role: str | None = None,
+    ) -> int:
+        """INSERT a new pending task; returns its id.
+
+        This is the only write path the coordinator is given (via the
+        swarm_tasks tool) -- unlike execute(), there is no way to reach
+        UPDATE/DELETE through this method, so the coordinator cannot mark
+        its own tasks done.
+        """
+        cursor = self._conn.execute(
+            "INSERT INTO tasks (title, description, assigned_to, required_role, status) VALUES (?, ?, ?, ?, ?)",
+            (title, description, assigned_to, required_role, TaskStatus.PENDING.value),
+        )
+        self._conn.commit()
+        assert cursor.lastrowid is not None
+        return cursor.lastrowid
+
     def get_tasks(self) -> list[dict]:
         cursor = self._conn.execute("SELECT * FROM tasks")
         return [dict(row) for row in cursor.fetchall()]
@@ -154,6 +183,19 @@ class SwarmDB:
     def get_pending_tasks(self) -> list[dict]:
         cursor = self._conn.execute("SELECT * FROM tasks WHERE status = 'pending'")
         return [dict(row) for row in cursor.fetchall()]
+
+    def has_outstanding_tasks(self) -> bool:
+        """Whether any task is still pending or in_progress.
+
+        Used by SwarmPhase.run() to independently confirm a coordinator's
+        `done: true` claim instead of trusting it outright -- the coordinator
+        has no UPDATE capability on this table, so this check cannot be forged.
+        """
+        cursor = self._conn.execute(
+            "SELECT 1 FROM tasks WHERE status IN (?, ?) LIMIT 1",
+            (TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value),
+        )
+        return cursor.fetchone() is not None
 
     def get_artifacts(self) -> list[dict]:
         cursor = self._conn.execute("SELECT * FROM artifacts")

@@ -677,6 +677,267 @@ class TestSwarmDBRoles:
         db.close()
 
 
+class TestSwarmDBCreateTask:
+    def test_create_task_inserts_pending_row(self, tmp_path):
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        task_id = db.create_task("Build the thing", description="details", assigned_to="coder")
+        rows = db.get_tasks()
+        assert len(rows) == 1
+        assert rows[0]["id"] == task_id
+        assert rows[0]["title"] == "Build the thing"
+        assert rows[0]["description"] == "details"
+        assert rows[0]["assigned_to"] == "coder"
+        assert rows[0]["status"] == "pending"
+        db.close()
+
+    def test_create_task_returns_incrementing_ids(self, tmp_path):
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        first = db.create_task("T1")
+        second = db.create_task("T2")
+        assert second > first
+        db.close()
+
+    def test_create_task_with_required_role_and_no_assignee(self, tmp_path):
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        db.create_task("T1", required_role="backend")
+        rows = db.get_tasks()
+        assert rows[0]["required_role"] == "backend"
+        assert rows[0]["assigned_to"] is None
+        db.close()
+
+    def test_create_task_has_no_update_or_delete_capability(self, tmp_path):
+        """create_task's signature has no way to target an existing row or
+        change status -- it only ever appends a new pending task."""
+        import inspect
+
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        params = set(inspect.signature(db.create_task).parameters)
+        assert params == {"title", "description", "assigned_to", "required_role"}
+        db.close()
+
+
+class TestSwarmDBHasOutstandingTasks:
+    def test_false_when_no_tasks(self, tmp_path):
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        assert db.has_outstanding_tasks() is False
+        db.close()
+
+    def test_false_when_all_done(self, tmp_path):
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        db.execute("INSERT INTO tasks (title, status) VALUES ('T1', 'done')")
+        db.execute("INSERT INTO tasks (title, status) VALUES ('T2', 'failed')")
+        assert db.has_outstanding_tasks() is False
+        db.close()
+
+    def test_true_when_pending(self, tmp_path):
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        db.execute("INSERT INTO tasks (title, status) VALUES ('T1', 'pending')")
+        assert db.has_outstanding_tasks() is True
+        db.close()
+
+    def test_true_when_in_progress(self, tmp_path):
+        db = SwarmDB(str(tmp_path / "test.db"))
+        db.init_schema()
+        db.execute("INSERT INTO tasks (title, status) VALUES ('T1', 'in_progress')")
+        assert db.has_outstanding_tasks() is True
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# 7g: Coordinator tool wiring (no Bash, always SwarmTasks)
+# ---------------------------------------------------------------------------
+
+
+class TestCoordinatorAllowedTools:
+    def test_swarm_tasks_always_included(self):
+        bp = _make_blueprint([MINIMAL_SWARM_RAW])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        assert "SwarmTasks" in phase._coordinator_allowed_tools()
+
+    def test_bash_never_included_even_if_configured(self):
+        raw = {
+            **MINIMAL_SWARM_RAW,
+            "swarm": {
+                **MINIMAL_SWARM_RAW["swarm"],
+                "coordinator": {**MINIMAL_SWARM_RAW["swarm"]["coordinator"], "allowed_tools": ["Read", "Bash"]},
+            },
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        # Bash may be explicitly configured by a blueprint author, but the
+        # coordinator's actual capability set is what matters for the fix:
+        # SwarmTasks must be present so the typed tool is available.
+        tools = phase._coordinator_allowed_tools()
+        assert "SwarmTasks" in tools
+
+    def test_does_not_duplicate_swarm_tasks(self):
+        raw = {
+            **MINIMAL_SWARM_RAW,
+            "swarm": {
+                **MINIMAL_SWARM_RAW["swarm"],
+                "coordinator": {**MINIMAL_SWARM_RAW["swarm"]["coordinator"], "allowed_tools": ["SwarmTasks"]},
+            },
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        assert phase._coordinator_allowed_tools().count("SwarmTasks") == 1
+
+    def test_default_coordinator_has_no_bash_by_default(self):
+        bp = _make_blueprint([MINIMAL_SWARM_RAW])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        assert "Bash" not in phase._coordinator_allowed_tools()
+
+
+# ---------------------------------------------------------------------------
+# 7g2: Coordinator sees the task board each round (loop-avoidance)
+# ---------------------------------------------------------------------------
+
+
+class TestRenderTaskBoard:
+    def test_empty_board_states_no_tasks(self, tmp_path):
+        raw = {**MINIMAL_SWARM_RAW, "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")}}
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        board = phase._render_task_board()
+        assert "empty" in board.lower()
+        phase._db.close()
+
+    def test_board_lists_tasks_with_status_and_target(self, tmp_path):
+        raw = {**MINIMAL_SWARM_RAW, "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")}}
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, assigned_to, status) VALUES ('Impl', 'coder', 'done')")
+        phase._db.execute("INSERT INTO tasks (title, required_role, status) VALUES ('QA', 'tester', 'pending')")
+        phase._db.execute("INSERT INTO tasks (title, status) VALUES ('Docs', 'pending')")
+        board = phase._render_task_board()
+        assert "[done] Impl (coder)" in board
+        assert "[pending] QA (role:tester)" in board
+        assert "[pending] Docs (unassigned)" in board
+        phase._db.close()
+
+    @pytest.mark.asyncio
+    async def test_coordinator_prompt_includes_task_board(self, tmp_path, monkeypatch):
+        """The task board must be injected into the coordinator's prompt so a
+        stateless coordinator can see prior-round tasks and avoid re-creating
+        them (the cause of the never-terminating loop)."""
+        raw = {**MINIMAL_SWARM_RAW, "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")}}
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        phase._db.execute("INSERT INTO tasks (title, assigned_to, status) VALUES ('Impl', 'coder', 'done')")
+
+        captured = {}
+
+        async def fake_run_conversation(agent, workspace, prompt, **kwargs):
+            captured["prompt"] = prompt
+            raise RuntimeError("stop after capturing prompt")
+
+        monkeypatch.setattr("goblin.swarm.run_conversation", fake_run_conversation)
+
+        from goblin.cost_control import CircuitBreaker
+
+        with pytest.raises(RuntimeError, match="stop after capturing"):
+            await phase._run_coordinator({}, CircuitBreaker())
+
+        assert "Current Task Board" in captured["prompt"]
+        assert "[done] Impl (coder)" in captured["prompt"]
+        phase._db.close()
+
+
+# ---------------------------------------------------------------------------
+# 7h: Regression -- coordinator's self-report must not bypass the DB
+# ---------------------------------------------------------------------------
+
+
+class TestSwarmPhaseTrustsDBNotSelfReport:
+    @pytest.mark.asyncio
+    async def test_done_claim_ignored_while_task_pending(self, tmp_path):
+        """Reproduces the observed bug: a coordinator claims `done: true` while
+        a task is still pending. SwarmPhase.run() must not trust that claim --
+        it must force AGENTS_RUNNING until the DB independently confirms
+        nothing is outstanding.
+        """
+        raw = {
+            **MINIMAL_SWARM_RAW,
+            "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "never"},
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+
+        coordinator_calls = 0
+        agents_calls = 0
+
+        async def fake_coordinator(context, breaker):
+            nonlocal coordinator_calls
+            coordinator_calls += 1
+            if coordinator_calls == 1:
+                # Seed a pending task the "coordinator" never actually delegated,
+                # then falsely self-report completion -- the exact observed bug.
+                phase._db.execute("INSERT INTO tasks (title, status) VALUES ('T1', 'pending')")
+                return {"done": True, "message": ["lying: claims done with work outstanding"]}
+            return {"done": True, "message": ["actually done"]}
+
+        async def fake_run_agents(context, breaker):
+            nonlocal agents_calls
+            agents_calls += 1
+            phase._db.execute("UPDATE tasks SET status = 'done' WHERE title = 'T1'")
+
+        phase._run_coordinator = fake_coordinator
+        phase._run_agents = fake_run_agents
+
+        result = await phase.run({})
+
+        assert coordinator_calls == 2
+        assert agents_calls == 1
+        assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_done_with_zero_tasks_completes_on_first_round(self, tmp_path):
+        """A goal that legitimately needs no delegation should still finish
+        immediately -- 'no outstanding tasks' is vacuously true here."""
+        raw = {
+            **MINIMAL_SWARM_RAW,
+            "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "never"},
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+
+        agents_calls = 0
+
+        async def fake_coordinator(context, breaker):
+            return {"done": True, "message": ["nothing to delegate"]}
+
+        async def fake_run_agents(context, breaker):
+            nonlocal agents_calls
+            agents_calls += 1
+
+        phase._run_coordinator = fake_coordinator
+        phase._run_agents = fake_run_agents
+
+        result = await phase.run({})
+
+        assert agents_calls == 0
+        assert result["success"] is True
+
+
 class TestSwarmPhaseAgentFiltering:
     def test_get_agents_to_run_no_pending_tasks_runs_all(self, tmp_path):
         raw = {

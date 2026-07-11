@@ -188,6 +188,42 @@ class SwarmPhase(PhaseProtocol):
             if any(self._task_matches_agent(task, agent_cfg) for task in pending_tasks)
         ]
 
+    def _coordinator_allowed_tools(self) -> list[str]:
+        """The coordinator's tool list, always including SwarmTasks and never Bash.
+
+        The coordinator only ever gets the typed SwarmTasks tool (create_task/
+        list_tasks) -- never Bash -- so it has no way to write files or forge
+        DB rows for tasks it didn't actually delegate.
+        """
+        tools = list(self.coordinator_config.get("allowed_tools", []))
+        if "SwarmTasks" not in tools:
+            tools.append("SwarmTasks")
+        return tools
+
+    def _render_task_board(self) -> str:
+        """A snapshot of the current task board for the coordinator's prompt.
+
+        Each coordinator invocation is a fresh, stateless conversation, so
+        without this the coordinator cannot see tasks it created in earlier
+        rounds -- it would re-plan from the goal every round, creating
+        duplicate tasks and never recognising that the work is already done.
+        """
+        assert self._db is not None
+        tasks = self._db.get_tasks()
+        if not tasks:
+            return "### Current Task Board\nThe task board is empty -- no tasks have been created yet."
+
+        lines = ["### Current Task Board"]
+        for t in tasks:
+            if t.get("assigned_to"):
+                target = t["assigned_to"]
+            elif t.get("required_role"):
+                target = f"role:{t['required_role']}"
+            else:
+                target = "unassigned"
+            lines.append(f"- #{t['id']} [{t['status']}] {t['title']} ({target})")
+        return "\n".join(lines)
+
     async def _run_coordinator(self, context: dict, breaker: CircuitBreaker) -> dict:
         assert self._db is not None
         agent_roster = self._build_agent_roster()
@@ -201,10 +237,9 @@ class SwarmPhase(PhaseProtocol):
             system_prompt += "\n\n" + self._blueprint.project_refs
 
         prompt = self.coordinator_config["prompt"].format(**context)
+        prompt += "\n\n" + self._render_task_board()
 
-        coordinator_tools = list(self.coordinator_config.get("allowed_tools", []))
-        if "Bash" not in coordinator_tools:
-            coordinator_tools.append("Bash")
+        coordinator_tools = self._coordinator_allowed_tools()
 
         mcp_config = self._blueprint._build_mcp_servers(self, context)
 
@@ -213,7 +248,7 @@ class SwarmPhase(PhaseProtocol):
         llm = build_llm(model=coordinator_model)
         agent = Agent(
             llm=llm,
-            tools=resolve_tools(coordinator_tools),
+            tools=resolve_tools(coordinator_tools, tool_params={"SwarmTasks": {"db_path": db_path}}),
             mcp_config=mcp_config,
             system_prompt=system_prompt,
             critic=None,
@@ -377,7 +412,7 @@ class SwarmPhase(PhaseProtocol):
 
                     case SwarmState.COORDINATOR:
                         result = await self._run_coordinator(context, breaker)
-                        if result.get("done"):
+                        if result.get("done") and not self._db.has_outstanding_tasks():
                             self._db.transition(SwarmState.TEARDOWN)
                         else:
                             self._db.transition(SwarmState.AGENTS_RUNNING)
