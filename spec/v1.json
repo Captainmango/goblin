@@ -391,8 +391,42 @@
       "type": "object",
       "required": ["goal", "coordinator", "agents"],
       "additionalProperties": false,
-      "description": "Launches a team of concurrent agents coordinating through a shared SQLite database and filesystem workspace.",
+      "description": "Launches a team of concurrent agents coordinating through a shared Turso/libSQL database and filesystem workspace. Turso is the default backend; set backend to 'sqlite' to opt into the legacy SQLite backend.",
       "properties": {
+        "backend": {
+          "type": "string",
+          "enum": ["turso", "sqlite"],
+          "description": "Swarm database backend. Defaults to 'turso'. Set to 'sqlite' to opt into the legacy SQLite backend.",
+          "examples": ["turso", "sqlite"]
+        },
+        "turso": {
+          "type": "object",
+          "description": "Optional Turso/libSQL backend configuration. When omitted, the swarm defaults to local Turso using the workspace swarm.db file. Use this block to opt into remote cloud mode or to override the local database path.",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["local", "remote"],
+              "description": "Turso operating mode. 'local' uses an on-disk or in-memory libSQL database. 'remote' uses a cloud Turso database with a local replica. Defaults to 'local'.",
+              "examples": ["local", "remote"]
+            },
+            "url": {
+              "type": "string",
+              "description": "Turso database URL or local libSQL path. In remote mode this is the cloud endpoint. In local mode this is a file path or :memory:. Defaults to the workspace swarm.db path. Supports $VAR env var references and {variable} interpolation.",
+              "examples": ["libsql://my-db.turso.io", "${TURSO_URL}", ".goblin/swarms/{phase_id}/swarm.db", ":memory:"]
+            },
+            "auth_token": {
+              "type": "string",
+              "description": "Authentication token for remote Turso databases. Required when mode is 'remote'. Supports $VAR env var references.",
+              "examples": ["${TURSO_AUTH_TOKEN}"]
+            },
+            "local_path": {
+              "type": "string",
+              "description": "Path to the local replica file when mode is 'remote'. Defaults to the swarm workspace's swarm.db. Ignored when mode is 'local'.",
+              "examples": [".goblin/swarms/{phase_id}/swarm.db"]
+            }
+          }
+        },
         "goal": {
           "type": "string",
           "description": "High-level objective injected into every agent's system prompt",

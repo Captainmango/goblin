@@ -97,25 +97,6 @@ Phases whitelist tools via `allowed_tools`. Besides the OpenHands file-editor, t
 - `SwarmTasks` / `SwarmAgent` — swarm coordination database tools (see `goblin/utils/swarmdb_tool.py` and `goblin/utils/swarm_agent_tool.py`).
 - `Worktree` — typed git worktree operations (`list`, `create`, `remove`, `prune`, `link_deps`).
 
-### Worktree configuration
-
-The `Worktree` tool is opt-in. A phase may list it in `allowed_tools` only when a `worktree` configuration object is present. Configuration can be declared globally in `blueprint.defaults.worktree` and overridden per phase in `phase.worktree`:
-
-```yaml
-blueprint:
-  defaults:
-    worktree:
-      base_dir: ".goblin/worktrees"
-      deps: ["node_modules", ".venv"]
-      auto_link: true
-  phases:
-    - id: explore
-      prompt: "..."
-      allowed_tools: ["Worktree"]
-      worktree:
-        auto_link: false
-```
-
 Keys:
 
 - `base_dir` — directory under which all managed worktrees are created (relative to the repo root). Default: `.goblin/worktrees`.

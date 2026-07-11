@@ -15,6 +15,7 @@ from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDINATOR_PROMPT
 from goblin.phase import PhaseProtocol, _extract_json
 from goblin.swarm_db import SwarmDB
+from goblin.utils.env import resolve_env_vars
 from goblin.utils.llm import build_llm
 from goblin.utils.tool_map import resolve_tools
 
@@ -33,6 +34,7 @@ class SwarmPhase(PhaseProtocol):
         self.depends_on: list[str] | None = raw.get("depends_on")
 
         swarm = raw["swarm"]
+        self._swarm_config: dict = swarm
         self.goal: str = swarm["goal"]
         self.workspace_template: str = swarm.get("workspace", ".goblin/swarms/{step_id}")
         self.coordinator_config: dict = swarm["coordinator"]
@@ -49,6 +51,7 @@ class SwarmPhase(PhaseProtocol):
 
         self._blueprint = blueprint
         self._db: SwarmDB | None = None
+        self._db_config: dict | None = None
         self._workspace: str = ""
 
     def _setup(self, context: dict):
@@ -63,7 +66,23 @@ class SwarmPhase(PhaseProtocol):
             os.makedirs(os.path.join(self._workspace, "agents", agent_cfg["name"]), exist_ok=True)
 
         db_path = os.path.join(self._workspace, "swarm.db")
-        self._db = SwarmDB.from_config({"db_path": db_path})
+        swarm_config = self._swarm_config
+
+        backend = swarm_config.get("backend") or os.environ.get("GOBLIN_BACKEND")
+        if backend == "sqlite":
+            self._db_config = {"db_path": db_path, "backend": "sqlite"}
+        else:
+            turso_block = swarm_config.get("turso")
+            if turso_block is not None:
+                turso_block = resolve_env_vars(turso_block)
+                turso_block = self._blueprint._interpolate_strings(turso_block, context)
+
+            if turso_block or os.environ.get("GOBLIN_TURSO_URL"):
+                self._db_config = {"db_path": db_path, "turso": turso_block} if turso_block else {"db_path": db_path}
+            else:
+                self._db_config = {"db_path": db_path, "turso_url": db_path, "turso_mode": "local"}
+
+        self._db = SwarmDB.from_config(self._db_config)
         self._db.init_schema()
 
         for agent_cfg in self.agents_config:
@@ -159,8 +178,8 @@ class SwarmPhase(PhaseProtocol):
 
         mcp_config = self._blueprint._build_mcp_servers(self, context)
 
-        db_path = os.path.join(self._workspace, "swarm.db")
-        db_config = {"db_path": db_path}
+        assert self._db_config is not None
+        db_config = self._db_config
         coordinator_model = self.coordinator_config.get("model") or self._blueprint._resolve_model(self)
         llm = build_llm(model=coordinator_model)
         agent = Agent(
@@ -224,16 +243,14 @@ class SwarmPhase(PhaseProtocol):
             mcp_config = self._blueprint._build_mcp_servers(self, context)
 
             if "mcp_servers" in agent_cfg:
-                from goblin.utils.env import resolve_env_vars
-
                 resolved = resolve_env_vars(agent_cfg["mcp_servers"])
                 interpolated = self._blueprint._interpolate_strings(resolved, context)
                 existing = mcp_config.get("mcpServers", {})
                 existing.update(interpolated)
                 mcp_config["mcpServers"] = existing
 
-            db_path = os.path.join(self._workspace, "swarm.db")
-            db_config = {"db_path": db_path}
+            assert self._db_config is not None
+            db_config = self._db_config
             agent_model = agent_cfg.get("model") or self._blueprint._resolve_model(self)
             llm = build_llm(model=agent_model)
             agent = Agent(

@@ -13,7 +13,7 @@ import pytest
 from goblin.blueprint import V1Blueprint
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState
 from goblin.swarm import SwarmPhase
-from goblin.swarm_db import SQLiteSwarmDB
+from goblin.swarm_db import SQLiteSwarmDB, TursoSwarmDB
 
 
 # ---------------------------------------------------------------------------
@@ -306,6 +306,59 @@ class TestSwarmPhaseSetup:
         assert isinstance(phase, SwarmPhase)
         phase._setup({})
         assert phase._db.get_state() == SwarmState.COORDINATOR
+        phase._db.close()
+
+    def test_setup_defaults_to_turso_local_db_config(self, tmp_path):
+        raw = {**MINIMAL_SWARM_RAW, "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")}}
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        db_path = os.path.join(phase._workspace, "swarm.db")
+        assert phase._db_config == {"db_path": db_path, "turso_url": db_path, "turso_mode": "local"}
+        assert isinstance(phase._db._backend, TursoSwarmDB)
+        phase._db.close()
+
+    def test_setup_sqlite_opt_in(self, tmp_path):
+        raw = {
+            **MINIMAL_SWARM_RAW,
+            "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "backend": "sqlite"},
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        db_path = os.path.join(phase._workspace, "swarm.db")
+        assert phase._db_config == {"db_path": db_path, "backend": "sqlite"}
+        assert isinstance(phase._db._backend, SQLiteSwarmDB)
+        phase._db.close()
+
+    def test_setup_turso_block_propagated(self, tmp_path):
+        raw = {
+            **MINIMAL_SWARM_RAW,
+            "swarm": {
+                **MINIMAL_SWARM_RAW["swarm"],
+                "workspace": str(tmp_path / "ws"),
+                "turso": {"mode": "local", "url": ":memory:"},
+            },
+        }
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        db_path = os.path.join(phase._workspace, "swarm.db")
+        assert phase._db_config == {"db_path": db_path, "turso": {"mode": "local", "url": ":memory:"}}
+        assert phase._db._backend.url == ":memory:"
+        phase._db.close()
+
+    def test_setup_env_backend_sqlite(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GOBLIN_BACKEND", "sqlite")
+        raw = {**MINIMAL_SWARM_RAW, "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")}}
+        bp = _make_blueprint([raw])
+        phase = bp.phases[0]
+        assert isinstance(phase, SwarmPhase)
+        phase._setup({})
+        assert isinstance(phase._db._backend, SQLiteSwarmDB)
         phase._db.close()
 
 
@@ -768,7 +821,11 @@ class TestAgentAllowedTools:
         tool_names = {t.name for t in captured_tools}
         assert "swarm_agent" in tool_names
         swarm_agent_tool = next(t for t in captured_tools if t.name == "swarm_agent")
-        assert swarm_agent_tool.params.get("db_config") == {"db_path": os.path.join(phase._workspace, "swarm.db")}
+        assert swarm_agent_tool.params.get("db_config") == {
+            "db_path": os.path.join(phase._workspace, "swarm.db"),
+            "turso_url": os.path.join(phase._workspace, "swarm.db"),
+            "turso_mode": "local",
+        }
         assert swarm_agent_tool.params.get("agent_name") == "coder"
         phase._db.close()
 
@@ -840,7 +897,11 @@ class TestRenderTaskBoard:
         assert "Current Task Board" in captured["prompt"]
         assert "[done] Impl (coder)" in captured["prompt"]
         swarm_tasks_tool = next(t for t in captured["tools"] if t.name == "swarm_tasks")
-        assert swarm_tasks_tool.params.get("db_config") == {"db_path": os.path.join(phase._workspace, "swarm.db")}
+        assert swarm_tasks_tool.params.get("db_config") == {
+            "db_path": os.path.join(phase._workspace, "swarm.db"),
+            "turso_url": os.path.join(phase._workspace, "swarm.db"),
+            "turso_mode": "local",
+        }
         phase._db.close()
 
 

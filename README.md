@@ -30,4 +30,5 @@ Project utilities (linting, formatting, typechecking) are defined in `Taskfile.y
 task lint
 task format
 task typecheck
+task validate
 ```
