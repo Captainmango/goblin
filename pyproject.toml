@@ -12,6 +12,7 @@ dependencies = [
     "openhands-sdk>=1.29.3",
     "openhands-tools>=1.29.3",
     "pydantic>=2.12.5",
+    "pyturso>=0.6.1",
     "pyyaml>=6.0.3",
 ]
 
