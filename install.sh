@@ -2,7 +2,7 @@
 set -euo pipefail
 
 MIN_MAJOR=3
-MIN_MINOR=11
+MIN_MINOR=13
 
 error() { printf "\033[31merror:\033[0m %s\n" "$1" >&2; exit 1; }
 info()  { printf "\033[34m==>\033[0m %s\n" "$1"; }
