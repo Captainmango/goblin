@@ -16,7 +16,6 @@ tasks:
   typecheck:
     cmds:
       - uv run pyrefly check
-    silent: true
 
   test:
     cmds:

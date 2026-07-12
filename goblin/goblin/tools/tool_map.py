@@ -4,9 +4,9 @@ from openhands.tools.glob import GlobTool
 from openhands.tools.grep import GrepTool
 from openhands.tools.terminal import TerminalTool
 
-from goblin.utils.swarm_agent_tool import SwarmAgentTool
-from goblin.utils.swarmdb_tool import SwarmTasksTool
-from goblin.utils.worktree_tool import WorktreeTool
+from goblin.tools.swarm_agent_tool import SwarmAgentTool
+from goblin.tools.swarmdb_tool import SwarmTasksTool
+from goblin.tools.worktree_tool import WorktreeTool
 
 TOOL_NAME_MAP: dict[str, Tool] = {
     "Bash": Tool(name=TerminalTool.name),

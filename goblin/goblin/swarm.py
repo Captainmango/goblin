@@ -17,7 +17,7 @@ from goblin.phase import PhaseProtocol, _extract_json
 from goblin.swarm_db import SwarmDB
 from goblin.utils.env import resolve_env_vars
 from goblin.utils.llm import build_llm
-from goblin.utils.tool_map import resolve_tools
+from goblin.tools.tool_map import resolve_tools
 
 if TYPE_CHECKING:
     from goblin.blueprint import V1Blueprint

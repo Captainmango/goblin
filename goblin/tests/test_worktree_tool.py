@@ -14,8 +14,8 @@ import pytest
 
 from goblin.blueprint import V1Blueprint
 from goblin.phase import PromptPhase
-from goblin.utils.tool_map import resolve_tools
-from goblin.utils.worktree_tool import (
+from goblin.tools.tool_map import resolve_tools
+from goblin.tools.worktree_tool import (
     WorktreeAction,
     WorktreeExecutor,
     WorktreeObservation,

@@ -15,7 +15,7 @@ from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import LoadProjectStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, JSON_REPAIR_PROMPT
 from goblin.utils.llm import build_llm
-from goblin.utils.tool_map import build_tool_filter_regex, resolve_tools
+from goblin.tools.tool_map import build_tool_filter_regex, resolve_tools
 
 logger = logging.getLogger(__name__)
 

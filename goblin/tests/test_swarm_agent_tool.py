@@ -8,7 +8,7 @@ machinery is started, per .claude/rules/testing.md.
 from __future__ import annotations
 
 from goblin.swarm_db import SwarmDB
-from goblin.utils.swarm_agent_tool import (
+from goblin.tools.swarm_agent_tool import (
     SwarmAgentAction,
     SwarmAgentExecutor,
     SwarmAgentObservation,

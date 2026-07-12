@@ -46,6 +46,7 @@ jp-goblin/
 │   │   ├── phase.py
 │   │   ├── swarm.py
 │   │   ├── swarm_db.py
+│   │   ├── tools/
 │   │   └── utils/
 │   ├── spec/
 │   │   └── v1.json
@@ -121,7 +122,7 @@ task lint
 
 Phases whitelist tools via `allowed_tools`. Besides the OpenHands file-editor, terminal, `Glob`, and `Grep` tools, Goblin registers:
 
-- `SwarmTasks` / `SwarmAgent` — swarm coordination database tools (see `goblin/utils/swarmdb_tool.py` and `goblin/utils/swarm_agent_tool.py`).
+- `SwarmTasks` / `SwarmAgent` — swarm coordination database tools (see `goblin/tools/swarmdb_tool.py` and `goblin/tools/swarm_agent_tool.py`).
 - `Worktree` — typed git worktree operations (`list`, `create`, `remove`, `prune`, `link_deps`).
 
 Keys:

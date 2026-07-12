@@ -5,7 +5,7 @@ executor only ever calls SwarmDB.create_task() (INSERT) and SwarmDB.get_tasks()
 (SELECT) -- there is no code path here to UPDATE/DELETE a task or write an
 artifact, so the coordinator is physically incapable of marking its own
 tasks done or forging results. Worker agents use the typed SwarmAgent tool
-for that (see goblin/utils/swarm_agent_tool.py).
+for that (see goblin/tools/swarm_agent_tool.py).
 """
 
 from __future__ import annotations
