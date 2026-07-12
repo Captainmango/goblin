@@ -1,186 +1,308 @@
-# Plan: Implement Turso SwarmDB Backend and Swap Over
+# Plan: Two-Way Notifications Mechanism
 
 ## Goal
 
-Replace the current `TursoSwarmDB` stub in `goblin/swarm_db.py` with a fully-functional backend built on `pyturso`, and update the wiring so that **Turso is the default SwarmDB backend**. SQLite is retained but becomes an explicit opt-in (`backend: sqlite` or `GOBLIN_BACKEND=sqlite`). Users can still opt into either a **local** Turso/libSQL database or a **remote cloud** Turso database via the `turso` configuration block. The implementation should mirror `SQLiteSwarmDB` as closely as possible because `pyturso` exposes a DB-API 2.0 surface that is nearly identical to `sqlite3`.
+Add a lightweight, two-way notifications layer to Goblin. The layer is channel-agnostic at the core and ships with Telegram as the first provider (via `python-telegram-bot`). It must allow Goblin to **push** messages to operators (alerts, summaries, questions) and **receive** messages or commands from operators to control or influence a running blueprint. Future channels such as Slack should fit the same abstraction.
 
-## Current State
+## Scope
 
-- `goblin/swarm_db.py` defines:
-  - `SwarmDBBackend` protocol.
-  - `SQLiteSwarmDB` — complete, local-file implementation.
-  - `TursoSwarmDB` — stub that raises `NotImplementedError` for every method.
-  - `SwarmDB` — facade with a `from_config()` factory that already routes to `TursoSwarmDB` when `turso_url` or `turso` config keys are present.
-- `pyturso>=0.6.1` is already a project dependency.
-- `goblin/swarm.py`, `goblin/utils/swarmdb_tool.py`, and `goblin/utils/swarm_agent_tool.py` all build `db_config = {"db_path": ...}` and pass it to tools; none of them currently propagate Turso config.
-- The blueprint JSON schema (`spec/v1.json`) has no `turso` block under `swarm`, so users cannot declare a Turso backend from YAML yet.
-- `ROADMAP.md` explicitly lists "Swap to Turso" as a near-term goal.
-- This plan flips the current default: today SQLite is used unless Turso is explicitly configured; after implementation Turso will be used unless SQLite is explicitly opted into.
+- In scope: channel-agnostic notifications API, Telegram provider, bot lifecycle, message sending, command handling, **operator pairing flow**, **SQLite persistence of recipients**, configuration.
+- Out of scope: persistent chat history, rich media beyond text, inline keyboards (phase 2), Slack implementation (phase 2), multi-bot support.
 
-## Why This Is a Drop-In Replacement
+## Proposed Architecture
 
-`pyturso`'s synchronous API is intentionally SQLite-compatible:
-
-- `conn = turso.connect(database_path)` opens a database.
-- `conn.row_factory = turso.Row` enables dict-style column access.
-- `conn.executescript(sql)`, `conn.execute(sql, params)`, `conn.commit()`, and `conn.close()` work as expected.
-- Cursors expose `fetchone()`, `fetchall()`, `lastrowid`, and `rowcount`.
-- No `check_same_thread=False` workaround is required.
-
-The only material differences discovered during spiking are minor and handled below.
-
-## Implementation Plan
-
-### 1. Implement `TursoSwarmDB` in `goblin/swarm_db.py`
-
-Translate `SQLiteSwarmDB` method-for-method into `pyturso` calls. Keep the same public signature and the same validation rules (`_ALLOWED_WRITE_TABLES`, `_WRITE_RE`, `_TABLE_RE`).
-
-Specific mapping:
-
-- Constructor: `def __init__(self, url: str, mode: str = "local", auth_token: str | None = None, local_path: str | None = None)`.
-  - `mode` must be `"local"` or `"remote"`. Raise `ValueError` for any other value.
-  - **Local mode** (`mode="local"`): open with `turso.connect(url)`. `url` may be a file path, `:memory:`, or any identifier accepted by `turso.connect`. `auth_token` and `local_path` are ignored.
-  - **Remote mode** (`mode="remote"`): open with `turso.sync.connect(local_path, remote_url=url, auth_token=auth_token)`. `auth_token` is required in this mode. `local_path` defaults to the workspace `swarm.db` path so the on-disk replica is predictable; callers may override it.
-  - Auto-detection convenience: if `mode` is omitted and `auth_token` is supplied, default to `"remote"`; otherwise default to `"local"`.
-- `init_schema(self)`: reuse the same `executescript()` DDL used by `SQLiteSwarmDB`. For remote Turso the schema is created locally and synced; for local Turso it is created on disk/memory just like SQLite.
-- `query()`: keep the `SELECT` guard, execute with `turso.connect`-style cursor, return `[dict(row) for row in cursor.fetchall()]`.
-- `execute()`: keep the write-statement and table-name guards, commit, return `cursor.rowcount`.
-- `get_state()`, `transition()`, `increment_round()`, `update_agent_status()`, `register_agent()`, `create_task()`, `get_tasks()`, `get_pending_tasks()`, `get_artifacts()`, `get_signals()`, `has_outstanding_tasks()`, `close()`: port each SQLite call to the equivalent `pyturso` call with identical SQL.
-
-Caveat: after `executescript()`, `cursor.lastrowid` may be `None`. The implementation should obtain the inserted ID via a follow-up `SELECT last_insert_rowid()` only when `cursor.lastrowid` is not available, ensuring `create_task()` still returns a stable integer ID.
-
-### 2. Update `SwarmDB.from_config()` Default Behavior
-
-Make Turso the default backend. SQLite is only selected when explicitly opted into.
-
-Priority order:
-
-1. Explicit SQLite opt-in: `config["backend"] == "sqlite"`, `config["sqlite"] is True`, or env var `GOBLIN_BACKEND=sqlite`.
-2. `config["turso"]` dict with optional `mode`, optional `url`, optional `auth_token`, and optional `local_path`.
-3. `config["turso_url"]` (top-level explicit; implies local mode unless `turso_auth_token` is also provided).
-4. Environment variables `GOBLIN_TURSO_URL` / `GOBLIN_TURSO_MODE` / `GOBLIN_TURSO_AUTH_TOKEN` / `GOBLIN_TURSO_LOCAL_PATH`.
-5. Default: Turso local mode using `config["db_path"]` as the URL.
-
-When no explicit Turso URL is provided, `SwarmDB.from_config()` defaults to `TursoSwarmDB(mode="local", url=db_path)`, preserving the existing on-disk file location (`<workspace>/swarm.db`).
-
-Change `SwarmDB.init_schema()` so that it initializes schema for `TursoSwarmDB` as well as `SQLiteSwarmDB` (currently it only initializes SQLite).
-
-### 3. Propagate Turso Config Through `SwarmPhase`
-
-`SwarmPhase._setup()` currently builds only `{"db_path": ...}`. Update it to build a `db_config` dict that defaults to Turso local mode:
-
-- Compute the default `db_path = os.path.join(self._workspace, "swarm.db")`.
-- Read the swarm-level blueprint config for an optional `turso` block and an optional `backend` key.
-- If `backend == "sqlite"` (or `GOBLIN_BACKEND=sqlite`), pass `{"db_path": db_path, "backend": "sqlite"}` to `SwarmDB.from_config()`.
-- Otherwise, build a Turso config. If a `turso` block or `GOBLIN_TURSO_*` env vars are present, use those values; if not, default to `{"turso_url": db_path, "turso_mode": "local"}`.
-- Pass the resulting dict to `SwarmDB.from_config()`.
-- Store this same `db_config` on the phase instance so `_run_coordinator()` and `_run_single_agent()` can pass it to `resolve_tools()` instead of reconstructing `{"db_path": ...}`.
-
-This ensures the coordinator's `SwarmTasks` tool and each agent's `SwarmAgent` tool open connections to the same backend as the orchestrator.
-
-### 4. Update Blueprint JSON Schema (`spec/v1.json`)
-
-Add a `backend` enum and an optional `turso` object under the `swarm` definition:
-
-```json
-"backend": {
-  "type": "string",
-  "enum": ["turso", "sqlite"],
-  "description": "Swarm database backend. Defaults to 'turso'. Set to 'sqlite' to opt into the legacy SQLite backend.",
-  "examples": ["turso", "sqlite"]
-},
-"turso": {
-  "type": "object",
-  "description": "Optional Turso/libSQL backend configuration. When omitted, the swarm defaults to local Turso using the workspace swarm.db file. Use this block to opt into remote cloud mode or to override the local database path.",
-  "additionalProperties": false,
-  "properties": {
-    "mode": {
-      "type": "string",
-      "enum": ["local", "remote"],
-      "description": "Turso operating mode. 'local' uses an on-disk or in-memory libSQL database. 'remote' uses a cloud Turso database with a local replica. Defaults to 'local'.",
-      "examples": ["local", "remote"]
-    },
-    "url": {
-      "type": "string",
-      "description": "Turso database URL or local libSQL path. In remote mode this is the cloud endpoint. In local mode this is a file path or :memory:. Defaults to the workspace swarm.db path. Supports $VAR env var references and {variable} interpolation.",
-      "examples": ["libsql://my-db.turso.io", "${TURSO_URL}", ".goblin/swarms/{phase_id}/swarm.db", ":memory:"]
-    },
-    "auth_token": {
-      "type": "string",
-      "description": "Authentication token for remote Turso databases. Required when mode is 'remote'. Supports $VAR env var references.",
-      "examples": ["${TURSO_AUTH_TOKEN}"]
-    },
-    "local_path": {
-      "type": "string",
-      "description": "Path to the local replica file when mode is 'remote'. Defaults to the swarm workspace's swarm.db. Ignored when mode is 'local'.",
-      "examples": [".goblin/swarms/{phase_id}/swarm.db"]
-    }
-  }
-}
+```text
+┌─────────────────────────────────────────────┐
+│              Goblin runner                  │
+│  ┌─────────────────────────────────────┐    │
+│  │     Notifications manager           │    │
+│  │  ┌────────────┐   ┌─────────────┐   │    │
+│  │  │  Outbound  │   │   Inbound   │   │    │
+│  │  │   router   │   │   router    │   │    │
+│  │  └─────┬──────┘   └──────┬──────┘   │    │
+│  │        │                 │          │    │
+│  │  ┌─────▼─────────────────▼──────┐   │    │
+│  │  │      Provider registry       │   │    │
+│  │  │  ┌────────────────────────┐  │   │    │
+│  │  │  │    Telegram provider   │  │   │    │
+│  │  │  │  (python-telegram-bot) │  │   │    │
+│  │  │  └────────────────────────┘  │   │    │
+│  │  └──────────────────────────────┘   │    │
+│  └─────────────────────────────────────┘    │
+│                    │                        │
+│            Telegram Bot API                 │
+└─────────────────────────────────────────────┘
 ```
 
-Also update the `swarm` description to mention that Turso is the default backend and SQLite is opt-in.
+## 1. Dependencies
 
-### 5. Environment Variable Resolution
+Add to `pyproject.toml`:
 
-Use the existing `goblin.utils.env.resolve_env_vars()` helper to resolve `$VAR` / `${VAR}` references inside the `turso` block before passing values to `SwarmDB.from_config()`. This matches how MCP server config is handled elsewhere in the codebase.
+```toml
+dependencies = [
+    "python-telegram-bot>=21.0",
+]
+```
 
-Also resolve the `backend` key from blueprint config or `GOBLIN_BACKEND` env var before selecting the backend implementation.
+Use `uv add python-telegram-bot`.
 
-### 6. Add Tests
+## 2. Configuration
 
-Create or extend tests in `tests/test_swarm.py` (or a new `tests/test_turso_swarm_db.py`):
+Use environment variables loaded via `dotenv`. Channel-specific config lives under per-channel models; the core notifications layer is channel-agnostic.
 
-- `TursoSwarmDB` in **local mode** with a file path or `:memory:` behaves identically to `SQLiteSwarmDB` for:
-  - schema creation,
-  - `query()` returning dicts,
-  - `execute()` table validation,
-  - state transitions,
-  - round incrementing,
-  - agent registration/status,
-  - task creation and outstanding-task checks.
-- `TursoSwarmDB` in **remote mode** rejects missing `auth_token` and calls `turso.sync.connect` with the correct arguments.
-- `SwarmDB.from_config()` defaults to `TursoSwarmDB(mode="local")` when no backend is specified.
-- `SwarmDB.from_config()` selects `SQLiteSwarmDB` only when `backend: sqlite` or `GOBLIN_BACKEND=sqlite` is set.
-- `SwarmPhase._setup()` passes a Turso local-mode `db_config` by default and only falls back to SQLite when opted in.
-- `SwarmPhase._setup()` passes the full Turso config (`mode`, `url`, `auth_token`, `local_path`) into `db_config` when a blueprint `turso` block is present.
-- Env-var fallback (`GOBLIN_BACKEND`, `GOBLIN_TURSO_URL`, `GOBLIN_TURSO_MODE`, `GOBLIN_TURSO_AUTH_TOKEN`, `GOBLIN_TURSO_LOCAL_PATH`) is honored.
+### Notifications layer config
 
-Where possible, parameterize the existing `SQLiteSwarmDB` tests so they run against both backends, ensuring parity.
+- `NOTIFICATIONS_DB_PATH` — SQLite path for recipient pairings. Default: `.goblin/notifications.db`.
 
-### 7. Update Tooling and Documentation
+### Telegram provider config
 
-- Add a `task test-turso` or extend `task test` in `Taskfile.yml` to run the new backend tests.
-- Update `CLAUDE.md` / `README.md` to document that Turso is now the default backend, the `backend: sqlite` opt-in, the `turso` swarm option, the local/remote mode choice, and the `GOBLIN_BACKEND`, `GOBLIN_TURSO_URL`, `GOBLIN_TURSO_MODE`, `GOBLIN_TURSO_AUTH_TOKEN`, and `GOBLIN_TURSO_LOCAL_PATH` env vars.
-- Update `ROADMAP.md` to mark "Swap to Turso" as in-progress or complete once implemented.
+- `TELEGRAM_BOT_TOKEN` — Bot token from @BotFather.
+- `TELEGRAM_ALLOWED_USER_IDS` — Comma-separated list of Telegram user IDs allowed to pair with the bot (security). If empty, all users can pair.
+- The Telegram provider always runs in **polling** mode. Webhooks are not supported.
 
-### 8. Migration / Rollback Strategy
+A `NotificationConfig` model validates the shared settings. A `TelegramConfig` model validates Telegram-specific settings. If `TELEGRAM_BOT_TOKEN` is not set, the Telegram provider is simply not registered.
 
-- This is a default-behavior change: new swarms use Turso local mode (`<workspace>/swarm.db`) unless SQLite is explicitly opted into.
-- Existing blueprints with no `turso` block continue to use the same `swarm.db` file location, but now opened through the Turso engine instead of SQLite.
-- To opt into the legacy SQLite backend, set `backend: sqlite` in the swarm config or `GOBLIN_BACKEND=sqlite`.
-- To opt into remote cloud Turso, set `mode: remote`, provide the cloud `url`, and provide an `auth_token`.
-- To roll back the default, set `GOBLIN_BACKEND=sqlite` globally or per-blueprint.
-- For remote Turso, the local replica file can be kept as a cache; deleting it forces a fresh bootstrap on the next run.
-- Because local Turso is file-format-compatible with SQLite, existing `swarm.db` files created by SQLite should continue to work when opened by Turso local mode.
+## 3. Module Layout
 
-## Acceptance Criteria
+Create a channel-agnostic `goblin/notifications/` package with Telegram as the first provider:
 
-- [ ] `TursoSwarmDB` no longer raises `NotImplementedError`; all protocol methods are implemented.
-- [ ] `TursoSwarmDB` in local mode passes the same core behavior tests as `SQLiteSwarmDB`.
-- [ ] `TursoSwarmDB` in remote mode validates required `auth_token` and wires up `turso.sync.connect` correctly.
-- [ ] `SwarmDB.from_config()` defaults to `TursoSwarmDB(mode="local")` and only routes to `SQLiteSwarmDB` when `backend: sqlite` or `GOBLIN_BACKEND=sqlite` is set.
-- [ ] `SwarmPhase` propagates Turso config to both coordinator and agent tools.
-- [ ] `spec/v1.json` allows an optional `turso` block under `swarm`.
-- [ ] `task lint`, `task format`, `task typecheck`, and `task test` all pass.
-- [ ] Documentation is updated to describe the Turso option.
+```text
+goblin/notifications/
+├── __init__.py
+├── config.py              # NotificationConfig
+├── manager.py             # NotificationManager singleton + provider registry
+├── provider.py            # NotificationProvider protocol / base class
+├── store.py               # SQLite-backed RecipientStore
+├── types.py               # NotificationMessage, InboundNotificationEvent, Recipient
+├── telegram/
+│   ├── __init__.py
+│   ├── config.py          # TelegramConfig
+│   ├── provider.py        # TelegramNotificationProvider
+│   ├── handlers.py        # PTB command/message handlers
+│   └── security.py        # allow-list checks
+└── slack/                 # placeholder for phase 2
+    └── __init__.py
+```
 
-## Suggested Order of Work
+## 4. Pairing Flow
 
-1. Spike `TursoSwarmDB` implementation locally against `:memory:` and a temp file to confirm parity.
-2. Implement `TursoSwarmDB` in `goblin/swarm_db.py` and update `SwarmDB.from_config()` / `init_schema()`.
-3. Update `SwarmPhase` to build and propagate `db_config`.
-4. Add the `turso` block to `spec/v1.json` and run `task validate`.
-5. Write/extend tests for the new backend.
-6. Update docs, Taskfile, and ROADMAP.
-7. Run full test suite and merge.
+To avoid manual wiring, Goblin provides an explicit pairing flow. Each channel implements its own pairing mechanism. For Telegram, a user becomes a known operator by messaging the bot. The notifications layer stores the pairing in a channel-agnostic SQLite table so it survives restarts and can one day support Slack, email, etc.
+
+### Pairing steps (Telegram)
+
+1. Operator opens Telegram and sends `/start` to the bot.
+2. The Telegram provider checks `TELEGRAM_ALLOWED_USER_IDS` if it is configured.
+   - If the allow-list is empty, any user can pair.
+   - If the allow-list is set and the user is in it, the bot replies with a welcome message and stores the pair.
+   - If the allow-list is set and the user is not in it, the bot replies with an unauthorized message and drops the update.
+3. The provider records a `Recipient` with `channel="telegram"`, `channel_user_id=<telegram user id>`, `address=<chat id>`, `username`, and `paired_at` via `RecipientStore`.
+4. From then on, Goblin can send messages to that operator without any further manual configuration.
+
+### Telegram pairing commands
+
+- `/start` — pair or re-pair the operator. Updates `address` (chat ID) if it changed.
+- `/unpair` — remove the operator from the local store (operator-side cleanup).
+- `/pairings` (admin/allowed users only) — list currently paired operators.
+
+### Sequence diagram
+
+```text
+Operator                 Telegram provider            RecipientStore
+   │      /start             │                              │
+   │ ──────────────────────> │                              │
+   │                         │  is_allowed(user_id)?        │
+   │                         │ ─────────────────────────>   │
+   │                         │                              │
+   │                         │  upsert(Recipient)           │
+   │                         │ ─────────────────────────>   │
+   │      welcome            │                              │
+   │ <────────────────────── │                              │
+```
+
+## 5. SQLite Persistence
+
+Operator pairings are persisted in a channel-agnostic SQLite table so a restarted runner can still message known operators, regardless of which channel they use.
+
+### `RecipientStore` (`goblin/notifications/store.py`)
+
+Responsibilities:
+
+- Create/migrate the `recipients` table on first use.
+- `upsert(recipient: Recipient)` — insert or update a recipient.
+- `get_address(channel, channel_user_id) -> str | None` — resolve the delivery address (e.g. Telegram chat ID) for a recipient.
+- `list_recipients(channel=None) -> list[Recipient]` — return stored recipients, optionally filtered by channel.
+- `delete(channel, channel_user_id) -> bool` — remove a recipient.
+
+### Schema
+
+```sql
+CREATE TABLE IF NOT EXISTS recipients (
+    channel TEXT NOT NULL,
+    channel_user_id TEXT NOT NULL,
+    address TEXT NOT NULL,
+    username TEXT,
+    paired_at TEXT NOT NULL,
+    PRIMARY KEY (channel, channel_user_id)
+);
+```
+
+### Location
+
+Fixed path: `.goblin/notifications.db`. The store is created on `NotificationManager` startup if it does not exist.
+
+## 6. Outbound Channel (Goblin → Operator)
+
+The `NotificationManager` exposes a channel-agnostic send API and routes messages to the appropriate provider.
+
+`NotificationManager.send(message: NotificationMessage, recipient: Recipient | None = None) -> DeliveryResult`
+
+- `NotificationMessage` contains `text`, optional `title`, and future fields for channel-specific payloads.
+- If `recipient` is provided, the manager routes to `recipient.channel`.
+- If `recipient` is omitted, the manager can broadcast to all recipients or use a default channel (configurable later).
+- Each provider implements `send(recipient: Recipient, message: NotificationMessage)`.
+
+### Telegram provider specifics
+
+`TelegramNotificationProvider.send_message(text: str, chat_id: int | None = None, channel_user_id: str | None = None) -> MessageId`
+
+- Resolve `chat_id` in this order:
+  1. Explicit `chat_id` argument.
+  2. `RecipientStore.get_address("telegram", channel_user_id)`.
+- If no chat ID can be resolved, log `telegram_no_chat_id` and return `None`.
+- Truncate or split messages longer than Telegram’s 4096-character limit.
+- Return the sent message ID so callers can later edit or reply.
+
+Helpers built on top:
+
+- `send_alert(title, body)` — formatted with a prefix.
+- `send_question(question, options)` — text + keyboard (phase 2).
+- `send_phase_complete(phase_name, result_summary)`.
+- `send_to_user(channel_user_id, text)` — convenience wrapper that resolves chat ID from the store.
+
+## 7. Inbound Channel (Telegram → Goblin)
+
+Each provider translates its native inbound events into `InboundNotificationEvent` objects and pushes them to the `NotificationManager`, which dispatches them to the registered hook.
+
+### Telegram inbound handlers
+
+`python-telegram-bot` handlers registered on the `Application`:
+
+- `/start` — pair or re-pair the operator; store the recipient in SQLite.
+- `/status` — report current blueprint/run state if any.
+- `/pause` — request pause of the running orchestrator (requires hook).
+- `/resume` — request resume.
+- `/unpair` — remove the operator’s stored pairing from the local database.
+- `/pairings` — list currently paired operators (allowed users only).
+- `/message` or free-form text — forward operator text into Goblin via the event bus / hook.
+
+Security: every inbound update is filtered by `security.is_allowed(user_id)`. Unknown users receive a silent drop or a single "unauthorized" reply.
+
+## 8. Notification Manager Lifecycle (Singleton)
+
+The `NotificationManager` runs as a **singleton** shared across blueprint runs. It owns the `RecipientStore` and the provider registry. Providers are started once, kept alive in the background, and stopped only when the Goblin process exits.
+
+Reasons:
+
+- Avoids the cost of starting/stopping polling for every blueprint run.
+- Allows operators to pair or send messages even when no blueprint is running.
+- Matches the shared SQLite store model.
+- Keeps the core channel-agnostic; new providers plug into the same manager.
+
+Lifecycle:
+
+1. On first use (e.g. first blueprint run), create and start the singleton `NotificationManager`.
+2. The manager initializes the `RecipientStore`.
+3. The manager registers and starts any configured providers (e.g. Telegram if `TELEGRAM_BOT_TOKEN` is set).
+4. Subsequent runs reuse the existing manager.
+5. On Goblin process shutdown, stop all providers and close the SQLite store.
+
+A module-level `get_notification_manager()` factory returns the singleton instance. If no providers are configured, the manager starts in a no-op mode and logs a warning on send attempts.
+
+## 9. Integration With the Orchestrator
+
+Introduce a small event bus abstraction so the notifications layer stays decoupled from the orchestrator internals.
+
+- Providers emit `InboundNotificationEvent` objects.
+- The `NotificationManager` dispatches these events to a registered hook (`notification_received`).
+- For outbound messages, phases can request `NotificationManager.send(...)` through a tool or hook.
+
+### Inbound integration: hook only
+
+Inbound operator messages are **not** surfaced as a dedicated phase. Blueprints opt in by registering a hook:
+
+```yaml
+hooks:
+  notification_received: my_hook_handler
+```
+
+The hook receives an `InboundNotificationEvent` containing `channel`, `channel_user_id`, `address`, `text`, and `timestamp`. The blueprint decides how to react. Telegram-specific blueprints can still inspect `event.channel == "telegram"` if needed.
+
+### Outbound integration
+
+Phases can call `NotificationManager.send_alert(...)` or `NotificationManager.send_to_recipient(...)` directly via a tool or hook.
+
+### Phase lifecycle hook
+
+Optional `on_phase_complete` hook sends a phase summary via the notifications layer if configured.
+
+## 10. Concurrency Model
+
+- Each provider runs its own IO loop or background task (e.g. PTB `Application` for Telegram).
+- `NotificationManager` exposes async `send_*` methods that can be awaited from Goblin’s existing async runner.
+- Inbound handlers are async and only place events onto a shared `asyncio.Queue` to avoid blocking provider updates.
+- A worker coroutine drains the queue and dispatches events to registered consumers.
+
+## 11. Error Handling & Resilience
+
+- Providers catch their native errors (e.g. `TelegramError`) and log with channel-specific event names such as `telegram_send_failed`.
+- Retry transient errors (network, rate limits) with exponential backoff.
+- Never let notification failures crash the orchestrator; outbound failures are logged, not raised.
+- On provider startup failure, log an error and continue the blueprint run unless `NOTIFICATIONS_REQUIRED=true`.
+
+## 12. Security
+
+- Tokens stored only in environment variables / `.env`, never committed.
+- Provider-specific allow-lists enforced on every inbound update (e.g. `TELEGRAM_ALLOWED_USER_IDS` for Telegram).
+- No shell commands accepted from notification text; commands map to an explicit allow-list of safe actions.
+
+## 13. Testing
+
+Add tests under `tests/notifications/`:
+
+- `test_notification_config_validation` — shared config defaults and validation.
+- `test_notification_manager_singleton` — `get_notification_manager()` returns the same instance across calls.
+- `test_notification_manager_routing` — message routed to the correct provider.
+- `test_recipient_store` — CRUD operations for `RecipientStore`.
+
+Add Telegram-specific tests under `tests/notifications/telegram/`:
+
+- `test_telegram_config_validation` — missing token, invalid user list.
+- `test_telegram_provider_send_message` — mocked `Application.bot.send_message`.
+- `test_telegram_inbound_handler_queue` — fake PTB update, assert `InboundNotificationEvent` enqueued.
+- `test_telegram_pairing_flow` — `/start` from an allowed user creates a recipient in SQLite.
+
+Use `pytest-asyncio` and `unittest.mock` for the PTB `Application` and `Update` objects. Use a temporary SQLite file for store tests.
+
+## 14. Implementation Order
+
+1. Add dependency and define `NotificationConfig` + `TelegramConfig`.
+2. Define core abstractions: `NotificationProvider`, `NotificationMessage`, `InboundNotificationEvent`, `Recipient`.
+3. Implement `RecipientStore` with SQLite schema and CRUD operations.
+4. Implement `NotificationManager` as a singleton with provider registry and outbound routing.
+5. Implement the Telegram provider (`TelegramNotificationProvider`) with outbound send helpers.
+6. Implement Telegram security allow-list.
+7. Implement Telegram inbound handlers + pairing flow + event queue + tests.
+8. Wire `RecipientStore` into Telegram provider so outbound sends resolve chat IDs automatically.
+9. Register the `notification_received` hook and dispatch inbound events to it.
+10. Wire singleton `NotificationManager` lifecycle into `BlueprintRunner` / `PhaseOrchestrator` startup and shutdown.
+11. Add a sample blueprint under `blueprints/` demonstrating `/status` and outbound alerts.
+12. Run `task lint`, `task typecheck`, `task format`, `pytest`.
+
+## 15. Decisions
+
+- **Module name**: `goblin/notifications/`, with Telegram as the first provider and Slack as a planned phase 2 provider.
+- **Core abstraction**: channel-agnostic `NotificationManager` + `NotificationProvider` protocol. Telegram-specific code lives under `goblin/notifications/telegram/`.
+- **Persistence**: channel-agnostic `RecipientStore` with a `recipients(channel, channel_user_id, address, ...)` table.
+- **Manager lifecycle**: singleton `NotificationManager` shared across blueprint runs. Started on first use, stopped on process shutdown.
+- **Inbound integration**: hook only. Operator messages are delivered via a `notification_received` hook; no dedicated notification phase in v1.
+- **Future relay extraction**: when the Telegram layer moves to its own app, the SQLite store moves with it. Goblin will query the relay rather than keep its own pairing database.

@@ -1,10 +1,5 @@
 # Goblin Roadmap to v1
 
-### Swap to Turso ✅
-Using Turso would be good for sync state across everywhere. Should just be a drop in replacement for SQLite3 also.
-
-Implemented: Turso/libSQL is now the default SwarmDB backend. SQLite is retained as an opt-in via `backend: sqlite` or `GOBLIN_BACKEND=sqlite`. Remote cloud mode is supported through the `turso:` block and `GOBLIN_TURSO_*` environment variables.
-
 ### AgentFS
 Gives filesystem isolation. Should make this opt in of course, but would be a killer feature of an application like this as no ones else is doing it
 
