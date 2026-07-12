@@ -1,8 +1,8 @@
 [project]
 name = "goblin-monorepo"
 version = "0.1.0"
-description = "Monorepo for Goblin, Goblin Tools, and Notifications Relay"
+description = "Monorepo for Goblin and Notifications Relay"
 requires-python = ">=3.13"
 
 [tool.uv.workspace]
-members = ["goblin-cli", "goblin-tools", "notifications-relay"]
+members = ["goblin", "notifications-relay"]

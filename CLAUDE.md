@@ -1,9 +1,8 @@
 # Goblin Monorepo
 
-This repository is a uv-managed monorepo containing three Python projects:
+This repository is a uv-managed monorepo containing two Python projects:
 
-- **`goblin-cli/`** — the autonomous coding agent harness that runs high-level definitions called **blueprints** (YAML files). The runner parses a blueprint, orchestrates phase execution via the OpenHands SDK, and applies lifecycle hooks around tool calls.
-- **`goblin-tools/`** — shared utilities used by the other projects.
+- **`goblin/`** — the autonomous coding agent harness that runs high-level definitions called **blueprints** (YAML files). The runner parses a blueprint, orchestrates phase execution via the OpenHands SDK, and applies lifecycle hooks around tool calls.
 - **`notifications-relay/`** — notification relay service/CLI for the ecosystem.
 
 All projects are declared as workspace members in the root `pyproject.toml` and share a single root `uv.lock`.
@@ -20,15 +19,14 @@ jp-goblin/
 ├── ruff.toml               # Shared ruff config used by all projects
 ├── CLAUDE.md               # This file
 ├── AGENTS.md               # Pointer to this file for agent tooling
-├── goblin-cli/             # Goblin runtime CLI project
+├── goblin/                 # Goblin runtime CLI project
 │   ├── pyproject.toml
 │   ├── Taskfile.yml
 │   ├── README.md
 │   ├── VISION.md
 │   ├── ROADMAP.md
 │   ├── install.sh
-│   ├── main.py
-│   ├── goblin_cli/
+│   ├── goblin/
 │   │   ├── __init__.py
 │   │   ├── blueprint.py
 │   │   ├── orchestrator.py
@@ -51,15 +49,6 @@ jp-goblin/
 │   │   └── utils/
 │   ├── spec/
 │   │   └── v1.json
-│   ├── blueprints/
-│   │   ├── test.yaml
-│   │   └── swarm_example.yaml
-│   └── tests/
-├── goblin-tools/           # Shared tooling project
-│   ├── pyproject.toml
-│   ├── Taskfile.yml
-│   ├── README.md
-│   ├── goblin_tools/
 │   └── tests/
 └── notifications-relay/    # Notification relay project
     ├── pyproject.toml
@@ -77,13 +66,13 @@ Goblin is an autonomous coding agent harness that runs high-level definitions ca
 
 - **Python 3.13+** — specified in `.python-version` and each `pyproject.toml` `requires-python`
 - **uv** — package manager; use `uv run`, `uv add`, `uv sync` (never pip)
-- **Taskfile** — task runner; use `task goblin-cli:lint`, `task goblin-cli:format`, etc.
+- **Taskfile** — task runner; use `task goblin:lint`, `task goblin:format`, etc.
 - **openhands-sdk** / **openhands-tools** — agent orchestration
 - **click** — CLI framework
 - **jinja2** — template expressions in conditions and foreach
 - **pydantic** — response validation (PhaseResult model)
 - **pyyaml** — YAML parsing for blueprints
-- **jsonschema** — blueprint schema validation (`goblin-cli validate`, `output_schema`)
+- **jsonschema** — blueprint schema validation (`goblin validate`, `output_schema`)
 - **filelock** — cross-process locking for checkpoint writes
 - **ruff** — linter and formatter (dev)
 - **pyrefly** — type checker (dev)
@@ -96,7 +85,7 @@ Goblin is an autonomous coding agent harness that runs high-level definitions ca
 - Prompts support `{variable}` interpolation (Python `.format()`) from the `context` dict passed to `run()`
 - Phase template expressions use `{{ }}` Jinja2 syntax for conditions and foreach
 - Hook names in blueprints are strings that must exist in `HOOK_REGISTRY` at runtime
-- Blueprint files live in `goblin-cli/blueprints/`
+- Blueprint files live in `goblin/blueprints/`
 - MCP server secrets use `${VAR}` syntax resolved from `os.environ` (loaded via `.env` / `load_dotenv()`)
 - All runtime messages use `logging.getLogger(__name__)`, never `print()`
 - Log calls include `extra={"event": "...", ...}` for structured context
@@ -113,20 +102,18 @@ Run commands from the repo root. The root `Taskfile.yml` delegates to each proje
 
 Target a single project with namespaced tasks:
 
-- `task goblin-cli:lint`
-- `task goblin-cli:format`
-- `task goblin-cli:typecheck`
-- `task goblin-cli:test`
-- `task goblin-cli:validate`
-- `task goblin-tools:lint`
-- `task goblin-tools:test`
+- `task goblin:lint`
+- `task goblin:format`
+- `task goblin:typecheck`
+- `task goblin:test`
+- `task goblin:validate`
 - `task notifications-relay:lint`
 - `task notifications-relay:test`
 
 Or run tasks directly inside a project directory:
 
 ```sh
-cd goblin-cli
+cd goblin
 task lint
 ```
 
@@ -134,7 +121,7 @@ task lint
 
 Phases whitelist tools via `allowed_tools`. Besides the OpenHands file-editor, terminal, `Glob`, and `Grep` tools, Goblin registers:
 
-- `SwarmTasks` / `SwarmAgent` — swarm coordination database tools (see `goblin_cli/utils/swarmdb_tool.py` and `goblin_cli/utils/swarm_agent_tool.py`).
+- `SwarmTasks` / `SwarmAgent` — swarm coordination database tools (see `goblin/utils/swarmdb_tool.py` and `goblin/utils/swarm_agent_tool.py`).
 - `Worktree` — typed git worktree operations (`list`, `create`, `remove`, `prune`, `link_deps`).
 
 Keys:

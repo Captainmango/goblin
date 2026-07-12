@@ -64,10 +64,10 @@ A `NotificationConfig` model validates the shared settings. A `TelegramConfig` m
 
 ## 3. Module Layout
 
-Create a channel-agnostic `goblin_cli/notifications/` package with Telegram as the first provider:
+Create a channel-agnostic `goblin/notifications/` package with Telegram as the first provider:
 
 ```text
-goblin_cli/notifications/
+goblin/notifications/
 ├── __init__.py
 ├── config.py              # NotificationConfig
 ├── manager.py             # NotificationManager singleton + provider registry
@@ -123,7 +123,7 @@ Operator                 Telegram provider            RecipientStore
 
 Operator pairings are persisted in a channel-agnostic SQLite table so a restarted runner can still message known operators, regardless of which channel they use.
 
-### `RecipientStore` (`goblin_cli/notifications/store.py`)
+### `RecipientStore` (`goblin/notifications/store.py`)
 
 Responsibilities:
 
@@ -300,8 +300,8 @@ Use `pytest-asyncio` and `unittest.mock` for the PTB `Application` and `Update` 
 
 ## 15. Decisions
 
-- **Module name**: `goblin_cli/notifications/`, with Telegram as the first provider and Slack as a planned phase 2 provider.
-- **Core abstraction**: channel-agnostic `NotificationManager` + `NotificationProvider` protocol. Telegram-specific code lives under `goblin_cli/notifications/telegram/`.
+- **Module name**: `goblin/notifications/`, with Telegram as the first provider and Slack as a planned phase 2 provider.
+- **Core abstraction**: channel-agnostic `NotificationManager` + `NotificationProvider` protocol. Telegram-specific code lives under `goblin/notifications/telegram/`.
 - **Persistence**: channel-agnostic `RecipientStore` with a `recipients(channel, channel_user_id, address, ...)` table.
 - **Manager lifecycle**: singleton `NotificationManager` shared across blueprint runs. Started on first use, stopped on process shutdown.
 - **Inbound integration**: hook only. Operator messages are delivered via a `notification_received` hook; no dedicated notification phase in v1.

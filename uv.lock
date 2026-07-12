@@ -10,9 +10,8 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "goblin-cli",
+    "goblin",
     "goblin-monorepo",
-    "goblin-tools",
     "notifications-relay",
 ]
 
@@ -889,13 +888,12 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b3/0d/bf0567477f7281d9a3926c582bfef21bff7498fc0ffd3e9de21811896a0b/func_timeout-4.3.5.tar.gz", hash = "sha256:74cd3c428ec94f4edfba81f9b2f14904846d5ffccc27c92433b8b5939b5575dd", size = 44264, upload-time = "2019-08-19T21:32:07.43Z" }
 
 [[package]]
-name = "goblin-cli"
+name = "goblin"
 version = "0.1.0"
-source = { editable = "goblin-cli" }
+source = { editable = "goblin" }
 dependencies = [
     { name = "click" },
     { name = "filelock" },
-    { name = "goblin-tools" },
     { name = "jinja2" },
     { name = "jsonschema" },
     { name = "openhands-sdk" },
@@ -919,7 +917,6 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.3.1" },
     { name = "filelock", specifier = ">=3.0" },
-    { name = "goblin-tools", editable = "goblin-tools" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "jsonschema", specifier = ">=4.0" },
     { name = "openhands-sdk", specifier = "~=1.29.3" },
@@ -943,27 +940,6 @@ dev = [
 name = "goblin-monorepo"
 version = "0.1.0"
 source = { virtual = "." }
-
-[[package]]
-name = "goblin-tools"
-version = "0.1.0"
-source = { editable = "goblin-tools" }
-
-[package.dev-dependencies]
-dev = [
-    { name = "pyrefly" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pyrefly", specifier = ">=0.54.0" },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "ruff", specifier = ">=0.15.4" },
-]
 
 [[package]]
 name = "google-api-core"
