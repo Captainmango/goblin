@@ -3,9 +3,9 @@
 version: '3'
 
 includes:
-  goblin:
-    taskfile: ./goblin/Taskfile.yml
-    dir: ./goblin
+  goblin-cli:
+    taskfile: ./goblin-cli/Taskfile.yml
+    dir: ./goblin-cli
   goblin-tools:
     taskfile: ./goblin-tools/Taskfile.yml
     dir: ./goblin-tools
@@ -21,33 +21,33 @@ tasks:
 
   lint:
     cmds:
-      - task goblin:lint
+      - task goblin-cli:lint
       - task goblin-tools:lint
       - task notifications-relay:lint
     silent: true
 
   format:
     cmds:
-      - task goblin:format
+      - task goblin-cli:format
       - task goblin-tools:format
       - task notifications-relay:format
     silent: true
 
   typecheck:
     cmds:
-      - task goblin:typecheck
+      - task goblin-cli:typecheck
       - task goblin-tools:typecheck
       - task notifications-relay:typecheck
     silent: true
 
   test:
     cmds:
-      - task goblin:test
+      - task goblin-cli:test
       - task goblin-tools:test
       - task notifications-relay:test
     silent: true
 
   validate:
     cmds:
-      - task goblin:validate
+      - task goblin-cli:validate
     silent: true
