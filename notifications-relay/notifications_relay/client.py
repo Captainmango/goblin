@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 import httpx
+from pydantic import SecretStr
 
 from notifications_relay.core.models import InboxMessage, Pairing, PairingResponse, SendResponse
 from notifications_relay.exceptions import AskTimeoutError
@@ -15,13 +16,13 @@ DEFAULT_POLL_INTERVAL = 1.0
 class RelayClient:
     """Async HTTP client for the notifications relay."""
 
-    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0) -> None:
+    def __init__(self, base_url: str, api_key: str | SecretStr, timeout: float = 30.0) -> None:
         self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
+        self.api_key = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=timeout,
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={"Authorization": f"Bearer {self.api_key}"},
         )
 
     async def close(self) -> None:

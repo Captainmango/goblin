@@ -54,6 +54,11 @@ class GoblinConfig:
     )
     base_url: str | None = field(default_factory=lambda: _env("GOBLIN_BASE_URL", fallback="OPENHANDS_BASE_URL"))
 
+    # Relay
+    relay_host: str | None = field(default_factory=lambda: _env("RELAY_HOST", fallback="127.0.0.1"))
+    relay_port: int | None = field(default_factory=lambda: _env("RELAY_PORT", 8000))
+    relay_api_key: SecretStr | None = field(default_factory=_secret_env("RELAY_API_KEY", fallback=""))
+
     def require_model_api_key(self) -> SecretStr:
         """Return the model API key, raising if it is not configured."""
         if self.model_api_key is None:

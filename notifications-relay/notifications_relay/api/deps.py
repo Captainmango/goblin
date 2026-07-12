@@ -14,7 +14,7 @@ async def require_api_key(request: Request) -> None:
     config: RelayConfig = request.app.state.config
     auth = request.headers.get("Authorization", "")
     prefix = "Bearer "
-    if not auth.startswith(prefix) or auth[len(prefix) :] != config.api_key:
+    if not auth.startswith(prefix) or auth[len(prefix) :] != config.api_key.get_secret_value():
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 

@@ -1967,6 +1967,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "dotenv" },
     { name = "pyrefly" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1986,6 +1987,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "dotenv", specifier = ">=0.9.9" },
     { name = "pyrefly", specifier = ">=0.54.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },

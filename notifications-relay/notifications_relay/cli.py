@@ -6,7 +6,7 @@ import click
 import uvicorn
 
 from notifications_relay.client import RelayClient
-from notifications_relay.config import RelayConfig
+from notifications_relay.config import get_config
 from notifications_relay.local_store import resolve_token, save_token
 from notifications_relay.main import create_app
 
@@ -20,7 +20,7 @@ def cli() -> None:
 @cli.command()
 def serve() -> None:
     """Run the relay HTTP server."""
-    config = RelayConfig.from_env()
+    config = get_config()
     app = create_app(config)
     uvicorn.run(app, host=config.host, port=config.port)
 
@@ -35,7 +35,7 @@ def serve() -> None:
 )
 def pair(label: str, username: str | None, config_path: str | None) -> None:
     """Request a pairing token from the relay and save it locally."""
-    relay_config = RelayConfig.from_env()
+    relay_config = get_config()
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:
@@ -65,7 +65,7 @@ def send(
 ) -> None:
     """Send a message through the relay."""
     resolved = resolve_token(label=label, token=token)
-    relay_config = RelayConfig.from_env()
+    relay_config = get_config()
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:
@@ -91,7 +91,7 @@ def ask(
 ) -> None:
     """Send a question and wait for a reply."""
     resolved = resolve_token(label=label, token=token)
-    relay_config = RelayConfig.from_env()
+    relay_config = get_config()
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:
@@ -109,7 +109,7 @@ def inbox(question_id: str | None, token: str | None) -> None:
     """Fetch and consume replies from the relay inbox."""
     if not question_id and not token:
         raise click.UsageError("Provide --question-id or --token")
-    relay_config = RelayConfig.from_env()
+    relay_config = get_config()
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:
@@ -124,7 +124,7 @@ def inbox(question_id: str | None, token: str | None) -> None:
 @cli.command(name="list")
 def list_pairings() -> None:
     """List active pairings from the relay."""
-    relay_config = RelayConfig.from_env()
+    relay_config = get_config()
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:
@@ -148,7 +148,7 @@ def list_pairings() -> None:
 def revoke(token: str | None, label: str | None, config_path: str | None) -> None:
     """Revoke a pairing on the relay."""
     resolved = resolve_token(label=label, token=token)
-    relay_config = RelayConfig.from_env()
+    relay_config = get_config()
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:

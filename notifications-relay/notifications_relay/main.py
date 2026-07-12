@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from telegram import Bot
 
 from notifications_relay.api import health, inbox, pairings, send
-from notifications_relay.config import RelayConfig
+from notifications_relay.config import RelayConfig, get_config
 from notifications_relay.core.dispatcher import NotificationDispatcher
 from notifications_relay.core.inbox import InboxService
 from notifications_relay.core.pairing import PairingService
@@ -19,7 +19,7 @@ from notifications_relay.telegram.provider import TelegramNotificationProvider
 
 def create_app(config: RelayConfig | None = None) -> FastAPI:
     """Create and configure the FastAPI application."""
-    config = config or RelayConfig.from_env()
+    config = config or get_config()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:

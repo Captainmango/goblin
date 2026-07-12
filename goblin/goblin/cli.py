@@ -4,9 +4,16 @@ import sys
 from typing import Any
 
 import click
-from dotenv import load_dotenv
 
 from goblin.logging import configure_logging
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+
+    def load_dotenv(*args: Any, **kwargs: Any) -> None:  # type: ignore[no-redef]
+        """No-op fallback when python-dotenv is not installed."""
+        pass
 from goblin.notifications.cli import notifications
 from goblin.runner import BlueprintRunner
 from goblin.utils.click_helpers import JSON
@@ -75,6 +82,7 @@ def run(
     resume: str | None,
     run_dir: str | None,
 ):
+    """Execute a Blueprint."""
     load_dotenv()
 
     configure_logging(

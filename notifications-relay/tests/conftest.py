@@ -53,7 +53,7 @@ async def client(app: FastAPI, relay_config: RelayConfig) -> AsyncGenerator[Asyn
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
-        headers={"Authorization": f"Bearer {relay_config.api_key}"},
+        headers={"Authorization": f"Bearer {relay_config.api_key.get_secret_value()}"},
     ) as client:
         yield client
 
