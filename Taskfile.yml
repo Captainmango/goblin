@@ -2,23 +2,52 @@
 
 version: '3'
 
+includes:
+  goblin:
+    taskfile: ./goblin/Taskfile.yml
+    dir: ./goblin
+  goblin-tools:
+    taskfile: ./goblin-tools/Taskfile.yml
+    dir: ./goblin-tools
+  notifications-relay:
+    taskfile: ./notifications-relay/Taskfile.yml
+    dir: ./notifications-relay
+
 tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+
   lint:
     cmds:
-      - uv run ruff check .
+      - task goblin:lint
+      - task goblin-tools:lint
+      - task notifications-relay:lint
     silent: true
 
   format:
     cmds:
-      - uv run ruff format .
+      - task goblin:format
+      - task goblin-tools:format
+      - task notifications-relay:format
     silent: true
 
   typecheck:
     cmds:
-      - uv run pyrefly check
+      - task goblin:typecheck
+      - task goblin-tools:typecheck
+      - task notifications-relay:typecheck
+    silent: true
+
+  test:
+    cmds:
+      - task goblin:test
+      - task goblin-tools:test
+      - task notifications-relay:test
     silent: true
 
   validate:
     cmds:
-      - uv run goblin validate blueprints/*.yaml
+      - task goblin:validate
     silent: true

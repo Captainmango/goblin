@@ -8,7 +8,7 @@ import yaml
 from jsonschema import Draft7Validator, ValidationError
 
 
-SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "..", "spec", "v1.json")
+SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "../..", "spec", "v1.json")
 
 
 _cached_schema: dict[str, Any] | None = None

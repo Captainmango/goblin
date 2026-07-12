@@ -8,7 +8,7 @@ from goblin.blueprint import V1Blueprint
 
 
 def _load_schema() -> dict:
-    with open("spec/v1.json") as f:
+    with open("../spec/v1.json") as f:
         return json.load(f)
 
 
