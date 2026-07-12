@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from notifications_relay.config import get_config, load_config, reset_config
 
@@ -21,12 +20,12 @@ def _clear_relay_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
-def test_api_key_required(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_empty_api_key_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_relay_env(monkeypatch)
     monkeypatch.setenv("RELAY_API_KEY", "")
     reset_config()
-    with pytest.raises(ValidationError):
-        load_config()
+    config = load_config()
+    assert config.api_key is None
 
 
 def test_defaults_with_api_key(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,8 +1,9 @@
 # Goblin Monorepo
 
-This repository is a uv-managed monorepo containing two Python projects:
+This repository is a uv-managed monorepo containing three Python projects:
 
 - **`goblin/`** — the autonomous coding agent harness that runs high-level definitions called **blueprints** (YAML files). The runner parses a blueprint, orchestrates phase execution via the OpenHands SDK, and applies lifecycle hooks around tool calls.
+- **`goblin-common/`** — shared utilities used by the other workspace projects (config helpers and JSON logging).
 - **`notifications-relay/`** — notification relay service/CLI for the ecosystem.
 
 All projects are declared as workspace members in the root `pyproject.toml` and share a single root `uv.lock`.
@@ -39,7 +40,6 @@ jp-goblin/
 │   │   ├── workspace.py
 │   │   ├── enums.py
 │   │   ├── hooks.py
-│   │   ├── logging.py
 │   │   ├── prompts.py
 │   │   ├── cli.py
 │   │   ├── runner.py
@@ -50,6 +50,15 @@ jp-goblin/
 │   │   └── utils/
 │   ├── spec/
 │   │   └── v1.json
+│   └── tests/
+├── goblin-common/          # Shared utilities
+│   ├── pyproject.toml
+│   ├── Taskfile.yml
+│   ├── README.md
+│   ├── goblin_common/
+│   │   ├── __init__.py
+│   │   ├── config.py
+│   │   └── logging.py
 │   └── tests/
 └── notifications-relay/    # Notification relay project
     ├── pyproject.toml
@@ -90,6 +99,7 @@ Goblin is an autonomous coding agent harness that runs high-level definitions ca
 - MCP server secrets use `${VAR}` syntax resolved from `os.environ` (loaded via `.env` / `load_dotenv()`)
 - All runtime messages use `logging.getLogger(__name__)`, never `print()`
 - Log calls include `extra={"event": "...", ...}` for structured context
+- Shared config/logging utilities live in `goblin-common`; project-specific config classes import from `goblin_common.config` and call `configure_logging` from `goblin_common.logging`
 
 ## Commands
 
@@ -108,6 +118,10 @@ Target a single project with namespaced tasks:
 - `task goblin:typecheck`
 - `task goblin:test`
 - `task goblin:validate`
+- `task goblin-common:lint`
+- `task goblin-common:format`
+- `task goblin-common:typecheck`
+- `task goblin-common:test`
 - `task notifications-relay:lint`
 - `task notifications-relay:test`
 
@@ -117,6 +131,22 @@ Or run tasks directly inside a project directory:
 cd goblin
 task lint
 ```
+
+## goblin-common Project
+
+Shared utilities used by every workspace project. New projects should depend on this package and reuse its helpers instead of duplicating code.
+
+- `goblin_common.config` — `env()`, `secret_env()`, and `load_dotenv_from_cwd()`. Environment values are coerced to the type of their default (e.g. `env("RELAY_PORT", 8000)` returns an `int`).
+- `goblin_common.logging` — `JSONFormatter` and `configure_logging(logger_name, ...)`.
+- Default log file for each project is `<logger_name>.jsonl` (e.g. `goblin.jsonl`, `notifications-relay.jsonl`).
+
+## Notifications Relay Project
+
+The notification relay service exposes a FastAPI HTTP API and a Click CLI for sending/receiving messages via Telegram. It uses the shared `goblin-common` utilities:
+
+- `notifications_relay/config.py` — `RelayConfig` imports `env`, `secret_env`, and `load_dotenv_from_cwd` from `goblin_common.config`.
+- `notifications_relay/cli.py` — global `--log-config`, `--log-level`, `--log-file`, and `--quiet` options call `goblin_common.logging.configure_logging`.
+- Default log file: `notifications-relay.jsonl`.
 
 ## Built-in tools
 

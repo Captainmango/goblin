@@ -1,26 +1,10 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
-from typing import Any
 
 from pydantic import SecretStr
 
-
-def _env(name: str, default: Any = None, *, fallback: str | None = None) -> Any:
-    value = os.environ.get(name)
-    if value is not None:
-        return value
-    if fallback is not None:
-        return os.environ.get(fallback, default)
-    return default
-
-
-def _secret_env(name: str, *, fallback: str | None = None) -> SecretStr | None:
-    value = os.environ.get(name)
-    if value is None and fallback is not None:
-        value = os.environ.get(fallback)
-    return SecretStr(value) if value else None
+from goblin_common.config import env, load_dotenv_from_cwd, secret_env
 
 
 @dataclass(frozen=True)
@@ -34,30 +18,30 @@ class GoblinConfig:
     """
 
     # OpenHands SDK behaviour
-    openhands_suppress_banner: str = field(default_factory=lambda: _env("OPENHANDS_SUPPRESS_BANNER", "1"))
+    openhands_suppress_banner: str = field(default_factory=lambda: env("OPENHANDS_SUPPRESS_BANNER", "1"))
 
     # Swarm backend selection
-    backend: str | None = field(default_factory=lambda: _env("GOBLIN_BACKEND"))
+    backend: str | None = field(default_factory=lambda: env("GOBLIN_BACKEND"))
 
     # Turso / libSQL configuration
-    turso_url: str | None = field(default_factory=lambda: _env("GOBLIN_TURSO_URL"))
-    turso_mode: str | None = field(default_factory=lambda: _env("GOBLIN_TURSO_MODE"))
-    turso_auth_token: SecretStr | None = field(default_factory=lambda: _secret_env("GOBLIN_TURSO_AUTH_TOKEN"))
-    turso_local_path: str | None = field(default_factory=lambda: _env("GOBLIN_TURSO_LOCAL_PATH"))
+    turso_url: str | None = field(default_factory=lambda: env("GOBLIN_TURSO_URL"))
+    turso_mode: str | None = field(default_factory=lambda: env("GOBLIN_TURSO_MODE"))
+    turso_auth_token: SecretStr | None = field(default_factory=lambda: secret_env("GOBLIN_TURSO_AUTH_TOKEN"))
+    turso_local_path: str | None = field(default_factory=lambda: env("GOBLIN_TURSO_LOCAL_PATH"))
 
     # Logging
-    log_config: str | None = field(default_factory=lambda: _env("GOBLIN_LOG_CONFIG"))
+    log_config: str | None = field(default_factory=lambda: env("GOBLIN_LOG_CONFIG"))
 
     # LLM API credentials
     model_api_key: SecretStr | None = field(
-        default_factory=lambda: _secret_env("GOBLIN_MODEL_API_KEY", fallback="MODEL_API_KEY")
+        default_factory=lambda: secret_env("GOBLIN_MODEL_API_KEY", fallback="MODEL_API_KEY")
     )
-    base_url: str | None = field(default_factory=lambda: _env("GOBLIN_BASE_URL", fallback="OPENHANDS_BASE_URL"))
+    base_url: str | None = field(default_factory=lambda: env("GOBLIN_BASE_URL", fallback="OPENHANDS_BASE_URL"))
 
     # Relay
-    relay_host: str | None = field(default_factory=lambda: _env("RELAY_HOST", fallback="127.0.0.1"))
-    relay_port: int | None = field(default_factory=lambda: _env("RELAY_PORT", 8000))
-    relay_api_key: SecretStr | None = field(default_factory=_secret_env("RELAY_API_KEY", fallback=""))
+    relay_host: str | None = field(default_factory=lambda: env("RELAY_HOST", fallback="127.0.0.1"))
+    relay_port: int | None = field(default_factory=lambda: env("RELAY_PORT", 8000))
+    relay_api_key: SecretStr | None = field(default_factory=lambda: secret_env("RELAY_API_KEY", fallback=""))
 
     def require_model_api_key(self) -> SecretStr:
         """Return the model API key, raising if it is not configured."""
@@ -71,6 +55,7 @@ _config: GoblinConfig | None = None
 
 def load_config() -> GoblinConfig:
     """Create a fresh config instance from the current environment."""
+    load_dotenv_from_cwd()
     return GoblinConfig()
 
 

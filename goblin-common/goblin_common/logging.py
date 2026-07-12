@@ -61,32 +61,34 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_dict, default=str)
 
 
-class BlueprintLoggerAdapter(logging.LoggerAdapter):
-    def process(self, msg, kwargs):
-        kwargs.setdefault("extra", {}).update(self.extra)
-        return msg, kwargs
-
-
 def configure_logging(
+    logger_name: str,
     config_path: str | None = None,
     log_level: str | None = None,
     log_file: str | None = None,
     quiet: bool = False,
 ) -> None:
+    """Configure JSON logging for ``logger_name``.
+
+    If ``config_path`` is provided, it is loaded as a YAML logging dict config
+    and all other arguments are ignored. Otherwise, a ``JSONFormatter`` file
+    handler is attached to ``logger_name`` and a plain-text ``StreamHandler``
+    is attached to ``stderr`` unless ``quiet`` is set.
+    """
     if config_path:
         with open(config_path) as f:
             config = yaml.safe_load(f)
         logging.config.dictConfig(config)
         return
 
-    logger = logging.getLogger("goblin")
+    logger = logging.getLogger(logger_name)
     logger.setLevel(getattr(logging, log_level or "INFO"))
     logger.propagate = False
 
     # Remove existing handlers to avoid duplicates on repeated calls
     logger.handlers.clear()
 
-    file_handler = logging.FileHandler(log_file or "goblin-run.jsonl")
+    file_handler = logging.FileHandler(log_file or f"{logger_name}.jsonl")
     file_handler.setFormatter(JSONFormatter())
     logger.addHandler(file_handler)
 

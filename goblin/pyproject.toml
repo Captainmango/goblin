@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "click>=8.3.1",
     "filelock>=3.0",
+    "goblin-common",
     "jinja2>=3.1.6",
     "jsonschema>=4.0",
     "notifications-relay",
@@ -14,7 +15,6 @@ dependencies = [
     "openhands-tools~=1.29.3",
     "pydantic>=2.12.5",
     "pyturso>=0.6.1",
-    "pyyaml>=6.0.3",
 ]
 
 [project.scripts]
@@ -33,6 +33,7 @@ project-includes = ["goblin/**/*.py"]
 known-first-party = ["goblin"]
 
 [tool.uv.sources]
+goblin-common = { workspace = true }
 notifications-relay = { workspace = true }
 
 [dependency-groups]

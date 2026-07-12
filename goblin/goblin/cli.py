@@ -5,7 +5,7 @@ from typing import Any
 
 import click
 
-from goblin.logging import configure_logging
+from goblin_common.logging import configure_logging
 
 try:
     from dotenv import load_dotenv
@@ -86,6 +86,7 @@ def run(
     load_dotenv()
 
     configure_logging(
+        logger_name="goblin",
         config_path=log_config or get_config().log_config,
         log_level=log_level,
         log_file=log_file,

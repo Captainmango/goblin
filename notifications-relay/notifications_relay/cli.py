@@ -5,6 +5,8 @@ import asyncio
 import click
 import uvicorn
 
+from goblin_common.logging import configure_logging
+
 from notifications_relay.client import RelayClient
 from notifications_relay.config import get_config
 from notifications_relay.local_store import resolve_token, save_token
@@ -12,9 +14,42 @@ from notifications_relay.main import create_app
 
 
 @click.group()
-def cli() -> None:
+@click.option(
+    "--log-config",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to a YAML logging configuration file",
+)
+@click.option(
+    "--log-level",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"]),
+    default=None,
+    help="Override log level",
+)
+@click.option(
+    "--log-file",
+    type=click.Path(),
+    default=None,
+    help="Override log file path (default: notifications-relay.jsonl)",
+)
+@click.option(
+    "--quiet",
+    is_flag=True,
+    default=False,
+    help="Suppress stderr handler",
+)
+@click.pass_context
+def cli(ctx: click.Context, log_config: str | None, log_level: str | None, log_file: str | None, quiet: bool) -> None:
     """Notifications relay CLI."""
-    pass
+    ctx.ensure_object(dict)
+    config = get_config()
+    configure_logging(
+        logger_name="notifications_relay",
+        config_path=log_config or config.log_config,
+        log_level=log_level or config.log_level,
+        log_file=log_file or config.log_file,
+        quiet=quiet or config.log_quiet,
+    )
 
 
 @cli.command()
@@ -39,7 +74,7 @@ def pair(label: str, username: str | None, config_path: str | None) -> None:
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:
-        async with RelayClient(base_url, relay_config.api_key) as client:
+        async with RelayClient(base_url, relay_config.require_api_key()) as client:
             pairing = await client.create_pairing(label=label, username=username)
             save_token(label, pairing.token, path=config_path)
             click.echo(f"Pairing token for '{label}': {pairing.token}")
@@ -69,7 +104,7 @@ def send(
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:
-        async with RelayClient(base_url, relay_config.api_key) as client:
+        async with RelayClient(base_url, relay_config.require_api_key()) as client:
             response = await client.send(resolved, text, question_id=question_id)
             click.echo(f"Sent message {response.message_id} via {response.channel}")
 
@@ -95,7 +130,7 @@ def ask(
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:
-        async with RelayClient(base_url, relay_config.api_key) as client:
+        async with RelayClient(base_url, relay_config.require_api_key()) as client:
             reply = await client.ask(resolved, text, question_id, timeout=timeout)
             click.echo(reply.text)
 
@@ -113,7 +148,7 @@ def inbox(question_id: str | None, token: str | None) -> None:
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:
-        async with RelayClient(base_url, relay_config.api_key) as client:
+        async with RelayClient(base_url, relay_config.require_api_key()) as client:
             messages = await client.get_inbox(question_id=question_id, token=token)
             for message in messages:
                 click.echo(f"[{message.question_id or '-'}] {message.text}")
@@ -128,7 +163,7 @@ def list_pairings() -> None:
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:
-        async with RelayClient(base_url, relay_config.api_key) as client:
+        async with RelayClient(base_url, relay_config.require_api_key()) as client:
             pairings = await client.list_pairings()
             for pairing in pairings:
                 label = pairing.label or "(no label)"
@@ -152,7 +187,7 @@ def revoke(token: str | None, label: str | None, config_path: str | None) -> Non
     base_url = f"http://{relay_config.host}:{relay_config.port}"
 
     async def _run() -> None:
-        async with RelayClient(base_url, relay_config.api_key) as client:
+        async with RelayClient(base_url, relay_config.require_api_key()) as client:
             await client.revoke(resolved)
             click.echo(f"Revoked pairing {resolved}")
 

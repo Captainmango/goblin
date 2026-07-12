@@ -3,34 +3,11 @@ from __future__ import annotations
 import os
 from dataclasses import field
 from pathlib import Path
-from typing import Any
 
 from pydantic import SecretStr, field_validator
 from pydantic.dataclasses import dataclass
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-
-    def load_dotenv(*args: Any, **kwargs: Any) -> None:  # type: ignore[no-redef]
-        """No-op fallback when python-dotenv is not installed."""
-        pass
-
-
-def _env(name: str, default: Any = None, *, fallback: str | None = None) -> Any:
-    value = os.environ.get(name)
-    if value is not None:
-        return value
-    if fallback is not None:
-        return os.environ.get(fallback, default)
-    return default
-
-
-def _secret_env(name: str, *, fallback: str | None = None) -> SecretStr | None:
-    value = os.environ.get(name)
-    if value is None and fallback is not None:
-        value = os.environ.get(fallback)
-    return SecretStr(value) if value else None
+from goblin_common.config import env, load_dotenv_from_cwd, secret_env
 
 
 @dataclass(frozen=True)
@@ -42,13 +19,31 @@ class RelayConfig:
     :func:`get_config` for the module-level singleton.
     """
 
-    api_key: SecretStr = field(default_factory=lambda: _secret_env("RELAY_API_KEY", fallback="fake-secret"))
+    api_key: SecretStr | None = field(
+        default_factory=lambda: secret_env("RELAY_API_KEY", fallback="fake-secret")
+    )
 
-    host: str = field(default_factory=lambda: _env("RELAY_HOST", "127.0.0.1"))
-    port: int = field(default_factory=lambda: _env("RELAY_PORT", 8000))
-    db_path: Path = field(default_factory=lambda: Path(_env("RELAY_DB_PATH", ".goblin/relay.db")))
-    pairing_token_ttl_seconds: int = field(default_factory=lambda: _env("RELAY_PAIRING_TOKEN_TTL_SECONDS", 900))
-    question_mapping_ttl_seconds: int = field(default_factory=lambda: _env("RELAY_QUESTION_MAPPING_TTL_SECONDS", 3600))
+    def require_api_key(self) -> SecretStr:
+        """Return the API key, raising if it is not configured."""
+        if self.api_key is None:
+            raise RuntimeError("RELAY_API_KEY environment variable is not set")
+        return self.api_key
+
+    host: str = field(default_factory=lambda: env("RELAY_HOST", "127.0.0.1"))
+    port: int = field(default_factory=lambda: env("RELAY_PORT", 8000))
+    db_path: Path = field(default_factory=lambda: Path(env("RELAY_DB_PATH", ".goblin/relay.db")))
+    pairing_token_ttl_seconds: int = field(
+        default_factory=lambda: env("RELAY_PAIRING_TOKEN_TTL_SECONDS", 900)
+    )
+    question_mapping_ttl_seconds: int = field(
+        default_factory=lambda: env("RELAY_QUESTION_MAPPING_TTL_SECONDS", 3600)
+    )
+
+    # Logging
+    log_config: str | None = field(default_factory=lambda: env("RELAY_LOG_CONFIG"))
+    log_level: str | None = field(default_factory=lambda: env("RELAY_LOG_LEVEL"))
+    log_file: str | None = field(default_factory=lambda: env("RELAY_LOG_FILE"))
+    log_quiet: bool = field(default_factory=lambda: env("RELAY_LOG_QUIET", False))
 
     @field_validator("db_path", mode="before")
     @classmethod
@@ -61,7 +56,7 @@ _config: RelayConfig | None = None
 
 def load_config() -> RelayConfig:
     """Create a fresh config instance from the current environment."""
-    load_dotenv()
+    load_dotenv_from_cwd()
     return RelayConfig()
 
 

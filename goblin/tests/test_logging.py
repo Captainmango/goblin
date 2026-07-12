@@ -4,8 +4,8 @@ import logging
 import pytest
 import yaml
 
-from goblin.logging import JSONFormatter, configure_logging
 from goblin.utils.config import get_config, reset_config
+from goblin_common.logging import JSONFormatter, configure_logging
 
 
 @pytest.fixture(autouse=True)
@@ -101,7 +101,7 @@ class TestJSONFormatter:
 class TestConfigureLogging:
     def test_default_config(self, tmp_path):
         log_file = str(tmp_path / "test.jsonl")
-        configure_logging(log_file=log_file)
+        configure_logging("goblin", log_file=log_file)
         logger = logging.getLogger("goblin")
         handler_types = [type(h) for h in logger.handlers]
         assert logging.FileHandler in handler_types
@@ -111,18 +111,18 @@ class TestConfigureLogging:
 
     def test_custom_log_file(self, tmp_path):
         log_file = str(tmp_path / "custom.jsonl")
-        configure_logging(log_file=log_file)
+        configure_logging("goblin", log_file=log_file)
         logger = logging.getLogger("goblin")
         file_handler = next(h for h in logger.handlers if isinstance(h, logging.FileHandler))
         assert file_handler.baseFilename == log_file
 
     def test_custom_log_level(self, tmp_path):
-        configure_logging(log_level="DEBUG", log_file=str(tmp_path / "test.jsonl"))
+        configure_logging("goblin", log_level="DEBUG", log_file=str(tmp_path / "test.jsonl"))
         logger = logging.getLogger("goblin")
         assert logger.level == logging.DEBUG
 
     def test_quiet_suppresses_stderr(self, tmp_path):
-        configure_logging(quiet=True, log_file=str(tmp_path / "test.jsonl"))
+        configure_logging("goblin", quiet=True, log_file=str(tmp_path / "test.jsonl"))
         logger = logging.getLogger("goblin")
         handler_types = [type(h) for h in logger.handlers]
         assert logging.FileHandler in handler_types
@@ -142,7 +142,7 @@ class TestConfigureLogging:
         }
         config_path = tmp_path / "logging.yaml"
         config_path.write_text(yaml.dump(config))
-        configure_logging(config_path=str(config_path))
+        configure_logging("goblin", config_path=str(config_path))
         logger = logging.getLogger("goblin")
         assert logger.level == logging.DEBUG
 
@@ -162,6 +162,6 @@ class TestConfigureLogging:
         config_path.write_text(yaml.dump(config))
         monkeypatch.setenv("GOBLIN_LOG_CONFIG", str(config_path))
         # Simulate what the CLI does: pass env var as config_path
-        configure_logging(config_path=get_config().log_config)
+        configure_logging("goblin", config_path=get_config().log_config)
         logger = logging.getLogger("goblin")
         assert logger.level == logging.ERROR
