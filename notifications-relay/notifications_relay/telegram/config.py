@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from goblin_common.config import secret_env
 
 
 class TelegramConfig:
@@ -13,8 +14,8 @@ class TelegramConfig:
     @classmethod
     def from_env(cls) -> TelegramConfig:
         """Load Telegram configuration from environment variables."""
-        bot_token = os.environ.get("TELEGRAM_BOT_TOKEN") or None
-        raw_ids = os.environ.get("TELEGRAM_ALLOWED_USER_IDS", "")
+        bot_token = secret_env("TELEGRAM_BOT_TOKEN")
+        raw_ids = secret_env("TELEGRAM_ALLOWED_USER_IDS")
         allowed_user_ids: set[int] = set()
         if raw_ids:
             allowed_user_ids = {int(uid.strip()) for uid in raw_ids.split(",") if uid.strip()}
