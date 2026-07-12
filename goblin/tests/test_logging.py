@@ -1,11 +1,11 @@
 import json
 import logging
-import os
 
 import pytest
 import yaml
 
 from goblin.logging import JSONFormatter, configure_logging
+from goblin.utils.config import get_config, reset_config
 
 
 @pytest.fixture(autouse=True)
@@ -147,6 +147,7 @@ class TestConfigureLogging:
         assert logger.level == logging.DEBUG
 
     def test_env_var_fallback(self, tmp_path, monkeypatch):
+        reset_config()
         config = {
             "version": 1,
             "disable_existing_loggers": False,
@@ -161,6 +162,6 @@ class TestConfigureLogging:
         config_path.write_text(yaml.dump(config))
         monkeypatch.setenv("GOBLIN_LOG_CONFIG", str(config_path))
         # Simulate what the CLI does: pass env var as config_path
-        configure_logging(config_path=os.environ.get("GOBLIN_LOG_CONFIG"))
+        configure_logging(config_path=get_config().log_config)
         logger = logging.getLogger("goblin")
         assert logger.level == logging.ERROR

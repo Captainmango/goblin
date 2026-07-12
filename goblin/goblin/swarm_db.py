@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import sqlite3
 from typing import Any, Protocol
@@ -10,6 +9,7 @@ import turso
 import turso.sync
 
 from goblin.enums import AgentStatus, SwarmDBTable, SwarmState, TaskStatus
+from goblin.utils.config import get_config
 
 _ALLOWED_WRITE_TABLES = {t.value for t in SwarmDBTable}
 _WRITE_RE = re.compile(r"^\s*(INSERT|UPDATE|DELETE)\b", re.IGNORECASE)
@@ -487,7 +487,8 @@ class SwarmDB:
         """
         backend: SwarmDBBackend
 
-        backend_name = config.get("backend") or os.environ.get("GOBLIN_BACKEND")
+        env_config = get_config()
+        backend_name = config.get("backend") or env_config.backend
         if backend_name == "sqlite" or config.get("sqlite") is True:
             backend = SQLiteSwarmDB(config["db_path"])
         elif config.get("turso"):
@@ -511,13 +512,13 @@ class SwarmDB:
                 mode="remote" if config.get("turso_auth_token") else "local",
                 auth_token=config.get("turso_auth_token"),
             )
-        elif os.environ.get("GOBLIN_TURSO_URL"):
+        elif env_config.turso_url:
+            auth_token = env_config.turso_auth_token
             backend = TursoSwarmDB(
-                url=os.environ["GOBLIN_TURSO_URL"],
-                mode=os.environ.get("GOBLIN_TURSO_MODE")
-                or ("remote" if os.environ.get("GOBLIN_TURSO_AUTH_TOKEN") else "local"),
-                auth_token=os.environ.get("GOBLIN_TURSO_AUTH_TOKEN"),
-                local_path=os.environ.get("GOBLIN_TURSO_LOCAL_PATH"),
+                url=env_config.turso_url,
+                mode=env_config.turso_mode or ("remote" if auth_token else "local"),
+                auth_token=auth_token.get_secret_value() if auth_token else None,
+                local_path=env_config.turso_local_path,
             )
         else:
             backend = TursoSwarmDB(mode="local", url=config["db_path"])

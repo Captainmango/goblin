@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from typing import Any
 
@@ -10,6 +9,7 @@ from dotenv import load_dotenv
 from goblin.logging import configure_logging
 from goblin.runner import BlueprintRunner
 from goblin.utils.click_helpers import JSON
+from goblin.utils.config import get_config
 from goblin.validation import format_errors, validate_blueprint
 
 
@@ -77,7 +77,7 @@ def run(
     load_dotenv()
 
     configure_logging(
-        config_path=log_config or os.environ.get("GOBLIN_LOG_CONFIG"),
+        config_path=log_config or get_config().log_config,
         log_level=log_level,
         log_file=log_file,
         quiet=quiet,

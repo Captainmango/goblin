@@ -15,6 +15,7 @@ from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
 from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDINATOR_PROMPT
 from goblin.phase import PhaseProtocol, _extract_json
 from goblin.swarm_db import SwarmDB
+from goblin.utils.config import get_config
 from goblin.utils.env import resolve_env_vars
 from goblin.utils.llm import build_llm
 from goblin.tools.tool_map import resolve_tools
@@ -68,7 +69,8 @@ class SwarmPhase(PhaseProtocol):
         db_path = os.path.join(self._workspace, "swarm.db")
         swarm_config = self._swarm_config
 
-        backend = swarm_config.get("backend") or os.environ.get("GOBLIN_BACKEND")
+        config = get_config()
+        backend = swarm_config.get("backend") or config.backend
         if backend == "sqlite":
             self._db_config = {"db_path": db_path, "backend": "sqlite"}
         else:
@@ -77,7 +79,7 @@ class SwarmPhase(PhaseProtocol):
                 turso_block = resolve_env_vars(turso_block)
                 turso_block = self._blueprint._interpolate_strings(turso_block, context)
 
-            if turso_block or os.environ.get("GOBLIN_TURSO_URL"):
+            if turso_block or config.turso_url:
                 self._db_config = {"db_path": db_path, "turso": turso_block} if turso_block else {"db_path": db_path}
             else:
                 self._db_config = {"db_path": db_path, "turso_url": db_path, "turso_mode": "local"}
