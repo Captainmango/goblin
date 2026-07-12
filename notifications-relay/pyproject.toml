@@ -5,8 +5,13 @@ description = "Notification relay service for the Goblin ecosystem"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "aiosqlite",
     "click>=8.3.1",
+    "fastapi",
+    "httpx",
     "pydantic>=2.12.5",
+    "python-telegram-bot",
+    "uvicorn[standard]",
 ]
 
 [project.scripts]
@@ -19,6 +24,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["notifications_relay"]
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [tool.pyrefly]
 project-includes = ["notifications_relay/**/*.py"]
 
@@ -28,5 +36,6 @@ known-first-party = ["notifications_relay"]
 dev = [
     "pyrefly>=0.54.0",
     "pytest>=9.0.2",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.15.4",
 ]

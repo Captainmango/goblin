@@ -7,6 +7,7 @@ import click
 from dotenv import load_dotenv
 
 from goblin.logging import configure_logging
+from goblin.notifications.cli import notifications
 from goblin.runner import BlueprintRunner
 from goblin.utils.click_helpers import JSON
 from goblin.utils.config import get_config
@@ -115,6 +116,9 @@ def validate(blueprints: tuple[str, ...]):
 
     if not all_valid:
         sys.exit(1)
+
+
+cli.add_command(notifications)
 
 
 if __name__ == "__main__":

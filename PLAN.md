@@ -1,308 +1,513 @@
-# Plan: Two-Way Notifications Mechanism
+# Plan: Notifications Relay
 
 ## Goal
 
-Add a lightweight, two-way notifications layer to Goblin. The layer is channel-agnostic at the core and ships with Telegram as the first provider (via `python-telegram-bot`). It must allow Goblin to **push** messages to operators (alerts, summaries, questions) and **receive** messages or commands from operators to control or influence a running blueprint. Future channels such as Slack should fit the same abstraction.
+Build `notifications-relay` as a **standalone web server** that bridges Goblin (and other consumers) to Telegram for two-way notifications. It is channel-agnostic at the core and ships with Telegram as the first provider (via `python-telegram-bot`). The relay owns pairing state, the Telegram bot lifecycle, and a small inbox for replies; Goblin only needs an HTTP client and a per-user pairing token.
+
+In v1 the relay supports:
+
+- **Outbound**: agents push alerts, questions, and summaries to operators.
+- **Inbound replies**: operators reply to agent questions via Telegram's reply feature; the relay stores the reply in an inbox and the agent fetches it by polling.
+
+Unsolicited Telegram messages, bot commands, and webhook push are out of scope for v1.
 
 ## Scope
 
-- In scope: channel-agnostic notifications API, Telegram provider, bot lifecycle, message sending, command handling, **operator pairing flow**, **SQLite persistence of recipients**, configuration.
-- Out of scope: persistent chat history, rich media beyond text, inline keyboards (phase 2), Slack implementation (phase 2), multi-bot support.
+- In scope:
+  - FastAPI web server in `notifications-relay/`.
+  - Channel-agnostic core with Telegram as the first provider.
+  - CLI pairing flow: CLI asks relay for a token, user sends it to the bot, token marries Telegram `user_id`/`chat_id`.
+  - SQLite persistence of pairings and reply mappings inside the relay.
+  - Relay API key authentication + per-user pairing tokens.
+  - Polling inbox for inbound replies to agent questions.
+  - Reply-to correlation: Telegram replies to a bot message are matched to the `question_id` of that message.
+  - Blocking `ask()` client helper that sends a question and polls for a reply.
+  - Python client library (`RelayClient`) in the relay package for Goblin to consume.
+  - Thin `goblin notifications` CLI wrapper for local token management.
+- Out of scope for v1:
+  - Unsolicited inbound Telegram messages.
+  - Telegram bot commands (e.g. `/status`, `/pause`).
+  - Webhook push from relay to agent.
+  - Persistent chat history beyond active reply mappings.
+  - Rich media beyond text.
+  - Inline keyboards.
+  - Slack or other channels.
+  - Multi-bot support.
 
 ## Proposed Architecture
 
 ```text
-┌─────────────────────────────────────────────┐
-│              Goblin runner                  │
-│  ┌─────────────────────────────────────┐    │
-│  │     Notifications manager           │    │
-│  │  ┌────────────┐   ┌─────────────┐   │    │
-│  │  │  Outbound  │   │   Inbound   │   │    │
-│  │  │   router   │   │   router    │   │    │
-│  │  └─────┬──────┘   └──────┬──────┘   │    │
-│  │        │                 │          │    │
-│  │  ┌─────▼─────────────────▼──────┐   │    │
-│  │  │      Provider registry       │   │    │
-│  │  │  ┌────────────────────────┐  │   │    │
-│  │  │  │    Telegram provider   │  │   │    │
-│  │  │  │  (python-telegram-bot) │  │   │    │
-│  │  │  └────────────────────────┘  │   │    │
-│  │  └──────────────────────────────┘   │    │
-│  └─────────────────────────────────────┘    │
-│                    │                        │
-│            Telegram Bot API                 │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Goblin / CLI                               │
+│  ┌─────────────────────┐       ┌─────────────────────────────────┐  │
+│  │   RelayClient       │       │   .goblin/notifications.json    │  │
+│  │  (HTTP client)      │◄─────►│   + TELEGRAM_TOKEN_ envvars     │  │
+│  └──────────┬──────────┘       └─────────────────────────────────┘  │
+│             │                                                       │
+│             │ POST /pairings, POST /send, GET /inbox                │
+│             │                                                       │
+└─────────────┼───────────────────────────────────────────────────────┘
+              │
+              │ HTTP + RELAY_API_KEY
+              │
+┌─────────────▼───────────────────────────────────────────────────────┐
+│                     notifications-relay (FastAPI)                   │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                      API layer                                │  │
+│  │  /health  /pairings  /send  /inbox  /pairings/{token}         │  │
+│  └───────────────────────┬───────────────────────────────────────┘  │
+│                          │                                          │
+│  ┌───────────────────────▼───────────────────────────────────────┐  │
+│  │              Channel-agnostic core                            │  │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │  │
+│  │  │ Pairing     │  │ Send        │  │ Inbox               │   │  │
+│  │  │ service     │  │ dispatcher  │  │ (reply storage)     │   │  │
+│  │  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘   │  │
+│  │         │                │                    │              │  │
+│  │  ┌──────▼────────────────▼────────────────────▼──────┐       │  │
+│  │  │              Provider registry                     │       │  │
+│  │  │  ┌────────────────────────────────────────────┐   │       │  │
+│  │  │  │           Telegram provider                │   │       │  │
+│  │  │  │  (python-telegram-bot: send + reply-to)   │   │       │  │
+│  │  │  └────────────────────────────────────────────┘   │       │  │
+│  │  └───────────────────────────────────────────────────┘       │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                          │                                          │
+│                   Telegram Bot API                                  │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 1. Dependencies
 
-Add to `pyproject.toml`:
+Add to `notifications-relay/pyproject.toml`:
 
 ```toml
 dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.30",
     "python-telegram-bot>=21.0",
+    "pydantic>=2.0",
+    "click>=8.0",
+    "httpx>=0.27",
+    "aiosqlite>=0.20",
 ]
 ```
 
-Use `uv add python-telegram-bot`.
+Add `notifications-relay` as a workspace dependency in `goblin/pyproject.toml` (editable) so Goblin can import `RelayClient`.
+
+Use `uv add --project notifications-relay fastapi uvicorn httpx aiosqlite ...` and `uv add --project goblin notifications-relay`.
 
 ## 2. Configuration
 
-Use environment variables loaded via `dotenv`. Channel-specific config lives under per-channel models; the core notifications layer is channel-agnostic.
+### Relay environment variables (`notifications-relay`)
 
-### Notifications layer config
+- `RELAY_API_KEY` — **mandatory**. Project-level API key for all relay management and send endpoints.
+- `RELAY_HOST` — Host to bind the server. Default: `127.0.0.1`.
+- `RELAY_PORT` — Port to bind the server. Default: `8000`.
+- `RELAY_DB_PATH` — SQLite path for pairings and inbox. Default: `.goblin/relay.db`.
+- `TELEGRAM_BOT_TOKEN` — Bot token from @BotFather. Required for the Telegram provider.
+- `TELEGRAM_ALLOWED_USER_IDS` — Comma-separated list of Telegram user IDs allowed to complete pairing. If empty, any user can pair.
+- `RELAY_PAIRING_TOKEN_TTL_SECONDS` — Time-to-live for unclaimed pairing tokens. Default: `900` (15 minutes).
+- `RELAY_QUESTION_MAPPING_TTL_SECONDS` — Time-to-live for `(chat_id, telegram_message_id) → question_id` mappings. Default: `3600` (1 hour).
 
-- `NOTIFICATIONS_DB_PATH` — SQLite path for recipient pairings. Default: `.goblin/notifications.db`.
+If `TELEGRAM_BOT_TOKEN` is not set, the Telegram provider is not registered and `POST /pairings` returns an error.
 
-### Telegram provider config
+### Consumer environment variables (`goblin` / CLI)
 
-- `TELEGRAM_BOT_TOKEN` — Bot token from @BotFather.
-- `TELEGRAM_ALLOWED_USER_IDS` — Comma-separated list of Telegram user IDs allowed to pair with the bot (security). If empty, all users can pair.
-- The Telegram provider always runs in **polling** mode. Webhooks are not supported.
-
-A `NotificationConfig` model validates the shared settings. A `TelegramConfig` model validates Telegram-specific settings. If `TELEGRAM_BOT_TOKEN` is not set, the Telegram provider is simply not registered.
+- `RELAY_HOST`, `RELAY_PORT` — relay address for the client.
+- `RELAY_API_KEY` — project-level API key.
+- `TELEGRAM_TOKEN_<LABEL>` — Optional dotenv override for a pairing token (e.g. `TELEGRAM_TOKEN_ALICE=abc123`).
+- `NOTIFICATIONS_CONFIG_PATH` — Path to the local JSON pairing store. Default: `.goblin/notifications.json`.
 
 ## 3. Module Layout
 
-Create a channel-agnostic `goblin/notifications/` package with Telegram as the first provider:
+### `notifications-relay/`
 
 ```text
-goblin/notifications/
+notifications_relay/
 ├── __init__.py
-├── config.py              # NotificationConfig
-├── manager.py             # NotificationManager singleton + provider registry
-├── provider.py            # NotificationProvider protocol / base class
-├── store.py               # SQLite-backed RecipientStore
-├── types.py               # NotificationMessage, InboundNotificationEvent, Recipient
+├── __main__.py          # python -m notifications_relay
+├── cli.py               # Click CLI: serve, pair, send, ask, inbox, list, revoke
+├── config.py            # RelayConfig (Pydantic)
+├── main.py              # FastAPI app factory
+├── api/
+│   ├── __init__.py
+│   ├── deps.py          # auth dependencies (API key)
+│   ├── health.py        # GET /health
+│   ├── pairings.py      # /pairings endpoints
+│   ├── send.py          # POST /send
+│   └── inbox.py         # GET /inbox
+├── client.py            # RelayClient for consumers
+├── core/
+│   ├── __init__.py
+│   ├── models.py        # Pydantic request/response models
+│   ├── pairing.py       # PairingService
+│   ├── dispatcher.py    # route send requests to providers
+│   └── inbox.py         # InboxService
+├── store.py             # SQLite-backed Store (pairings + inbox + mappings)
+├── provider.py          # NotificationProvider protocol / base class
 ├── telegram/
 │   ├── __init__.py
-│   ├── config.py          # TelegramConfig
-│   ├── provider.py        # TelegramNotificationProvider
-│   ├── handlers.py        # PTB command/message handlers
-│   └── security.py        # allow-list checks
-└── slack/                 # placeholder for phase 2
-    └── __init__.py
+│   ├── config.py        # TelegramConfig
+│   ├── provider.py      # TelegramNotificationProvider
+│   ├── bot.py           # PTB Application lifecycle
+│   ├── handlers.py      # /pair, /unpair, reply-to handler
+│   └── security.py      # allow-list checks
+└── exceptions.py        # custom exceptions
 ```
+
+### `goblin/` integration
+
+```text
+goblin/
+├── cli.py               # add `goblin notifications` subcommand group
+├── notifications/
+│   ├── __init__.py
+│   ├── cli.py           # thin wrappers around RelayClient
+│   └── client.py        # (optional) Goblin-specific client helpers
+```
+
+Goblin depends on `notifications-relay` as a workspace package and imports `RelayClient` from it.
 
 ## 4. Pairing Flow
 
-To avoid manual wiring, Goblin provides an explicit pairing flow. Each channel implements its own pairing mechanism. For Telegram, a user becomes a known operator by messaging the bot. The notifications layer stores the pairing in a channel-agnostic SQLite table so it survives restarts and can one day support Slack, email, etc.
+The pairing flow is **relay-centric** and starts from the CLI.
 
 ### Pairing steps (Telegram)
 
-1. Operator opens Telegram and sends `/start` to the bot.
-2. The Telegram provider checks `TELEGRAM_ALLOWED_USER_IDS` if it is configured.
-   - If the allow-list is empty, any user can pair.
-   - If the allow-list is set and the user is in it, the bot replies with a welcome message and stores the pair.
-   - If the allow-list is set and the user is not in it, the bot replies with an unauthorized message and drops the update.
-3. The provider records a `Recipient` with `channel="telegram"`, `channel_user_id=<telegram user id>`, `address=<chat id>`, `username`, and `paired_at` via `RecipientStore`.
-4. From then on, Goblin can send messages to that operator without any further manual configuration.
+1. Operator runs the pairing command:
+   ```sh
+   goblin notifications pair --label alice --username alice@example.com
+   # or
+   python -m notifications_relay pair --label alice
+   ```
+2. The CLI calls `POST /pairings` on the relay with the project `RELAY_API_KEY` and an optional label/username. The relay generates a single-use token, stores a pending pairing record with `expires_at`, and returns the token.
+3. The CLI writes the token to `.goblin/notifications.json` under the supplied label:
+   ```json
+   {
+     "telegram": {
+       "alice": "abc123..."
+     }
+   }
+   ```
+   It also prints the token and instructions for the user.
+4. The operator opens Telegram and sends `/pair <token>` to the bot.
+5. The Telegram provider validates the user against `TELEGRAM_ALLOWED_USER_IDS` (if configured). If allowed, it records the Telegram `user_id` and `chat_id` against the token, marks the pairing as claimed, and replies with a welcome message.
+6. The token is now bound to that Telegram user. On every subsequent send or ask, the agent presents the same token to the relay, which resolves it to the stored `chat_id`.
 
 ### Telegram pairing commands
 
-- `/start` — pair or re-pair the operator. Updates `address` (chat ID) if it changed.
-- `/unpair` — remove the operator from the local store (operator-side cleanup).
-- `/pairings` (admin/allowed users only) — list currently paired operators.
-
-### Sequence diagram
-
-```text
-Operator                 Telegram provider            RecipientStore
-   │      /start             │                              │
-   │ ──────────────────────> │                              │
-   │                         │  is_allowed(user_id)?        │
-   │                         │ ─────────────────────────>   │
-   │                         │                              │
-   │                         │  upsert(Recipient)           │
-   │                         │ ─────────────────────────>   │
-   │      welcome            │                              │
-   │ <────────────────────── │                              │
-```
+- `/pair <token>` — claim a pending pairing token. Fails if the token is unknown, expired, or already used.
+- `/unpair` — remove the operator’s stored pairing from the relay (operator-side cleanup). Requires the user to have an active pairing.
 
 ## 5. SQLite Persistence
 
-Operator pairings are persisted in a channel-agnostic SQLite table so a restarted runner can still message known operators, regardless of which channel they use.
+Pairings, reply mappings, and inbox replies are persisted inside the relay only. Goblin does not access this database directly.
 
-### `RecipientStore` (`goblin/notifications/store.py`)
+### Store responsibilities (`notifications_relay/store.py`)
 
-Responsibilities:
-
-- Create/migrate the `recipients` table on first use.
-- `upsert(recipient: Recipient)` — insert or update a recipient.
-- `get_address(channel, channel_user_id) -> str | None` — resolve the delivery address (e.g. Telegram chat ID) for a recipient.
-- `list_recipients(channel=None) -> list[Recipient]` — return stored recipients, optionally filtered by channel.
-- `delete(channel, channel_user_id) -> bool` — remove a recipient.
+- Create/migrate tables on first use.
+- Pairing CRUD: create, claim, get by token, list active, revoke, delete expired pending.
+- Question mapping: store `(chat_id, telegram_message_id) → question_id` with TTL; resolve by `chat_id` + `telegram_message_id`; delete expired.
+- Inbox: insert reply, fetch and delete by `question_id`, delete expired.
 
 ### Schema
 
 ```sql
-CREATE TABLE IF NOT EXISTS recipients (
-    channel TEXT NOT NULL,
-    channel_user_id TEXT NOT NULL,
-    address TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS pairings (
+    token TEXT PRIMARY KEY,
+    label TEXT,
     username TEXT,
-    paired_at TEXT NOT NULL,
-    PRIMARY KEY (channel, channel_user_id)
+    telegram_user_id TEXT,
+    chat_id TEXT,
+    status TEXT NOT NULL,        -- 'pending' | 'claimed' | 'revoked'
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    claimed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS question_mappings (
+    telegram_message_id TEXT NOT NULL,
+    chat_id TEXT NOT NULL,
+    token TEXT NOT NULL,
+    question_id TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    PRIMARY KEY (chat_id, telegram_message_id)
+);
+
+CREATE TABLE IF NOT EXISTS inbox (
+    id TEXT PRIMARY KEY,
+    token TEXT NOT NULL,
+    telegram_user_id TEXT NOT NULL,
+    chat_id TEXT NOT NULL,
+    question_id TEXT,
+    text TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
 );
 ```
 
-### Location
+All timestamp columns store ISO8601 strings in UTC.
 
-Fixed path: `.goblin/notifications.db`. The store is created on `NotificationManager` startup if it does not exist.
+Expired pending tokens, expired question mappings, and expired inbox entries are cleaned up periodically.
 
-## 6. Outbound Channel (Goblin → Operator)
+## 6. Relay API
 
-The `NotificationManager` exposes a channel-agnostic send API and routes messages to the appropriate provider.
+All endpoints except `/health` require the `Authorization: Bearer <RELAY_API_KEY>` header.
 
-`NotificationManager.send(message: NotificationMessage, recipient: Recipient | None = None) -> DeliveryResult`
+### `GET /health`
 
-- `NotificationMessage` contains `text`, optional `title`, and future fields for channel-specific payloads.
-- If `recipient` is provided, the manager routes to `recipient.channel`.
-- If `recipient` is omitted, the manager can broadcast to all recipients or use a default channel (configurable later).
-- Each provider implements `send(recipient: Recipient, message: NotificationMessage)`.
+Public. Returns status and whether the Telegram provider is registered.
+
+```json
+{
+  "status": "ok",
+  "telegram_provider_registered": true
+}
+```
+
+### `POST /pairings`
+
+Create a pending pairing. The relay generates and returns the token.
+
+Request:
+
+```json
+{
+  "label": "alice",
+  "username": "alice@example.com"
+}
+```
+
+Response:
+
+```json
+{
+  "token": "abc123...",
+  "expires_at": "2026-01-01T12:15:00Z"
+}
+```
+
+### `GET /pairings`
+
+List active (claimed, non-expired) pairings.
+
+### `DELETE /pairings/{token}`
+
+Revoke a pairing by token. Returns 204 or 404.
+
+### `DELETE /pairings/expired`
+
+Trigger cleanup of expired pending tokens. Returns the number deleted.
+
+### `POST /send`
+
+Send a message to the Telegram user bound to the provided pairing token.
+
+Request:
+
+```json
+{
+  "token": "abc123...",
+  "text": "Build complete.",
+  "question_id": "q-123",
+  "idempotency_key": "run-42-build-complete"
+}
+```
+
+If `question_id` is provided, the relay stores the resulting Telegram `message_id` so it can correlate future replies.
+
+If `idempotency_key` is provided, the relay deduplicates sends with the same key within a reasonable TTL (e.g., 24 hours). Duplicate requests return the stored response without sending a second Telegram message.
+
+Response:
+
+```json
+{
+  "message_id": 12345,
+  "channel": "telegram"
+}
+```
+
+### `GET /inbox`
+
+Fetch and consume a reply. At least one filter is required.
+
+Query parameters:
+
+- `question_id` — return the reply for this question ID.
+- `token` — return any replies for this pairing token.
+
+Response:
+
+```json
+{
+  "messages": [
+    {
+      "id": "msg-1",
+      "token": "abc123...",
+      "telegram_user_id": "123456",
+      "chat_id": "123456",
+      "question_id": "q-123",
+      "text": "Yes, proceed.",
+      "received_at": "2026-01-01T12:05:00Z"
+    }
+  ]
+}
+```
+
+Messages are deleted as they are returned.
+
+## 7. Outbound Channel (Agent → Relay → Operator)
+
+### `RelayClient` (`notifications_relay/client.py`)
+
+A thin async HTTP client wrapping the relay endpoints:
+
+```python
+class RelayClient:
+    def __init__(self, base_url: str, api_key: str) -> None: ...
+
+    async def create_pairing(self, label: str | None = None, username: str | None = None) -> PairingResponse: ...
+    async def send(self, token: str, text: str, question_id: str | None = None) -> SendResponse: ...
+    async def ask(self, token: str, text: str, question_id: str, timeout: float = 300.0) -> InboxMessage: ...
+    async def list_pairings(self) -> list[Pairing]: ...
+    async def revoke(self, token: str) -> None: ...
+```
+
+### Blocking `ask()`
+
+`ask()` is the primary agent interface for questions:
+
+1. Calls `send(token, text, question_id=question_id)`.
+2. Polls `GET /inbox?question_id=...` with a short interval.
+3. Returns the first matching reply.
+4. Raises `AskTimeoutError` if no reply arrives within `timeout`.
+
+### Token resolution in Goblin
+
+Goblin resolves a token in this order:
+
+1. Explicit token passed to the send/ask call.
+2. Environment variable matching the label (e.g. `TELEGRAM_TOKEN_ALICE`).
+3. `.goblin/notifications.json` entry for the label.
+
+If no token is found, the call fails fast with a clear error.
 
 ### Telegram provider specifics
 
-`TelegramNotificationProvider.send_message(text: str, chat_id: int | None = None, channel_user_id: str | None = None) -> MessageId`
+`TelegramNotificationProvider.send(token: str, text: str, question_id: str | None = None, idempotency_key: str | None = None) -> SendResponse`
 
-- Resolve `chat_id` in this order:
-  1. Explicit `chat_id` argument.
-  2. `RecipientStore.get_address("telegram", channel_user_id)`.
-- If no chat ID can be resolved, log `telegram_no_chat_id` and return `None`.
+- Look up `chat_id` from the pairing store by token.
+- If no active pairing is found, log `telegram_pairing_not_found` and return an error.
 - Truncate or split messages longer than Telegram’s 4096-character limit.
-- Return the sent message ID so callers can later edit or reply.
+- If `question_id` is provided, store `(chat_id, telegram_message_id) → question_id` with TTL.
+- Return the sent Telegram message ID.
 
-Helpers built on top:
+## 8. Inbound Channel (Telegram → Relay → Agent)
 
-- `send_alert(title, body)` — formatted with a prefix.
-- `send_question(question, options)` — text + keyboard (phase 2).
-- `send_phase_complete(phase_name, result_summary)`.
-- `send_to_user(channel_user_id, text)` — convenience wrapper that resolves chat ID from the store.
+### What is stored
 
-## 7. Inbound Channel (Telegram → Goblin)
+Only Telegram messages that are **replies to a recent bot message** are stored. The relay uses the original bot message's `chat_id` and `telegram_message_id` to look up the `question_id` mapping. The reply is then inserted into the inbox with that `question_id`.
 
-Each provider translates its native inbound events into `InboundNotificationEvent` objects and pushes them to the `NotificationManager`, which dispatches them to the registered hook.
+Unsolicited messages, non-reply messages, and replies to expired mappings are dropped (or logged) in v1.
 
 ### Telegram inbound handlers
 
-`python-telegram-bot` handlers registered on the `Application`:
+- `/pair <token>` — claim or re-pair the operator.
+- `/unpair` — remove the operator’s stored pairing.
+- **Reply-to handler** — for any update with `message.reply_to_message`, resolve the original `(chat_id, telegram_message_id)` to a `question_id`, validate the sender has an active pairing, and insert the reply into the inbox.
 
-- `/start` — pair or re-pair the operator; store the recipient in SQLite.
-- `/status` — report current blueprint/run state if any.
-- `/pause` — request pause of the running orchestrator (requires hook).
-- `/resume` — request resume.
-- `/unpair` — remove the operator’s stored pairing from the local database.
-- `/pairings` — list currently paired operators (allowed users only).
-- `/message` or free-form text — forward operator text into Goblin via the event bus / hook.
+Security: every inbound update is filtered by `security.is_allowed(user_id)` for pairing commands. Reply storage only accepts messages from users with active pairings.
 
-Security: every inbound update is filtered by `security.is_allowed(user_id)`. Unknown users receive a silent drop or a single "unauthorized" reply.
+### Polling model
 
-## 8. Notification Manager Lifecycle (Singleton)
+The agent polls `GET /inbox` for replies. Webhook push from relay to agent is out of scope for v1 but reserved as a future option.
 
-The `NotificationManager` runs as a **singleton** shared across blueprint runs. It owns the `RecipientStore` and the provider registry. Providers are started once, kept alive in the background, and stopped only when the Goblin process exits.
+## 9. Notification Manager Lifecycle in Goblin
 
-Reasons:
+Because the relay is external, Goblin does not need a singleton manager that owns a bot lifecycle. Instead:
 
-- Avoids the cost of starting/stopping polling for every blueprint run.
-- Allows operators to pair or send messages even when no blueprint is running.
-- Matches the shared SQLite store model.
-- Keeps the core channel-agnostic; new providers plug into the same manager.
+- Goblin creates a `RelayClient` when needed.
+- Pairing tokens are loaded from `.goblin/notifications.json` or envvars.
+- Sends are stateless HTTP calls to the relay.
+- `ask()` blocks and polls the relay for a reply.
+- There is no startup/shutdown lifecycle for the notification layer beyond HTTP connection management.
 
-Lifecycle:
-
-1. On first use (e.g. first blueprint run), create and start the singleton `NotificationManager`.
-2. The manager initializes the `RecipientStore`.
-3. The manager registers and starts any configured providers (e.g. Telegram if `TELEGRAM_BOT_TOKEN` is set).
-4. Subsequent runs reuse the existing manager.
-5. On Goblin process shutdown, stop all providers and close the SQLite store.
-
-A module-level `get_notification_manager()` factory returns the singleton instance. If no providers are configured, the manager starts in a no-op mode and logs a warning on send attempts.
-
-## 9. Integration With the Orchestrator
-
-Introduce a small event bus abstraction so the notifications layer stays decoupled from the orchestrator internals.
-
-- Providers emit `InboundNotificationEvent` objects.
-- The `NotificationManager` dispatches these events to a registered hook (`notification_received`).
-- For outbound messages, phases can request `NotificationManager.send(...)` through a tool or hook.
-
-### Inbound integration: hook only
-
-Inbound operator messages are **not** surfaced as a dedicated phase. Blueprints opt in by registering a hook:
-
-```yaml
-hooks:
-  notification_received: my_hook_handler
-```
-
-The hook receives an `InboundNotificationEvent` containing `channel`, `channel_user_id`, `address`, `text`, and `timestamp`. The blueprint decides how to react. Telegram-specific blueprints can still inspect `event.channel == "telegram"` if needed.
-
-### Outbound integration
-
-Phases can call `NotificationManager.send_alert(...)` or `NotificationManager.send_to_recipient(...)` directly via a tool or hook.
-
-### Phase lifecycle hook
-
-Optional `on_phase_complete` hook sends a phase summary via the notifications layer if configured.
+A thin `NotificationManager` wrapper can cache the `RelayClient` and expose `send_alert(label, text)` and `ask(label, text, question_id)` helpers, but it does not start background tasks.
 
 ## 10. Concurrency Model
 
-- Each provider runs its own IO loop or background task (e.g. PTB `Application` for Telegram).
-- `NotificationManager` exposes async `send_*` methods that can be awaited from Goblin’s existing async runner.
-- Inbound handlers are async and only place events onto a shared `asyncio.Queue` to avoid blocking provider updates.
-- A worker coroutine drains the queue and dispatches events to registered consumers.
+- The relay is an ASGI app (FastAPI + Uvicorn).
+- The Telegram provider uses `python-telegram-bot` polling. It runs in a dedicated `asyncio` event loop inside a `ThreadPoolExecutor` that is started during the FastAPI lifespan startup and shut down gracefully during lifespan teardown. This keeps PTB's long-polling loop off the main ASGI event loop.
+- `RelayClient` uses `httpx.AsyncClient` for async HTTP.
+- All store operations use `aiosqlite` from async endpoints.
+- Cleanup of expired tokens, mappings, and inbox entries runs on a background schedule and can be triggered via `DELETE /pairings/expired`.
 
 ## 11. Error Handling & Resilience
 
-- Providers catch their native errors (e.g. `TelegramError`) and log with channel-specific event names such as `telegram_send_failed`.
-- Retry transient errors (network, rate limits) with exponential backoff.
-- Never let notification failures crash the orchestrator; outbound failures are logged, not raised.
-- On provider startup failure, log an error and continue the blueprint run unless `NOTIFICATIONS_REQUIRED=true`.
+- All provider-native errors (e.g. `TelegramError`) are caught and logged with channel-specific event names such as `telegram_send_failed`.
+- HTTP errors from the relay return structured JSON responses and appropriate status codes.
+- Retry transient network/rate-limit errors with exponential backoff inside the Telegram provider.
+- Never let notification failures crash the agent; outbound failures are logged and surfaced as failed send responses.
+- On relay startup failure, exit with a clear error message.
 
 ## 12. Security
 
-- Tokens stored only in environment variables / `.env`, never committed.
-- Provider-specific allow-lists enforced on every inbound update (e.g. `TELEGRAM_ALLOWED_USER_IDS` for Telegram).
-- No shell commands accepted from notification text; commands map to an explicit allow-list of safe actions.
+- `RELAY_API_KEY` must be set manually and never committed.
+- Pairing tokens are single-use, time-bounded, and deleted on expiry.
+- Telegram allow-list (`TELEGRAM_ALLOWED_USER_IDS`) is enforced when a user attempts to claim a token.
+- Local token storage defaults to `.goblin/notifications.json` with file permissions set to `0o600`.
+- No shell commands are accepted from notification text.
+- Inbox replies are only accepted from users with active pairings.
 
 ## 13. Testing
 
-Add tests under `tests/notifications/`:
+Add tests under `notifications-relay/tests/`:
 
-- `test_notification_config_validation` — shared config defaults and validation.
-- `test_notification_manager_singleton` — `get_notification_manager()` returns the same instance across calls.
-- `test_notification_manager_routing` — message routed to the correct provider.
-- `test_recipient_store` — CRUD operations for `RecipientStore`.
+- `test_config_validation` — required API key, defaults, invalid TTL.
+- `test_pairing_store` — create, claim, list, revoke, expired cleanup.
+- `test_question_mapping_store` — TTL, composite-key resolution, cleanup.
+- `test_inbox_store` — insert, fetch-and-delete, expiry.
+- `test_api_pairings` — `POST /pairings`, `GET /pairings`, `DELETE /pairings/{token}`, `DELETE /pairings/expired` with auth.
+- `test_api_send` — `POST /send` resolves token and stores question mapping.
+- `test_api_inbox` — `GET /inbox?question_id=...` returns and deletes replies.
+- `test_telegram_claim_flow` — `/pair <token>` from allowed user updates the store.
+- `test_telegram_reply_flow` — reply to a bot message creates an inbox entry with the correct `question_id`.
+- `test_relay_client` — mocked HTTP interactions for `RelayClient`, including blocking `ask()` timeout.
 
-Add Telegram-specific tests under `tests/notifications/telegram/`:
+Add tests under `goblin/tests/notifications/`:
 
-- `test_telegram_config_validation` — missing token, invalid user list.
-- `test_telegram_provider_send_message` — mocked `Application.bot.send_message`.
-- `test_telegram_inbound_handler_queue` — fake PTB update, assert `InboundNotificationEvent` enqueued.
-- `test_telegram_pairing_flow` — `/start` from an allowed user creates a recipient in SQLite.
+- `test_token_resolution` — envvar vs JSON file precedence.
+- `test_cli_pair` — invokes `goblin notifications pair` and verifies file write.
+- `test_cli_ask` — mocked `RelayClient.ask()` through the Goblin CLI.
 
-Use `pytest-asyncio` and `unittest.mock` for the PTB `Application` and `Update` objects. Use a temporary SQLite file for store tests.
+Use `pytest-asyncio`, `httpx.ASGITransport` for FastAPI tests, and `unittest.mock` for the PTB `Application` and `Update` objects.
 
 ## 14. Implementation Order
 
-1. Add dependency and define `NotificationConfig` + `TelegramConfig`.
-2. Define core abstractions: `NotificationProvider`, `NotificationMessage`, `InboundNotificationEvent`, `Recipient`.
-3. Implement `RecipientStore` with SQLite schema and CRUD operations.
-4. Implement `NotificationManager` as a singleton with provider registry and outbound routing.
-5. Implement the Telegram provider (`TelegramNotificationProvider`) with outbound send helpers.
-6. Implement Telegram security allow-list.
-7. Implement Telegram inbound handlers + pairing flow + event queue + tests.
-8. Wire `RecipientStore` into Telegram provider so outbound sends resolve chat IDs automatically.
-9. Register the `notification_received` hook and dispatch inbound events to it.
-10. Wire singleton `NotificationManager` lifecycle into `BlueprintRunner` / `PhaseOrchestrator` startup and shutdown.
-11. Add a sample blueprint under `blueprints/` demonstrating `/status` and outbound alerts.
-12. Run `task lint`, `task typecheck`, `task format`, `pytest`.
+1. Set up `notifications-relay` package structure, dependencies, and `RelayConfig`.
+2. Implement `Store` with SQLite schema for pairings, question mappings, and inbox.
+3. Implement `PairingService` (create, claim, revoke, cleanup).
+4. Build FastAPI app, auth dependency, and `/health` endpoint.
+5. Implement `/pairings` management endpoints.
+6. Add Telegram provider, bot lifecycle, `/pair`, `/unpair`, and reply-to handler.
+7. Implement `/send` endpoint, dispatcher, and question-mapping storage.
+8. Implement `/inbox` endpoint and `InboxService`.
+9. Implement `RelayClient` with `send()` and blocking `ask()`.
+10. Add `notifications-relay` CLI (`serve`, `pair`, `send`, `ask`, `inbox`, `list`, `revoke`).
+11. Add `goblin notifications` CLI wrapper and local JSON/env token resolution.
+12. Add tests for relay and Goblin integration.
+13. Run `task lint`, `task typecheck`, `task format`, `pytest`.
 
 ## 15. Decisions
 
-- **Module name**: `goblin/notifications/`, with Telegram as the first provider and Slack as a planned phase 2 provider.
-- **Core abstraction**: channel-agnostic `NotificationManager` + `NotificationProvider` protocol. Telegram-specific code lives under `goblin/notifications/telegram/`.
-- **Persistence**: channel-agnostic `RecipientStore` with a `recipients(channel, channel_user_id, address, ...)` table.
-- **Manager lifecycle**: singleton `NotificationManager` shared across blueprint runs. Started on first use, stopped on process shutdown.
-- **Inbound integration**: hook only. Operator messages are delivered via a `notification_received` hook; no dedicated notification phase in v1.
-- **Future relay extraction**: when the Telegram layer moves to its own app, the SQLite store moves with it. Goblin will query the relay rather than keep its own pairing database.
+- **Architecture**: `notifications-relay` is a standalone FastAPI web server; Goblin communicates with it over HTTP.
+- **Authentication**: project-level `RELAY_API_KEY` for agent→relay + per-user pairing token for recipient routing.
+- **Token ownership**: the relay generates single-use pairing tokens with a 15-minute default TTL.
+- **Pairing flow**: CLI requests token from relay → user sends `/pair <token>` to bot → bot binds Telegram IDs to token.
+- **Token storage**: consumer keeps tokens locally in `.goblin/notifications.json` (600 permissions) with optional `TELEGRAM_TOKEN_*` envvar overrides.
+- **Inbound replies**: stored only when the user replies to a recent bot message; correlation uses Telegram `reply_to_message` and a stored `(chat_id, telegram_message_id) → question_id` mapping.
+- **Unsolicited messages**: dropped in v1. Bot commands and webhook push are deferred.
+- **Agent interaction**: `RelayClient.ask(token, text, question_id, timeout)` sends a question and polls `GET /inbox` until a reply arrives.
+- **Client library**: `RelayClient` lives in the `notifications-relay` package and is imported by Goblin.
+- **Future**: webhook push, Slack provider, inline keyboards, and general bot commands are deferred to phase 2.

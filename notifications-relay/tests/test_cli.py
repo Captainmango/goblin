@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 from click.testing import CliRunner
 
 from notifications_relay.cli import cli
 
 
-def test_send() -> None:
+def test_cli_help() -> None:
     runner = CliRunner()
-    result = runner.invoke(cli, ["send", "slack", "hello"])
+    result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
-    assert "[slack] hello" in result.output
+    assert "serve" in result.output
+    assert "pair" in result.output

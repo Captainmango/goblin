@@ -9,6 +9,7 @@ dependencies = [
     "filelock>=3.0",
     "jinja2>=3.1.6",
     "jsonschema>=4.0",
+    "notifications-relay",
     "openhands-sdk~=1.29.3",
     "openhands-tools~=1.29.3",
     "pydantic>=2.12.5",
@@ -30,6 +31,9 @@ packages = ["goblin"]
 project-includes = ["goblin/**/*.py"]
 
 known-first-party = ["goblin"]
+
+[tool.uv.sources]
+notifications-relay = { workspace = true }
 
 [dependency-groups]
 dev = [
