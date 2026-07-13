@@ -44,7 +44,7 @@ blueprint:
 #         command: npx
 #         args: ["-y", "@modelcontextprotocol/server-github"]
 #         env:
-#           GITHUB_TOKEN: $GITHUB_TOKEN
+#           GITHUB_TOKEN: ${GITHUB_TOKEN}
 #
 #   phases:
 #     - id: fetch_issues

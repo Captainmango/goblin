@@ -83,15 +83,48 @@ class V1Blueprint(Blueprint):
 
         return "## Prior Phase Results\n\n" + "\n".join(sections) + "\n---\n\n"
 
-    def _resolve_model(self, phase: PhaseProtocol) -> str | None:
-        """Return the effective model for a phase.
+    def _resolve_llm_config(self, phase: PhaseProtocol, context: dict | None = None) -> dict | str | None:
+        """Return the effective OpenHands LLM configuration for a phase.
 
-        Precedence: phase > blueprint defaults > None (falls back to hardcoded default).
+        Precedence: phase.llm > phase.model > defaults.llm > defaults.model > None.
+        Dict configs have environment variables and {variable} context interpolation
+        resolved before being returned. String values are returned as-is so that
+        build_llm can fall back to environment-based credentials.
         """
+        defaults = self.spec.get("defaults", {})
+        default_llm = defaults.get("llm")
+        default_model = defaults.get("model")
+
+        phase_llm = getattr(phase, "llm_config", None)
         phase_model = getattr(phase, "model", None)
-        if phase_model is not None:
-            return phase_model
-        return self.spec.get("defaults", {}).get("model")
+
+        if phase_llm is not None:
+            selected = phase_llm
+        elif phase_model is not None:
+            selected = phase_model
+        elif default_llm is not None:
+            selected = default_llm
+        elif default_model is not None:
+            selected = default_model
+        else:
+            selected = None
+
+        if isinstance(selected, dict):
+            validate_env_var_syntax(selected)
+            resolved = resolve_env_vars(selected)
+            return self._interpolate_strings(resolved, context or {})
+
+        return selected
+
+    def _resolve_model(self, phase: PhaseProtocol, context: dict | None = None) -> str | None:
+        """Return the effective model identifier for a phase.
+
+        Precedence: phase.llm.model > phase.model > defaults.llm.model > defaults.model > None.
+        """
+        config = self._resolve_llm_config(phase, context)
+        if isinstance(config, dict):
+            return config.get("model")
+        return config
 
     def _resolve_worktree_config(self, phase: PhaseProtocol) -> dict | None:
         """Return the effective worktree config for a phase.

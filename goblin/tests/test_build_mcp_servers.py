@@ -280,3 +280,145 @@ class TestBuildMcpServersTypeInference:
         assert "gh" in result["mcpServers"]
         assert "type" not in result["mcpServers"]["gh"]
         assert result["mcpServers"]["gh"]["command"] == "npx"
+
+
+# ---------------------------------------------------------------------------
+# Extended OpenHands / fastmcp fields
+# ---------------------------------------------------------------------------
+
+
+class TestBuildMcpServersExtendedFields:
+    def test_stdio_cwd_and_timeout_passed_through(self):
+        bp = _make_blueprint(
+            [
+                {
+                    "id": "s1",
+                    "prompt": "do stuff",
+                    "mcp_servers": {
+                        "gh": {
+                            "command": "npx",
+                            "cwd": "/tmp/mcp",
+                            "timeout": 60000,
+                            "keep_alive": True,
+                        }
+                    },
+                }
+            ],
+        )
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
+        server = result["mcpServers"]["gh"]
+        assert server["cwd"] == "/tmp/mcp"
+        assert server["timeout"] == 60000
+        assert server["keep_alive"] is True
+
+    def test_remote_streamable_http_transport(self):
+        bp = _make_blueprint(
+            [
+                {
+                    "id": "s1",
+                    "prompt": "do stuff",
+                    "mcp_servers": {
+                        "api": {
+                            "transport": "streamable-http",
+                            "url": "https://example.com/mcp",
+                        }
+                    },
+                }
+            ],
+        )
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
+        assert result["mcpServers"]["api"]["transport"] == "streamable-http"
+
+    def test_remote_auth_token_resolved(self, monkeypatch):
+        monkeypatch.setenv("MCP_TOKEN", "bearer-token")
+        bp = _make_blueprint(
+            [
+                {
+                    "id": "s1",
+                    "prompt": "do stuff",
+                    "mcp_servers": {
+                        "api": {
+                            "url": "https://example.com/mcp",
+                            "auth": "${MCP_TOKEN}",
+                        }
+                    },
+                }
+            ],
+        )
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
+        assert result["mcpServers"]["api"]["auth"] == "bearer-token"
+
+    def test_remote_auth_oauth_literal_preserved(self):
+        bp = _make_blueprint(
+            [
+                {
+                    "id": "s1",
+                    "prompt": "do stuff",
+                    "mcp_servers": {
+                        "api": {
+                            "url": "https://example.com/mcp",
+                            "auth": "oauth",
+                        }
+                    },
+                }
+            ],
+        )
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
+        assert result["mcpServers"]["api"]["auth"] == "oauth"
+
+    def test_remote_sse_read_timeout_and_timeout(self):
+        bp = _make_blueprint(
+            [
+                {
+                    "id": "s1",
+                    "prompt": "do stuff",
+                    "mcp_servers": {
+                        "api": {
+                            "transport": "sse",
+                            "url": "https://example.com/mcp/sse",
+                            "sse_read_timeout": 120,
+                            "timeout": 60000,
+                        }
+                    },
+                }
+            ],
+        )
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
+        server = result["mcpServers"]["api"]
+        assert server["sse_read_timeout"] == 120
+        assert server["timeout"] == 60000
+
+    def test_transforming_server_fields(self):
+        bp = _make_blueprint(
+            [
+                {
+                    "id": "s1",
+                    "prompt": "do stuff",
+                    "mcp_servers": {
+                        "api": {
+                            "url": "https://example.com/mcp",
+                            "include_tags": ["core"],
+                            "exclude_tags": ["experimental"],
+                            "tools": {"list_items": {"enabled": True}},
+                        }
+                    },
+                }
+            ],
+        )
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+        result = bp._build_mcp_servers(phase, {})
+        server = result["mcpServers"]["api"]
+        assert server["include_tags"] == ["core"]
+        assert server["exclude_tags"] == ["experimental"]
+        assert server["tools"] == {"list_items": {"enabled": True}}

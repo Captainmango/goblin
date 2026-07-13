@@ -16,7 +16,7 @@ from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDIN
 from goblin.phase import PhaseProtocol, _extract_json
 from goblin.swarm_db import SwarmDB
 from goblin.utils.config import get_config
-from goblin.utils.env import resolve_env_vars
+from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
 from goblin.utils.llm import build_llm
 from goblin.tools.tool_map import resolve_tools
 
@@ -49,6 +49,9 @@ class SwarmPhase(PhaseProtocol):
         self.hooks_config: dict = raw.get("hooks", {})
         self.mcp_servers_config: dict | None = raw.get("mcp_servers")
         self.model: str | None = raw.get("model")
+        self.llm_config: dict | None = raw.get("llm")
+        self.swarm_llm_config: dict | None = swarm.get("llm")
+        self.swarm_model: str | None = swarm.get("model")
 
         self._blueprint = blueprint
         self._db: SwarmDB | None = None
@@ -91,6 +94,50 @@ class SwarmPhase(PhaseProtocol):
             self._db.register_agent(agent_cfg["name"], agent_cfg.get("roles"))
 
         self._db.transition(SwarmState.COORDINATOR)
+
+    def _resolve_swarm_llm_config(
+        self,
+        override_llm: dict | None,
+        override_model: str | None,
+        context: dict | None = None,
+    ) -> dict | str | None:
+        """Resolve effective LLM config using swarm-level overrides.
+
+        Precedence:
+          override_llm > override_model > swarm.llm > swarm.model >
+          phase.llm > phase.model > defaults.llm > defaults.model > None
+
+        Dict configs have environment variables and {variable} context
+        interpolation resolved before being returned.
+        """
+        defaults = self._blueprint.spec.get("defaults", {})
+        default_llm = defaults.get("llm")
+        default_model = defaults.get("model")
+
+        selected = next(
+            (
+                c
+                for c in [
+                    override_llm,
+                    override_model,
+                    self.swarm_llm_config,
+                    self.swarm_model,
+                    self.llm_config,
+                    self.model,
+                    default_llm,
+                    default_model,
+                ]
+                if c is not None
+            ),
+            None,
+        )
+
+        if isinstance(selected, dict):
+            validate_env_var_syntax(selected)
+            resolved = resolve_env_vars(selected)
+            return self._blueprint._interpolate_strings(resolved, context or {})
+
+        return selected
 
     def _build_agent_roster(self) -> str:
         lines = []
@@ -182,8 +229,12 @@ class SwarmPhase(PhaseProtocol):
 
         assert self._db_config is not None
         db_config = self._db_config
-        coordinator_model = self.coordinator_config.get("model") or self._blueprint._resolve_model(self)
-        llm = build_llm(model=coordinator_model)
+        coordinator_llm = self._resolve_swarm_llm_config(
+            self.coordinator_config.get("llm"),
+            self.coordinator_config.get("model"),
+            context,
+        )
+        llm = build_llm(model=coordinator_llm)
         agent = Agent(
             llm=llm,
             tools=resolve_tools(coordinator_tools, tool_params={"SwarmTasks": {"db_config": db_config}}),
@@ -253,8 +304,12 @@ class SwarmPhase(PhaseProtocol):
 
             assert self._db_config is not None
             db_config = self._db_config
-            agent_model = agent_cfg.get("model") or self._blueprint._resolve_model(self)
-            llm = build_llm(model=agent_model)
+            agent_llm = self._resolve_swarm_llm_config(
+                agent_cfg.get("llm"),
+                agent_cfg.get("model"),
+                context,
+            )
+            llm = build_llm(model=agent_llm)
             agent = Agent(
                 llm=llm,
                 tools=resolve_tools(

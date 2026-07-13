@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 
 from goblin.blueprint import V1Blueprint
 
 
 def _load_schema() -> dict:
-    with open("../spec/v1.json") as f:
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "spec", "v1.json")
+    with open(path) as f:
         return json.load(f)
 
 

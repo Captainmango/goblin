@@ -74,6 +74,7 @@ class PromptPhase(PhaseProtocol):
         self.max_tokens: int | None = raw.get("max_tokens")
         self.max_cost: float | None = raw.get("max_cost")
         self.model: str | None = raw.get("model")
+        self.llm_config: dict | None = raw.get("llm")
         self.depends_on: list[str] | None = raw.get("depends_on")
         self.output_schema: dict | None = raw.get("output_schema")
         self.worktree_config: dict | None = raw.get("worktree")
@@ -118,7 +119,7 @@ class PromptPhase(PhaseProtocol):
             max_cost=self.max_cost,
         )
 
-        llm = build_llm(model=self._blueprint._resolve_model(self))
+        llm = build_llm(model=self._blueprint._resolve_llm_config(self, context))
         agent = Agent(
             llm=llm,
             tools=resolve_tools(self.allowed_tools, tool_params=tool_params),
@@ -207,7 +208,7 @@ class PromptPhase(PhaseProtocol):
     async def _request_json_repair(self, broken_text: str) -> str:
         """Ask the LLM to fix malformed JSON without re-running the phase."""
         repair_prompt = JSON_REPAIR_PROMPT.format(broken_text=broken_text)
-        llm = build_llm(model=self._blueprint._resolve_model(self))
+        llm = build_llm(model=self._blueprint._resolve_llm_config(self))
         agent = Agent(llm=llm, tools=[], system_prompt=BASE_SYSTEM_PROMPT, critic=None)
         conversation = LocalConversation(agent=agent, workspace=LocalWorkspace(working_dir="."))
         conversation.send_message(repair_prompt)
