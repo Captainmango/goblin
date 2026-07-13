@@ -1,8 +1,3 @@
-# syntax=docker/dockerfile:1
-
-# Build stage: use the local dependency+build base image.
-# This image already contains the workspace lockfile, project metadata, and all
-# third-party dependencies, so only workspace source needs to be added.
 FROM jp-goblin:latest AS builder
 
 # Copy workspace source code and package metadata on top of the dependency-only

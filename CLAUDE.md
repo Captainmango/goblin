@@ -1,164 +1,73 @@
-# Goblin Monorepo
+# Goblin Monorepo Conventions
 
-This repository is a uv-managed monorepo containing three Python projects:
+This is a uv-managed Python workspace with three projects:
 
-- **`goblin/`** — the autonomous coding agent harness that runs high-level definitions called **blueprints** (YAML files). The runner parses a blueprint, orchestrates phase execution via the OpenHands SDK, and applies lifecycle hooks around tool calls.
-- **`goblin-common/`** — shared utilities used by the other workspace projects (config helpers and JSON logging).
-- **`notifications-relay/`** — notification relay service/CLI for the ecosystem.
+- `goblin/` — autonomous agent harness that runs YAML **blueprints**.
+- `goblin-common/` — shared config/logging utilities used by the other projects.
+- `notifications-relay/` — FastAPI service and CLI for Telegram notifications.
 
-All projects are declared as workspace members in the root `pyproject.toml` and share a single root `uv.lock`.
+All projects are workspace members in the root `pyproject.toml` and share a single `uv.lock`.
 
-## Project Layout
+## Tooling
 
+- **Python 3.13+** — specified in `.python-version` and every `pyproject.toml`.
+- **uv** — package manager. Use `uv sync`, `uv run`, and `uv add`. Do not use pip.
+- **Taskfile** — task runner. Run namespaced tasks from the repo root (e.g. `task goblin:test`).
+- **ruff** — linter and formatter.
+- **pyrefly** — type checker.
+- **pytest / pytest-asyncio** — test framework.
+
+## Workspace Commands
+
+Run from the repo root:
+
+```sh
+task lint        # lint all projects
+task format      # format all projects
+task typecheck   # typecheck all projects
+task test        # test all projects
+task validate    # validate example blueprints
 ```
-jp-goblin/
-├── pyproject.toml          # Workspace manifest only
-├── uv.lock                 # Shared lockfile for the whole workspace
-├── Taskfile.yml            # Root tasks delegate to each project
-├── .python-version
-├── .gitignore
-├── ruff.toml               # Shared ruff config used by all projects
-├── CLAUDE.md               # This file
-├── AGENTS.md               # Pointer to this file for agent tooling
-├── goblin/                 # Goblin runtime CLI project
-│   ├── pyproject.toml
-│   ├── Taskfile.yml
-│   ├── README.md
-│   ├── VISION.md
-│   ├── ROADMAP.md
-│   ├── install.sh
-│   ├── goblin/
-│   │   ├── __init__.py
-│   │   ├── blueprint.py
-│   │   ├── orchestrator.py
-│   │   ├── dependency_graph.py
-│   │   ├── checkpoint.py
-│   │   ├── cost_control.py
-│   │   ├── conversation.py
-│   │   ├── import_resolver.py
-│   │   ├── validation.py
-│   │   ├── workspace.py
-│   │   ├── enums.py
-│   │   ├── hooks.py
-│   │   ├── prompts.py
-│   │   ├── cli.py
-│   │   ├── runner.py
-│   │   ├── phase.py
-│   │   ├── swarm.py
-│   │   ├── swarm_db.py
-│   │   ├── tools/
-│   │   └── utils/
-│   ├── spec/
-│   │   └── v1.json
-│   └── tests/
-├── goblin-common/          # Shared utilities
-│   ├── pyproject.toml
-│   ├── Taskfile.yml
-│   ├── README.md
-│   ├── goblin_common/
-│   │   ├── __init__.py
-│   │   ├── config.py
-│   │   └── logging.py
-│   └── tests/
-└── notifications-relay/    # Notification relay project
-    ├── pyproject.toml
-    ├── Taskfile.yml
-    ├── README.md
-    ├── notifications_relay/
-    └── tests/
-```
-
-## Goblin Project
-
-Goblin is an autonomous coding agent harness that runs high-level definitions called **blueprints** (YAML files). The runner parses a blueprint, orchestrates phase execution via the OpenHands SDK, and applies lifecycle hooks around tool calls.
-
-### Tooling
-
-- **Python 3.13+** — specified in `.python-version` and each `pyproject.toml` `requires-python`
-- **uv** — package manager; use `uv run`, `uv add`, `uv sync` (never pip)
-- **Taskfile** — task runner; use `task goblin:lint`, `task goblin:format`, etc.
-- **openhands-sdk** / **openhands-tools** — agent orchestration
-- **click** — CLI framework
-- **jinja2** — template expressions in conditions and foreach
-- **pydantic** — response validation (PhaseResult model)
-- **pyyaml** — YAML parsing for blueprints
-- **jsonschema** — blueprint schema validation (`goblin validate`, `output_schema`)
-- **filelock** — cross-process locking for checkpoint writes
-- **ruff** — linter and formatter (dev)
-- **pyrefly** — type checker (dev)
-- **pytest / pytest-asyncio** — test framework (dev)
-- **dotenv** — dev dependency for loading `.env`
-
-### Conventions
-
-- All runner and agent operations are **async**
-- Prompts support `{variable}` interpolation (Python `.format()`) from the `context` dict passed to `run()`
-- Phase template expressions use `{{ }}` Jinja2 syntax for conditions and foreach
-- Hook names in blueprints are strings that must exist in `HOOK_REGISTRY` at runtime
-- Blueprint files live in `goblin/blueprints/`
-- MCP server secrets use `${VAR}` syntax resolved from `os.environ` (loaded via `.env` / `load_dotenv()`)
-- All runtime messages use `logging.getLogger(__name__)`, never `print()`
-- Log calls include `extra={"event": "...", ...}` for structured context
-- Shared config/logging utilities live in `goblin-common`; project-specific config classes import from `goblin_common.config` and call `configure_logging` from `goblin_common.logging`
-
-## Commands
-
-Run commands from the repo root. The root `Taskfile.yml` delegates to each project.
-
-- `task lint` — Run linting for all projects
-- `task format` — Run formatting for all projects
-- `task typecheck` — Run typechecking for all projects
-- `task test` — Run tests for all projects
-- `task validate` — Validate Goblin example blueprints
 
 Target a single project with namespaced tasks:
 
-- `task goblin:lint`
-- `task goblin:format`
-- `task goblin:typecheck`
-- `task goblin:test`
-- `task goblin:validate`
-- `task goblin-common:lint`
-- `task goblin-common:format`
-- `task goblin-common:typecheck`
-- `task goblin-common:test`
-- `task notifications-relay:lint`
-- `task notifications-relay:test`
-
-Or run tasks directly inside a project directory:
-
 ```sh
-cd goblin
-task lint
+task goblin:lint
+task goblin:test
+task goblin:validate
+task goblin-common:test
+task notifications-relay:test
 ```
 
-## goblin-common Project
+## Code Conventions
 
-Shared utilities used by every workspace project. New projects should depend on this package and reuse its helpers instead of duplicating code.
+- All runner, orchestration, and agent operations are **async**.
+- Use `logging.getLogger(__name__)`; never `print()`. Include `extra={"event": "...", ...}` for structured context.
+- Use `goblin_common.logging.configure_logging` and `goblin_common.config.env` / `secret_env` instead of duplicating config or logging code.
+- Environment variables are loaded from a `.env` file in the current working directory only (`load_dotenv_from_cwd`).
+- Secrets use `${VAR}` syntax in blueprints and are resolved from `os.environ` at runtime.
+- Blueprint prompt strings use `{variable}` interpolation from the run `context` dict.
+- Blueprint template expressions (conditions, foreach) use Jinja2 `{{ }}` syntax.
+- Hook names in blueprints must exist in `HOOK_REGISTRY` at runtime.
+- Blueprint files live in `blueprints/` at the repo root.
+- Checkpoint files are written to `.goblin/run-<id>.json` under the run directory.
 
-- `goblin_common.config` — `env()`, `secret_env()`, and `load_dotenv_from_cwd()`. Environment values are coerced to the type of their default (e.g. `env("RELAY_PORT", 8000)` returns an `int`).
-- `goblin_common.logging` — `JSONFormatter` and `configure_logging(logger_name, ...)`.
-- Default log file for each project is `<logger_name>.jsonl` (e.g. `goblin.jsonl`, `notifications-relay.jsonl`).
+## Project Notes
 
-## Notifications Relay Project
+### goblin
 
-The notification relay service exposes a FastAPI HTTP API and a Click CLI for sending/receiving messages via Telegram. It uses the shared `goblin-common` utilities:
+- Entry point: `uv run goblin run <blueprint>`.
+- Validate blueprints: `uv run goblin validate <paths...>`.
+- The `notifications` subcommand talks to the notifications-relay.
 
-- `notifications_relay/config.py` — `RelayConfig` imports `env`, `secret_env`, and `load_dotenv_from_cwd` from `goblin_common.config`.
-- `notifications_relay/cli.py` — global `--log-config`, `--log-level`, `--log-file`, and `--quiet` options call `goblin_common.logging.configure_logging`.
-- Default log file: `notifications-relay.jsonl`.
+### notifications-relay
 
-## Built-in tools
+- Entry point: `uv run notifications-relay serve`.
+- FastAPI app is created by `notifications_relay.main:create_app`.
+- Telegram is only enabled when `TELEGRAM_BOT_TOKEN` is set.
 
-Phases whitelist tools via `allowed_tools`. Besides the OpenHands file-editor, terminal, `Glob`, and `Grep` tools, Goblin registers:
+### goblin-common
 
-- `SwarmTasks` / `SwarmAgent` — swarm coordination database tools (see `goblin/tools/swarmdb_tool.py` and `goblin/tools/swarm_agent_tool.py`).
-- `Worktree` — typed git worktree operations (`list`, `create`, `remove`, `prune`, `link_deps`).
-
-Keys:
-
-- `base_dir` — directory under which all managed worktrees are created (relative to the project root). Default: `.goblin/worktrees`.
-- `deps` — list of dependency directory names that may be symlinked from the main worktree. There is no built-in default; users must opt in explicitly.
-- `auto_link` — whether `create` automatically symlinks the configured `deps` after creating a worktree. Default: `false`.
-
-If `Worktree` appears in `allowed_tools` but no `worktree` config is defined, the phase fails fast with a clear error.
+- Keep shared code here; avoid duplicating helpers across projects.
+- `env()` coerces values to the type of their default (`int`, `bool`, etc.).
+- `secret_env()` returns a pydantic `SecretStr`.
