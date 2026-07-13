@@ -23,7 +23,7 @@ tasks:
     desc: Create a virtual environment and install dependencies
     cmds:
       - python -m venv .venv
-      - uv sync --all-packages
+      - uv sync --all-packages --all-groups
     silent: true
 
   lint:
