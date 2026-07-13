@@ -22,3 +22,7 @@ tasks:
     cmds:
       - uv run pytest
     silent: true
+
+  build:
+    cmds:
+      - docker build -f ./infra/docker/notifications-relay/Dockerfile . -t notifications-relay

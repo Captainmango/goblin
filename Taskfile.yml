@@ -58,3 +58,7 @@ tasks:
     cmds:
       - task goblin:validate
     silent: true
+
+  base:build:
+    cmds:
+      - docker build -f ./infra/docker/base/Dockerfile . -t jp-goblin #replace this with a taskfile var at some point 
