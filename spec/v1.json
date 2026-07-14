@@ -36,6 +36,7 @@
             "hooks": { "$ref": "#/definitions/hooks" },
             "mcp_servers": { "$ref": "#/definitions/mcpServers" },
             "worktree": { "$ref": "#/definitions/worktree" },
+            "notifications": { "$ref": "#/definitions/notifications" },
             "model": {
               "type": "string",
               "description": "Default LLM model identifier for all phases in this blueprint. Phase-level model overrides this. Use 'llm' for full OpenHands LLM configuration including auth.",
@@ -493,6 +494,7 @@
         "hooks": { "$ref": "#/definitions/hooks" },
         "mcp_servers": { "$ref": "#/definitions/mcpServers" },
         "worktree": { "$ref": "#/definitions/worktree" },
+        "notifications": { "$ref": "#/definitions/notifications" },
         "model": {
           "type": "string",
           "description": "LLM model identifier for this phase. Overrides blueprint defaults. Use 'llm' for full OpenHands LLM configuration including auth.",
@@ -560,6 +562,19 @@
           "description": "Whether `create` should automatically symlink the configured `deps` after creating a worktree.",
           "default": false,
           "examples": [true, false]
+        }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "description": "Configuration for the AskUser tool. Optional even when a phase lists `AskUser` in `allowed_tools` — falls back to the 'default' pairing label when omitted.",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Pairing label identifying which paired operator (e.g. a Telegram user) the AskUser tool sends questions to. Resolved via TELEGRAM_TOKEN_<LABEL> or the local pairing store.",
+          "default": "default",
+          "examples": ["default", "ops-oncall", "release-manager"]
         }
       }
     },

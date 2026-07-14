@@ -8,6 +8,7 @@ from openhands.tools.glob import GlobTool
 from openhands.tools.grep import GrepTool
 from openhands.tools.terminal import TerminalTool
 
+from goblin.tools.ask_user_tool import AskUserTool
 from goblin.tools.swarm_agent_tool import SwarmAgentTool
 from goblin.tools.swarmdb_tool import SwarmTasksTool
 from goblin.tools.tool_map import TOOL_NAME_MAP, build_tool_filter_regex, resolve_tools
@@ -37,6 +38,9 @@ class TestToolNameMap:
 
     def test_swarm_agent_maps_to_swarm_agent_tool(self):
         assert TOOL_NAME_MAP["SwarmAgent"].name == SwarmAgentTool.name
+
+    def test_ask_user_maps_to_ask_user_tool(self):
+        assert TOOL_NAME_MAP["AskUser"].name == AskUserTool.name
 
 
 class TestResolveTools:

@@ -78,6 +78,7 @@ class PromptPhase(PhaseProtocol):
         self.depends_on: list[str] | None = raw.get("depends_on")
         self.output_schema: dict | None = raw.get("output_schema")
         self.worktree_config: dict | None = raw.get("worktree")
+        self.notifications_config: dict | None = raw.get("notifications")
         self._blueprint = blueprint
 
     async def run(self, context: dict) -> Dict:
@@ -108,6 +109,10 @@ class PromptPhase(PhaseProtocol):
                 "deps": worktree_config.get("deps", []),
                 "auto_link": worktree_config.get("auto_link", False),
             }
+
+        if "AskUser" in self.allowed_tools:
+            notifications_config = self._blueprint._resolve_notifications_config(self) or {}
+            tool_params["AskUser"] = {"label": notifications_config.get("label")}
 
         system_prompt = BASE_SYSTEM_PROMPT
         if self._blueprint.project_refs:
