@@ -1,0 +1,29 @@
+services:
+  notificiations-relay:
+
+    container_name: notifications_relay
+    build:
+      context: .
+      dockerfile: ./infra/docker/notifications-relay/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - relay_db:/app/.goblin
+    healthcheck:
+      test: ["CMD", "notifications-relay", "--help"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    networks:
+      - goblin
+      
+
+volumes:
+  relay_db:
+
+networks:
+  goblin:
