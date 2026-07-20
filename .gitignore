@@ -15,3 +15,7 @@ wheels/
 .goblin
 goblin-run.jsonl
 logs/
+
+# Zensical build output
+site/
+.cache

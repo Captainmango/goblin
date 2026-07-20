@@ -1,0 +1,3 @@
+[project]
+site_name = "Goblin Documentation"
+docs_dir = "docs"

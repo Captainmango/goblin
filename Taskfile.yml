@@ -9,6 +9,9 @@ includes:
   goblin-common:
     taskfile: ./goblin-common/Taskfile.yml
     dir: ./goblin-common
+  goblin-docs:
+    taskfile: ./goblin-docs/Taskfile.yml
+    dir: ./goblin-docs
   notifications-relay:
     taskfile: ./notifications-relay/Taskfile.yml
     dir: ./notifications-relay
