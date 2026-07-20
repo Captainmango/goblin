@@ -6,47 +6,21 @@ blueprint:
   vars:
     repo: https://github.com/parkhub/justpark.git
   defaults:
-    mcp_servers:
-      github:
-        command: npx
-        args:
-          - -y
-          - "@modelcontextprotocol/server-github"
-        env:
-          GITHUB_TOKEN: ${GITHUB_TOKEN}
+    model: anthropic/MiniMax-M2.5
 
   phases:
     - id: clone_repo
-      prompt: "Clone {repo} into /tmp/justpark"
+      prompt: "Clone {repo} into /tmp/project"
       allowed_tools: [Bash]
       on_failure:
-        action: abort
+        action: skip
       
     - id: load_project
-      load_project: /tmp/justpark
-    - id: list issues
-      prompt: "List the open branches on the justpark project."
-      allowed_tools:
-        - "mcp__github__*"
+      load_project: /tmp/project
+      on_failure:
+        action: abort
+
     - id: summarise_project
-      prompt: "Summarise what this project is and how it works. Use CLAUDE.md."
+      prompt: "Summarise what this project is and how it works."
       allowed_tools: [Read, Glob]
 
-# --- MCP server example (uncomment to use) ---
-# To use MCP servers, add a .env file with your tokens:
-#   GITHUB_TOKEN=ghp_...
-#
-# Then configure servers at blueprint or phase level:
-#
-#   defaults:
-#     mcp_servers:
-#       github:
-#         command: npx
-#         args: ["-y", "@modelcontextprotocol/server-github"]
-#         env:
-#           GITHUB_TOKEN: ${GITHUB_TOKEN}
-#
-#   phases:
-#     - id: fetch_issues
-#       prompt: "List open issues in {repo}"
-#       allowed_tools: [mcp__github__list_issues]
