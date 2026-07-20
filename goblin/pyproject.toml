@@ -9,6 +9,7 @@ dependencies = [
     "filelock>=3.0",
     "goblin-common",
     "jinja2>=3.1.6",
+    "json-repair>=0.42",
     "jsonschema>=4.0",
     "notifications-relay",
     "openhands-sdk~=1.29.3",
@@ -29,8 +30,6 @@ packages = ["goblin"]
 
 [tool.pyrefly]
 project-includes = ["goblin/**/*.py"]
-
-known-first-party = ["goblin"]
 
 [tool.uv.sources]
 goblin-common = { workspace = true }

@@ -1,4 +1,4 @@
-"""Tests for phase output_schema validation."""
+"""Tests for output schema resolution, validation, and structured finish tool wiring."""
 
 from __future__ import annotations
 
@@ -8,38 +8,37 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from goblin.blueprint import V1Blueprint
-from goblin.phase import PromptPhase, _validate_output_schema
+from goblin.output_schema import (
+    PhaseResult,
+    coerce_to_model,
+    json_schema_to_pydantic,
+    register_output_model,
+    resolve_output_model,
+    validate_against_schema,
+)
+from goblin.phase import PromptPhase
+from tests._helpers import MagicAgent
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_prompt_phase(raw: dict[str, Any]) -> PromptPhase:
-    blueprint = V1Blueprint({"name": "test_bp", "phases": [raw]})
-    return blueprint.phases[0]  # type: ignore[return-value]
-
-
-# ---------------------------------------------------------------------------
-# _validate_output_schema
+# _validate_output_schema / validate_against_schema (legacy alias)
 # ---------------------------------------------------------------------------
 
 
 class TestValidateOutputSchema:
     def test_valid_data_returns_empty(self):
         schema = {"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"]}
-        errors = _validate_output_schema({"status": "ok", "success": True, "message": []}, schema)
+        errors = validate_against_schema({"status": "ok", "success": True, "message": []}, schema)
         assert errors == []
 
     def test_missing_required_field(self):
         schema = {"type": "object", "required": ["status"]}
-        errors = _validate_output_schema({"success": True, "message": []}, schema)
+        errors = validate_against_schema({"success": True, "message": []}, schema)
         assert any("'status'" in e for e in errors)
 
     def test_wrong_type(self):
         schema = {"type": "object", "properties": {"count": {"type": "integer"}}}
-        errors = _validate_output_schema({"success": True, "message": [], "count": "five"}, schema)
+        errors = validate_against_schema({"success": True, "message": [], "count": "five"}, schema)
         assert any("integer" in e for e in errors)
 
     def test_nested_schema(self):
@@ -53,25 +52,152 @@ class TestValidateOutputSchema:
                 }
             },
         }
-        errors = _validate_output_schema({"success": True, "message": [], "data": {"id": 42}}, schema)
+        errors = validate_against_schema({"success": True, "message": [], "data": {"id": 42}}, schema)
         assert errors == []
 
-        errors = _validate_output_schema({"success": True, "message": [], "data": {"id": "not-int"}}, schema)
+        errors = validate_against_schema({"success": True, "message": [], "data": {"id": "not-int"}}, schema)
         assert any("integer" in e for e in errors)
 
 
 # ---------------------------------------------------------------------------
-# PromptPhase with output_schema
+# resolve_output_model
+# ---------------------------------------------------------------------------
+
+
+class TestResolveOutputModel:
+    def test_returns_phase_result_when_no_schema_or_model(self):
+        bp = V1Blueprint({"name": "t", "phases": [{"id": "s1", "prompt": "p"}]})
+        assert resolve_output_model(bp, bp.phases[0]) is PhaseResult
+
+    def test_inline_json_schema_produces_pydantic_model(self):
+        bp = V1Blueprint(
+            {
+                "name": "t",
+                "phases": [
+                    {
+                        "id": "s1",
+                        "prompt": "p",
+                        "output_schema": {
+                            "type": "object",
+                            "properties": {"status": {"type": "string"}},
+                            "required": ["status"],
+                        },
+                    }
+                ],
+            }
+        )
+        model = resolve_output_model(bp, bp.phases[0])
+        instance = model(success=True, message=["ok"], status="done")
+        assert instance.status == "done"
+        assert instance.success is True
+
+    def test_registered_dotted_name_resolves(self):
+        from pydantic import BaseModel, Field
+
+        class SummaryResult(BaseModel):
+            success: bool
+            message: list[str]
+            summary: str = Field(...)
+
+        register_output_model("tests.test_output_model_dummy.SummaryResult", SummaryResult)
+        bp = V1Blueprint(
+            {
+                "name": "t",
+                "phases": [{"id": "s1", "prompt": "p", "output_model": "tests.test_output_model_dummy.SummaryResult"}],
+            }
+        )
+        model = resolve_output_model(bp, bp.phases[0])
+        assert model is SummaryResult
+
+    def test_unknown_dotted_name_raises(self):
+        bp = V1Blueprint(
+            {
+                "name": "t",
+                "phases": [{"id": "s1", "prompt": "p", "output_model": "no_such_module_xyz.NoSuchModel"}],
+            }
+        )
+        with pytest.raises((ValueError, ImportError)):
+            resolve_output_model(bp, bp.phases[0])
+
+    def test_register_output_model_rejects_non_basemodel(self):
+        with pytest.raises(ValueError, match="BaseModel"):
+            register_output_model("bad", dict)
+
+
+# ---------------------------------------------------------------------------
+# json_schema_to_pydantic
+# ---------------------------------------------------------------------------
+
+
+class TestJsonSchemaToPydantic:
+    def test_empty_object_schema_yields_permissive_model(self):
+        M = json_schema_to_pydantic({"type": "object"})
+        instance = M(success=True, message=["ok"], anything="goes")
+        assert instance.anything == "goes"
+
+    def test_required_and_optional_fields(self):
+        M = json_schema_to_pydantic(
+            {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string"},
+                    "count": {"type": "integer"},
+                },
+                "required": ["status"],
+            }
+        )
+        instance = M(success=True, message=["ok"], status="done", count=5)
+        assert instance.status == "done"
+        assert instance.count == 5
+
+        # Missing required raises
+        with pytest.raises(Exception):
+            M(success=True, message=["ok"], count=5)
+
+
+# ---------------------------------------------------------------------------
+# coerce_to_model
+# ---------------------------------------------------------------------------
+
+
+class TestCoerceToModel:
+    def test_well_formed_json(self):
+        result = coerce_to_model('{"success": true, "message": ["ok"]}', PhaseResult)
+        assert result is not None
+        assert result.success is True
+
+    def test_json_in_fenced_code_block(self):
+        text = '```json\n{"success": true, "message": ["ok"]}\n```'
+        result = coerce_to_model(text, PhaseResult)
+        assert result is not None
+        assert result.success is True
+
+    def test_near_json_repaired(self):
+        text = '{"success": true, "message": ["ok"],}'  # trailing comma
+        result = coerce_to_model(text, PhaseResult)
+        assert result is not None
+        assert result.success is True
+
+    def test_garbage_returns_none(self):
+        result = coerce_to_model("not json at all just prose", PhaseResult)
+        assert result is None
+
+    def test_empty_string_returns_none(self):
+        assert coerce_to_model("", PhaseResult) is None
+
+
+# ---------------------------------------------------------------------------
+# PromptPhase with output_schema (end-to-end via mocks)
 # ---------------------------------------------------------------------------
 
 
 def _mock_llm_infra():
-    """Return patchers for build_llm, Agent, LocalConversation, and get_agent_final_response."""
+    """Return patchers for build_llm, Agent, LocalConversation, get_agent_final_response."""
     mock_llm = MagicMock()
     mock_conversation = MagicMock()
     mock_conversation.state.events = []
     mock_conversation.arun = AsyncMock()
-    mock_agent = MagicMock()
+    mock_agent = MagicAgent()
 
     patch_build_llm = patch("goblin.phase.build_llm", return_value=mock_llm)
     patch_agent = patch("goblin.phase.Agent", return_value=mock_agent)
@@ -80,6 +206,11 @@ def _mock_llm_infra():
     patch_workspace = patch.object(V1Blueprint, "_get_workspace", return_value=MagicMock())
 
     return patch_build_llm, patch_agent, patch_local_conv, patch_get_final, patch_workspace
+
+
+def _make_prompt_phase(raw: dict[str, Any]) -> PromptPhase:
+    blueprint = V1Blueprint({"name": "test_bp", "phases": [raw]})
+    return blueprint.phases[0]  # type: ignore[return-value]
 
 
 class TestPromptPhaseOutputSchema:
@@ -104,7 +235,10 @@ class TestPromptPhaseOutputSchema:
             p3,
             p4,
             p5,
-            patch.object(phase, "_parse_response", return_value={"success": True, "message": ["ok"], "status": "done"}),
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=phase._resolve_output_model()(success=True, message=["ok"], status="done"),
+            ),
         ):
             result = await phase.run({})
 
@@ -125,6 +259,9 @@ class TestPromptPhaseOutputSchema:
             }
         )
 
+        # The structured finish tool returns a model missing the required field.
+        # Since ``extract_structured_result`` is typed to ``output_model``, it
+        # would otherwise raise. Patch it to return a malformed dict instead.
         p1, p2, p3, p4, p5 = _mock_llm_infra()
         with (
             p1,
@@ -132,7 +269,14 @@ class TestPromptPhaseOutputSchema:
             p3,
             p4,
             p5,
-            patch.object(phase, "_parse_response", return_value={"success": True, "message": ["ok"]}),
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=None,
+            ),
+            patch(
+                "goblin.phase.coerce_to_model",
+                return_value=phase._resolve_output_model().model_construct(success=True, message=["ok"]),
+            ),
         ):
             result = await phase.run({})
 
@@ -140,7 +284,8 @@ class TestPromptPhaseOutputSchema:
         assert any("count" in m for m in result["message"])
 
     @pytest.mark.asyncio
-    async def test_no_output_schema_allows_any_shape(self):
+    async def test_no_output_schema_wraps_chat_text(self):
+        """Default flow (no output_model/output_schema): chat text wraps into PhaseResult."""
         phase = _make_prompt_phase({"id": "s1", "prompt": "hello"})
 
         p1, p2, p3, p4, p5 = _mock_llm_infra()
@@ -150,12 +295,60 @@ class TestPromptPhaseOutputSchema:
             p3,
             p4,
             p5,
-            patch.object(phase, "_parse_response", return_value={"success": True, "message": ["ok"], "extra": 123}),
+            patch(
+                "goblin.phase.get_agent_final_response",
+                return_value="Some agent reply with arbitrary shape.",
+            ),
         ):
             result = await phase.run({})
 
         assert result["success"] is True
-        assert result["extra"] == 123
+        assert result["message"] == ["Some agent reply with arbitrary shape."]
+
+    @pytest.mark.asyncio
+    async def test_no_output_schema_empty_text_wraps_placeholder(self):
+        """Even with no agent text, default flow wraps a successful placeholder."""
+        phase = _make_prompt_phase({"id": "s1", "prompt": "hello"})
+
+        p1, p2, p3, p4, p5 = _mock_llm_infra()
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
+            patch("goblin.phase.get_agent_final_response", return_value=""),
+        ):
+            result = await phase.run({})
+
+        assert result["success"] is True
+        assert result["message"] == ["Agent produced no output"]
+
+    @pytest.mark.asyncio
+    async def test_no_output_schema_does_not_register_structured_finish(self):
+        """Default flow doesn't wire the typed Finish tool into the agent."""
+        phase = _make_prompt_phase({"id": "s1", "prompt": "hello"})
+
+        captured_tools: list = []
+
+        class FakeAgent:
+            def __init__(self, *, tools, **kwargs: Any) -> None:
+                captured_tools.extend(tools)
+
+        p1, p2, p3, p4, p5 = _mock_llm_infra()
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
+            patch("goblin.phase.Agent", FakeAgent),
+            patch("goblin.phase.get_agent_final_response", return_value="ok"),
+        ):
+            await phase.run({})
+
+        names = {t.name for t in captured_tools}
+        assert "structured_finish" not in names
 
     @pytest.mark.asyncio
     async def test_schema_failure_includes_prompt_and_output(self):
@@ -174,7 +367,10 @@ class TestPromptPhaseOutputSchema:
             p3,
             p4,
             p5,
-            patch.object(phase, "_parse_response", return_value={"success": True, "message": ["ok"]}),
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=PhaseResult(success=True, message=["ok"]),
+            ),
         ):
             result = await phase.run({})
 
@@ -204,10 +400,9 @@ class TestPromptPhaseOutputSchema:
             p3,
             p4,
             p5,
-            patch.object(
-                phase,
-                "_parse_response",
-                return_value={"success": True, "message": ["ok"], "status": "done", "count": 42},
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=phase._resolve_output_model()(success=True, message=["ok"], status="done", count=42),
             ),
         ):
             result = await phase.run({})

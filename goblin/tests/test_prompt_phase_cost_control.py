@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from goblin.output_schema import PhaseResult
 from goblin.phase import PromptPhase
+from tests._helpers import MagicAgent
 
 
 def _make_prompt_phase(raw: dict) -> PromptPhase:
@@ -75,9 +77,12 @@ class TestPromptPhaseRunCostControl:
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
-            patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=PhaseResult(success=True, message=["ok"]),
+            ),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         assert "spend" in result
@@ -97,9 +102,12 @@ class TestPromptPhaseRunCostControl:
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
-            patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=PhaseResult(success=True, message=["ok"]),
+            ),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         call_kwargs = mock_conv_cls.call_args.kwargs
@@ -114,9 +122,12 @@ class TestPromptPhaseRunCostControl:
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
-            patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=PhaseResult(success=True, message=["ok"]),
+            ),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         call_kwargs = mock_conv_cls.call_args.kwargs
@@ -132,7 +143,7 @@ class TestPromptPhaseRunCostControl:
             patch("goblin.phase.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         assert result["success"] is False
@@ -154,7 +165,7 @@ class TestPromptPhaseRunCostControl:
             patch("goblin.phase.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=conversation),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             # With max_iterations=1, the breaker fires after the first (and only) arun()
             result1 = await phase.run({})
             assert result1["success"] is False
@@ -171,9 +182,12 @@ class TestPromptPhaseRunCostControl:
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
             patch("goblin.phase.get_agent_final_response", return_value=None),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
-        assert result["success"] is False
+        # Default flow wraps even an empty agent reply into a successful
+        # PhaseResult (placeholder message); the spend tracker is still
+        # populated from the conversation.
+        assert result["success"] is True
         assert "spend" in result
         assert result["spend"].iterations == 1

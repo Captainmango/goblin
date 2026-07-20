@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from goblin.output_schema import PhaseResult
 from goblin.phase import PromptPhase
+from tests._helpers import MagicAgent
 
 
 def _make_prompt_phase(raw: dict) -> PromptPhase:
@@ -70,9 +72,12 @@ class TestPromptPhaseLocalWorkspace:
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_local_conversation) as mock_conv_cls,
-            patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=PhaseResult(success=True, message=["ok"]),
+            ),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         assert result["success"] is True
@@ -91,9 +96,12 @@ class TestPromptPhaseLocalWorkspace:
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_local_conversation),
-            patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=PhaseResult(success=True, message=["ok"]),
+            ),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             await phase.run({})
 
         mock_local_conversation.arun.assert_awaited_once()
@@ -120,9 +128,12 @@ class TestPromptPhaseRemoteWorkspace:
             patch("goblin.phase.Agent") as mock_agent_cls,
             patch("goblin.conversation.RemoteWorkspace", _FakeRemoteWorkspace),
             patch("goblin.conversation.RemoteConversation", return_value=mock_remote_conversation) as mock_conv_cls,
-            patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=PhaseResult(success=True, message=["ok"]),
+            ),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         assert result["success"] is True
@@ -142,9 +153,12 @@ class TestPromptPhaseRemoteWorkspace:
             patch("goblin.conversation.RemoteWorkspace", _FakeRemoteWorkspace),
             patch("goblin.conversation.RemoteConversation", return_value=mock_remote_conversation),
             patch("goblin.conversation.asyncio.to_thread") as mock_to_thread,
-            patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=PhaseResult(success=True, message=["ok"]),
+            ),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             mock_to_thread.return_value = AsyncMock()
             await phase.run({})
 
@@ -169,9 +183,12 @@ class TestPromptPhaseGetWorkspaceCalled:
             patch("goblin.phase.build_llm"),
             patch("goblin.phase.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_local_conversation),
-            patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
+            patch(
+                "goblin.phase.extract_structured_result",
+                return_value=PhaseResult(success=True, message=["ok"]),
+            ),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             await phase.run({"repo": "my-service"})
 
         phase._blueprint._get_workspace.assert_called_once_with({"repo": "my-service"})

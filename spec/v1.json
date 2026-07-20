@@ -513,6 +513,17 @@
           "additionalProperties": true,
           "examples": [{"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"]}]
         },
+        "output_model": {
+          "type": "string",
+          "description": "Dotted Python path to a registered Pydantic model that defines the phase's output shape. Takes precedence over `output_schema` when both are set. Register the model at startup via `goblin.output_schema.register_output_model(name, model)` so blueprints can reference it by string without importing user code at parse time. The runner builds a typed Finish tool whose `result` field matches the model, then validates the agent's output against it.",
+          "examples": ["myapp.models.SummaryResult", "goblin._demo_models.RepoSummary"]
+        },
+        "output_schema_format": {
+          "type": "string",
+          "enum": ["json_schema", "guided_json", "response_schema"],
+          "default": "json_schema",
+          "description": "Override the provider's default structured-output key. Defaults to the litellm-style provider default (`guided_json` for `vllm/`, `response_schema` for `gemini/` and `vertex_ai/`, `json_schema` for everyone else). Use this to pin the format independent of the model prefix."
+        },
         "on_failure": {
           "type": "object",
           "description": "Behavior when this phase fails",

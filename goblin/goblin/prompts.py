@@ -1,26 +1,45 @@
+from __future__ import annotations
+
+import json
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
+
 BASE_SYSTEM_PROMPT = """
-You are an autonomous agent executing a series of instructions. Always respond with the following JSON 
-```json
-{"success": true, "message": ["<message content here>"]}
-```
- 
-If you were unable to carry out the instruction for whatever reason, respond with the following JSON 
-```json
-{"success": false, "message": ["<message content here>"]}
-```
+You are an autonomous agent executing a series of instructions.
 
-Carry out the instruction as directly as possible with no preamble.
+Carry out the instruction as directly as possible with no preamble. The
+harness wraps your final reply into a structured result, so just respond
+in plain text.
 """
 
-JSON_REPAIR_PROMPT = """Your previous response contained invalid JSON. Here is what you returned:
 
-{broken_text}
+STRUCTURED_SYSTEM_PROMPT_TEMPLATE = """
+You are an autonomous agent executing a series of instructions.
 
-Respond with ONLY valid JSON in this exact format, nothing else:
-```json
-{{"success": true, "message": ["<message content here>"]}}
-```
+When you are done, call the `finish` tool with a `result` field shaped as:
+{schema}
+
+Do not write the answer as free-form text. Use the tool.
 """
+
+
+def build_system_prompt(output_model: type[BaseModel]) -> str:
+    """Produce the system prompt for an agent whose Finish tool expects *output_model*.
+
+    The schema dump comes from Pydantic's ``model_json_schema()`` so the
+    shape stays in sync with the typed tool's action schema — no more
+    hand-written JSON examples drifting away from the runtime contract.
+
+    Only used when the phase opts into structured output via
+    ``output_model`` or ``output_schema``; the default flow uses
+    :data:`BASE_SYSTEM_PROMPT` and wraps the agent's chat text instead.
+    """
+    schema = json.dumps(output_model.model_json_schema(), indent=2)
+    return STRUCTURED_SYSTEM_PROMPT_TEMPLATE.format(schema=schema)
+
 
 SWARM_AGENT_PROMPT = """
 ## Swarm Context
@@ -64,6 +83,7 @@ Tasks may specify `required_role`. Only claim tasks where `required_role` matche
 When your assigned work is complete and you have no pending tasks, respond with your final status.
 """
 
+
 SWARM_COORDINATOR_PROMPT = """
 ## Swarm Coordinator
 You are the coordinator for a swarm working toward: {goal}
@@ -81,7 +101,8 @@ Your job each round is to:
      board -- doing so causes the swarm to loop and repeat completed work.
    - If every task is already `done` and the goal is fully met, create NO new
      tasks and report completion (see below).
-3. Report your evaluation as JSON.
+3. Report your evaluation as a short plain-text summary. The harness wraps
+   your reply so the swarm can advance to the next round.
 
 ### Available Agents
 {agent_roster}
@@ -95,13 +116,6 @@ You cannot mark a task done, edit a task, or write artifacts yourself -- only th
 
 Files agents write to are shared at: {workspace}/shared/
 
-When every task on the board is `done` and the goal is fully met, create no new tasks and respond with:
-```json
-{{"done": true, "message": ["<summary>"]}}
-```
-
-If more work is needed, respond with:
-```json
-{{"done": false, "message": ["<what still needs to happen>"]}}
-```
+When every task on the board is `done` and the goal is fully met, create no new tasks and briefly say so in your reply.
+If more work is needed, summarise what still has to happen.
 """

@@ -51,6 +51,18 @@ class TestBaseUrl:
         assert config.base_url is None
 
 
+class TestDefaultModel:
+    def test_reads_env_var(self, monkeypatch):
+        monkeypatch.setenv("GOBLIN_DEFAULT_MODEL", "openai/gpt-4o")
+        config = load_config()
+        assert config.default_model == "openai/gpt-4o"
+
+    def test_missing_value_is_none(self, monkeypatch):
+        monkeypatch.delenv("GOBLIN_DEFAULT_MODEL", raising=False)
+        config = load_config()
+        assert config.default_model is None
+
+
 class TestSingleton:
     def test_get_config_is_lazy(self, monkeypatch):
         reset_config()

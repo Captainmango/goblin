@@ -14,6 +14,8 @@ except ImportError:
     def load_dotenv(*args: Any, **kwargs: Any) -> None:  # type: ignore[no-redef]
         """No-op fallback when python-dotenv is not installed."""
         pass
+
+
 from goblin.notifications.cli import notifications
 from goblin.runner import BlueprintRunner
 from goblin.utils.click_helpers import JSON

@@ -132,6 +132,7 @@ task notifications-relay:test
 |----------|---------|---------|
 | `GOBLIN_MODEL_API_KEY` | goblin | LLM API key (falls back to `MODEL_API_KEY`). |
 | `GOBLIN_BASE_URL` | goblin | LLM base URL (falls back to `OPENHANDS_BASE_URL`). |
+| `GOBLIN_DEFAULT_MODEL` | goblin | Default LLM model when no model is specified in the blueprint. Required unless all phases/swarm agents declare a model. |
 | `OPENHANDS_SUPPRESS_BANNER` | goblin | Suppress OpenHands startup banner (default: `1`). |
 | `GOBLIN_BACKEND` | goblin | Swarm backend selection. |
 | `GOBLIN_TURSO_URL` | goblin | Turso/libSQL URL for distributed swarm DB. |

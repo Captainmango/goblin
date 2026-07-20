@@ -10,7 +10,7 @@ import pytest
 from goblin.blueprint import V1Blueprint
 from goblin.phase import PromptPhase
 from goblin.swarm import SwarmPhase
-from goblin.utils.llm import _DEFAULT_MODEL, build_llm
+from goblin.utils.llm import build_llm
 
 
 # ---------------------------------------------------------------------------
@@ -191,10 +191,11 @@ class TestBuildLlm:
         assert llm.model == "openai/gpt-4o"
         assert llm.temperature == 0.5
 
-    def test_dict_config_uses_default_model_when_missing(self, monkeypatch):
+    def test_dict_config_uses_env_default_model_when_missing(self, monkeypatch):
         monkeypatch.setenv("GOBLIN_MODEL_API_KEY", "sk-test")
+        monkeypatch.setenv("GOBLIN_DEFAULT_MODEL", "openai/gpt-4o")
         llm = build_llm({"temperature": 0.5})
-        assert llm.model == _DEFAULT_MODEL
+        assert llm.model == "openai/gpt-4o"
 
     def test_dict_config_falls_back_to_env_api_key(self, monkeypatch):
         monkeypatch.setenv("GOBLIN_MODEL_API_KEY", "sk-env")
@@ -254,10 +255,23 @@ class TestBuildLlm:
         assert llm.api_key.get_secret_value() == "sk-string"
         assert llm.base_url == "https://proxy.example.com"
 
-    def test_none_uses_default_model(self, monkeypatch):
+    def test_none_uses_env_default_model(self, monkeypatch):
         monkeypatch.setenv("GOBLIN_MODEL_API_KEY", "sk-default")
+        monkeypatch.setenv("GOBLIN_DEFAULT_MODEL", "anthropic/claude-opus-4")
         llm = build_llm()
-        assert llm.model == _DEFAULT_MODEL
+        assert llm.model == "anthropic/claude-opus-4"
+
+    def test_missing_model_and_env_raises(self, monkeypatch):
+        monkeypatch.setenv("GOBLIN_MODEL_API_KEY", "sk-test")
+        monkeypatch.delenv("GOBLIN_DEFAULT_MODEL", raising=False)
+        with pytest.raises(RuntimeError, match="No model configured"):
+            build_llm()
+
+    def test_explicit_model_overrides_env_default(self, monkeypatch):
+        monkeypatch.setenv("GOBLIN_MODEL_API_KEY", "sk-test")
+        monkeypatch.setenv("GOBLIN_DEFAULT_MODEL", "openai/gpt-4o")
+        llm = build_llm("anthropic/claude-opus-4")
+        assert llm.model == "anthropic/claude-opus-4"
 
     @pytest.mark.asyncio
     async def test_prompt_phase_passes_llm_dict_to_build_llm(self, monkeypatch):
@@ -284,13 +298,17 @@ class TestBuildLlm:
             patch("goblin.phase.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=conversation),
             patch(
-                "goblin.phase.get_agent_final_response",
-                return_value='{"success": true, "message": ["ok"]}',
+                "goblin.phase.extract_structured_result",
+                return_value=__import__("goblin.output_schema", fromlist=["PhaseResult"]).PhaseResult(
+                    success=True, message=["ok"]
+                ),
             ),
         ):
             mock_agent_cls.return_value = MagicMock()
             await phase.run({})
 
+        # build_llm is called once for the primary run; the structured-output
+        # follow-up is skipped because the in-loop Finish tool succeeded.
         mock_build_llm.assert_called_once()
         passed = mock_build_llm.call_args.kwargs["model"]
         assert isinstance(passed, dict)

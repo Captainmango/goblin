@@ -6,7 +6,7 @@ blueprint:
   vars:
     repo: https://github.com/captainmango/eheaver.git
   defaults:
-    model: openai/kimi-k2.5
+    model: openai/MiniMax-M2.5
 
   phases:
     - id: clone_repo

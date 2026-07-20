@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import shutil
@@ -9,16 +8,18 @@ from typing import TYPE_CHECKING, Dict
 
 from openhands.sdk import Agent
 from openhands.sdk.conversation import get_agent_final_response
+
 from goblin.conversation import run_conversation
 from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
+from goblin.output_schema import SwarmCoordinatorResult
+from goblin.phase import PhaseProtocol
 from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDINATOR_PROMPT
-from goblin.phase import PhaseProtocol, _extract_json
 from goblin.swarm_db import SwarmDB
+from goblin.tools.tool_map import resolve_tools
 from goblin.utils.config import get_config
 from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
 from goblin.utils.llm import build_llm
-from goblin.tools.tool_map import resolve_tools
 
 if TYPE_CHECKING:
     from goblin.blueprint import V1Blueprint
@@ -235,9 +236,10 @@ class SwarmPhase(PhaseProtocol):
             context,
         )
         llm = build_llm(model=coordinator_llm)
+        coordinator_base_tools = resolve_tools(coordinator_tools, tool_params={"SwarmTasks": {"db_config": db_config}})
         agent = Agent(
             llm=llm,
-            tools=resolve_tools(coordinator_tools, tool_params={"SwarmTasks": {"db_config": db_config}}),
+            tools=coordinator_base_tools,
             mcp_config=mcp_config,
             system_prompt=system_prompt,
             critic=None,
@@ -254,14 +256,12 @@ class SwarmPhase(PhaseProtocol):
         )
         breaker.absorb(conversation)
 
-        text = get_agent_final_response(conversation.state.events)
-        if not text:
-            return {"done": False, "message": ["No response from coordinator"]}
-
-        try:
-            return _extract_json(text)
-        except (json.JSONDecodeError, ValueError):
-            return {"done": False, "message": [text]}
+        text = get_agent_final_response(conversation.state.events) or ""
+        result = SwarmCoordinatorResult(
+            done=False,
+            message=[text] if text else ["No response from coordinator"],
+        )
+        return result.model_dump()
 
     async def _run_single_agent(self, agent_cfg: dict, context: dict, breaker: CircuitBreaker):
         assert self._db is not None

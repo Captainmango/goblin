@@ -1,10 +1,12 @@
 from openhands.sdk import Tool
+from openhands.sdk.tool.builtins import FinishTool
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.glob import GlobTool
 from openhands.tools.grep import GrepTool
 from openhands.tools.terminal import TerminalTool
 
 from goblin.tools.ask_user_tool import AskUserTool
+from goblin.tools.structured_finish import StructuredFinishTool
 from goblin.tools.swarm_agent_tool import SwarmAgentTool
 from goblin.tools.swarmdb_tool import SwarmTasksTool
 from goblin.tools.worktree_tool import WorktreeTool
@@ -22,6 +24,8 @@ TOOL_NAME_MAP: dict[str, Tool] = {
     "SwarmAgent": Tool(name=SwarmAgentTool.name),
     "Worktree": Tool(name=WorktreeTool.name),
     "AskUser": Tool(name=AskUserTool.name),
+    "finish": Tool(name=FinishTool.name),
+    "StructuredFinish": Tool(name=StructuredFinishTool.name),
 }
 
 

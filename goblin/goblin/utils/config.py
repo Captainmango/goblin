@@ -38,6 +38,9 @@ class GoblinConfig:
     )
     base_url: str | None = field(default_factory=lambda: env("GOBLIN_BASE_URL", fallback="OPENHANDS_BASE_URL"))
 
+    # Default LLM model
+    default_model: str | None = field(default_factory=lambda: env("GOBLIN_DEFAULT_MODEL"))
+
     # Relay
     relay_host: str | None = field(default_factory=lambda: env("RELAY_HOST", fallback="127.0.0.1"))
     relay_port: int | None = field(default_factory=lambda: env("RELAY_PORT", 8000))
