@@ -2,6 +2,9 @@
 
 version: '3'
 
+vars:
+  ZENSICAL_VERSION: ">=0.0.50,<0.1"
+
 includes:
   goblin:
     taskfile: ./goblin/Taskfile.yml
@@ -9,9 +12,6 @@ includes:
   goblin-common:
     taskfile: ./goblin-common/Taskfile.yml
     dir: ./goblin-common
-  goblin-docs:
-    taskfile: ./goblin-docs/Taskfile.yml
-    dir: ./goblin-docs
   notifications-relay:
     taskfile: ./notifications-relay/Taskfile.yml
     dir: ./notifications-relay
@@ -61,6 +61,14 @@ tasks:
     cmds:
       - task goblin:validate
     silent: true
+  
+  docs:serve:
+    cmds:
+      - uvx 'zensical{{.ZENSICAL_VERSION}}' serve
+
+  docs:build:
+    cmds:
+      - uvx 'zensical{{.ZENSICAL_VERSION}}' build
 
   base:build:
     cmds:

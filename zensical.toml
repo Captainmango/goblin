@@ -1,0 +1,76 @@
+[project]
+site_name = "Goblin Documentation"
+docs_dir = "docs"
+
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = [
+    "getting-started/installation.md",
+    "getting-started/quickstart.md",
+    "getting-started/first-blueprint.md"
+  ]},
+    { "Blueprints" = [
+    "blueprints/imports.md",
+    "blueprints/overview.md",
+    "blueprints/structure.md",
+    "blueprints/validation.md",
+    "blueprints/vars-and-interpolation.md",
+    { "Examples" = [
+      "blueprints/examples/foreach-and-condition.md",
+      "blueprints/examples/load-project.md",
+      "blueprints/examples/output-schema.md",
+      "blueprints/examples/simple-prompt.md"
+    ]}
+  ]},
+  { "Notifications" = [
+    "notifications/ask-user-tool.md",
+    "notifications/overview.md",
+    "notifications/setup.md"
+  ]},
+  { "Phases" = [
+    "phases/load-project.md",
+    "phases/overview.md",
+    "phases/prompt.md",
+    "phases/swarm.md"
+  ]},
+  { "Swarm" = [
+    "swarm/agents.md",
+    "swarm/backends.md",
+    "swarm/cleanup.md",
+    "swarm/coordinator.md",
+    "swarm/overview.md",
+    "swarm/task-board.md"
+  ]},
+  { "Tools" = [
+    "tools/built-in.md",
+    "tools/mcp-servers.md",
+    "tools/overview.md",
+    "tools/swarm-tools.md"
+  ]},
+  { "Configuration" = [
+    "configuration/cost-control.md",
+    "configuration/environment-variables.md",
+    "configuration/hooks.md",
+    "configuration/llm-config.md",
+    "configuration/logging.md",
+    "configuration/workspace.md"
+  ]},
+  { "CLI" = [
+    "cli/goblin.md"
+  ]},
+  { "Advanced" = [
+    "advanced/checkpoints-and-resume.md",
+    "advanced/custom-hooks.md",
+    "advanced/depends-on.md",
+    "advanced/history.md",
+    "advanced/on-failure.md"
+  ]},
+  { "API" = [
+    "api/goblin.md"
+  ]},
+  { "Development" = [
+    "development/architecture.md",
+    "development/contributing.md",
+    "development/testing.md"
+  ]}
+]
