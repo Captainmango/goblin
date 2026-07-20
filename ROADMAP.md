@@ -13,8 +13,12 @@ MAKE THE PAIRING STRING SHORTER (LIKE 8 CHAR LONG)
     - [ ] Browser use???
 
 - [ ] Documentation site
-    - [ ] Full docs site using Zensical
-    - [ ] All docs in markdown and a links map for AI
+    - [x] Full docs site using Zensical
+    - [x] All docs in markdown and a links map for AI
+    - [ ] Proof read and improve it for human readers
+    - [ ] Can Getting started be always expanded?
+    - [ ] Map for AI Agents?
+    - [ ] Host on Github pages (GHA to build it)
 
 - [ ] Skill that knows about all the documentation and is an expert on building blueprints
     - [ ] Docs map and docs follow the skill
