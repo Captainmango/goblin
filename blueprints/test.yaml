@@ -4,9 +4,9 @@ version: v1
 blueprint:
   name: my_blueprint
   vars:
-    repo: https://github.com/parkhub/justpark.git
+    repo: https://github.com/captainmango/eheaver.git
   defaults:
-    model: anthropic/MiniMax-M2.5
+    model: openai/kimi-k2.5
 
   phases:
     - id: clone_repo
