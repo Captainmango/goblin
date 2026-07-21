@@ -122,7 +122,7 @@ class PromptPhase(PhaseProtocol):
         if history_context:
             prompt = history_context + prompt
 
-        worktree_config = self._blueprint._resolve_worktree_config(self)
+        worktree_config = self._blueprint.resolve_worktree_config(self)
         if "Worktree" in self.allowed_tools and worktree_config is None:
             return {
                 "success": False,
@@ -145,7 +145,7 @@ class PromptPhase(PhaseProtocol):
             }
 
         if "AskUser" in self.allowed_tools:
-            notifications_config = self._blueprint._resolve_notifications_config(self) or {}
+            notifications_config = self._blueprint.resolve_notifications_config(self) or {}
             tool_params["AskUser"] = {"label": notifications_config.get("label")}
 
         breaker = CircuitBreaker(
@@ -154,7 +154,7 @@ class PromptPhase(PhaseProtocol):
             max_cost=self.max_cost,
         )
 
-        llm_config = self._blueprint._resolve_llm_config(self, context)
+        llm_config = self._blueprint.resolve_llm_config(self, context)
         structured_configured = self._structured_output_configured()
 
         if structured_configured:
@@ -205,7 +205,7 @@ class PromptPhase(PhaseProtocol):
         agent_kwargs: dict[str, Any] = {
             "llm": llm,
             "tools": tools,
-            "mcp_config": self._blueprint._build_mcp_servers(self, context),
+            "mcp_config": self._blueprint.build_mcp_servers(self, context),
             "system_prompt": system_prompt,
             "filter_tools_regex": build_tool_filter_regex(
                 self.allowed_tools,
@@ -219,14 +219,14 @@ class PromptPhase(PhaseProtocol):
             agent_kwargs["include_default_tools"] = []
         agent = Agent(**agent_kwargs)
 
-        workspace = self._blueprint._get_workspace(context)
+        workspace = self._blueprint.get_workspace(context)
 
         try:
             conversation = await run_conversation(
                 agent,
                 workspace,
                 prompt,
-                hook_config=self._blueprint._build_hooks(self),
+                hook_config=self._blueprint.build_hooks(self),
                 max_iterations=self.max_iterations or 500,
                 max_cost=self.max_cost,
             )
@@ -397,11 +397,10 @@ class PromptPhase(PhaseProtocol):
         """Final fallback when nothing in the layers produced a valid model.
 
         Try :func:`coerce_to_model` one last time on the Layer 2 text; if that
-        also fails, return a synthetic ``success=False`` :class:`PhaseResult`
-        so the caller at least sees a structured result rather than an
-        exception. User-defined models that lack ``success``/``message`` fields
-        lose the typed contract here by design — fabricating unknown fields
-        would be a worse lie.
+        also fails, return an instance of the resolved *output_model* so the
+        downstream ``cast`` is honest. Models that accept ``success``/``message``
+        get a conventional failure shape; other models fall back to an empty
+        constructed instance.
         """
         coerced = coerce_to_model(text, output_model)
         if coerced is not None:
@@ -410,7 +409,10 @@ class PromptPhase(PhaseProtocol):
             "structured_output_fallback_failed",
             extra={"event": "phase.structured_fallback_failed"},
         )
-        return PhaseResult(success=False, message=["Agent produced no structured output"])
+        try:
+            return output_model(success=False, message=["Agent produced no structured output"])
+        except Exception:
+            return output_model.model_construct()
 
 
 class LoadProjectPhase(PhaseProtocol):
@@ -425,5 +427,5 @@ class LoadProjectPhase(PhaseProtocol):
 
     async def run(self, context: dict) -> dict:
         path = self.path_template.format(**context)
-        self._blueprint._load_project(path)
+        self._blueprint.load_project(path)
         return {"success": True, "status": LoadProjectStatus.LOADED, "path": path}

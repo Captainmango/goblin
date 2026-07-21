@@ -4,19 +4,10 @@ import sys
 from typing import Any
 
 import click
-from goblin_common.logging import configure_logging
-
-try:
-    from dotenv import load_dotenv
-except ImportError:
-
-    def load_dotenv(*args: Any, **kwargs: Any) -> None:  # type: ignore[no-redef]
-        """No-op fallback when python-dotenv is not installed."""
-        pass
-
 
 from goblin.utils.click_helpers import JSON
-from goblin.utils.config import get_config
+from goblin.utils.config import get_config, load_dotenv_from_cwd
+from goblin_common.logging import configure_logging
 
 
 class LazyGroup(click.Group):
@@ -99,7 +90,7 @@ def run(
     """Execute a Blueprint."""
     from goblin.runner import BlueprintRunner
 
-    load_dotenv()
+    load_dotenv_from_cwd()
 
     configure_logging(
         logger_name="goblin",

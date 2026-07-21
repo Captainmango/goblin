@@ -15,7 +15,13 @@ async def get_inbox(
     token: str | None = Query(None),
     inbox_service: InboxService = Depends(get_inbox_service),
 ) -> InboxResponse:
-    """Fetch and consume replies."""
+    """Fetch and consume replies.
+
+    Pairing tokens are accepted as a query parameter for local development
+    convenience (the relay is intended to run on ``127.0.0.1``). For any
+    production deployment, terminate TLS and consider moving authentication
+    to an HTTP header instead.
+    """
     if not question_id and not token:
         raise HTTPException(
             status_code=400,

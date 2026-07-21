@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from goblin.blueprint import V1Blueprint
 from goblin.swarm import SwarmPhase
-
 from tests._helpers import MINIMAL_SWARM_RAW
 
 

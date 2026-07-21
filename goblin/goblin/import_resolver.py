@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import copy
-import os
 import re
+from pathlib import Path
 
 import yaml
 
@@ -56,7 +56,7 @@ def resolve_imports(
         prefix = imp.get("as")
 
         resolved_path = _resolve_path(path, base_dir, root_dir)
-        canonical_path = os.path.realpath(resolved_path)
+        canonical_path = str(Path(resolved_path).resolve())
 
         if canonical_path in visited:
             raise ValueError(f"Import cycle detected involving '{path}'")
@@ -64,8 +64,7 @@ def resolve_imports(
         if canonical_path in resolved:
             imported_resolved = resolved[canonical_path]
         else:
-            with open(resolved_path) as f:
-                imported_raw = yaml.safe_load(f)
+            imported_raw = yaml.safe_load(Path(resolved_path).read_text())
 
             if imported_raw is None:
                 raise ValueError(f"Imported blueprint '{path}' is empty or invalid")
@@ -76,7 +75,7 @@ def resolve_imports(
                     f"Version mismatch in import '{path}': expected '{root_version}', got '{imported_version}'"
                 )
 
-            imported_dir = os.path.dirname(resolved_path)
+            imported_dir = str(Path(resolved_path).resolve().parent)
             visited_copy = visited | {canonical_path}
             imported_resolved = resolve_imports(imported_raw, imported_dir, root_dir, visited_copy, resolved)
             resolved[canonical_path] = imported_resolved
@@ -98,29 +97,30 @@ def _resolve_path(path: str, base_dir: str, root_dir: str) -> str:
     FileNotFoundError
         When the resolved file does not exist.
     """
-    if os.path.isabs(path):
+    base = Path(base_dir)
+    root = Path(root_dir)
+    target = base / path
+
+    if Path(path).is_absolute():
         raise ValueError(f"Absolute import paths are not allowed: '{path}'")
 
     # Reject literal .. components before normalization
-    if ".." in path.split(os.sep):
+    if ".." in path.split("/"):
         raise ValueError(f"Import paths cannot traverse outside the blueprint directory: '{path}'")
 
-    resolved = os.path.normpath(os.path.join(base_dir, path))
-    rel_to_root = os.path.relpath(resolved, root_dir)
-    if ".." in rel_to_root.split(os.sep):
-        raise ValueError(f"Import paths cannot traverse outside the blueprint directory: '{path}'")
-
-    canonical = os.path.realpath(resolved)
-    canonical_root = os.path.realpath(root_dir)
+    resolved = target.resolve()
+    canonical_root = root.resolve()
 
     # Ensure the canonical path is inside the root tree
-    if not canonical.startswith(canonical_root + os.sep) and canonical != canonical_root:
-        raise ValueError(f"Import path escapes the blueprint directory: '{path}'")
+    try:
+        resolved.relative_to(canonical_root)
+    except ValueError as exc:
+        raise ValueError(f"Import path escapes the blueprint directory: '{path}'") from exc
 
-    if not os.path.isfile(canonical):
-        raise FileNotFoundError(f"Imported blueprint not found: '{path}' (resolved to '{canonical}')")
+    if not resolved.is_file():
+        raise FileNotFoundError(f"Imported blueprint not found: '{path}' (resolved to '{resolved}')")
 
-    return canonical
+    return str(resolved)
 
 
 def _merge_blueprints(parent: dict, imported: dict, prefix: str | None, import_path: str) -> dict:

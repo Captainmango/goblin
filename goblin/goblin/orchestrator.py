@@ -100,7 +100,7 @@ class PhaseOrchestrator:
         """Attach `_history_context` to *base_context* if the phase declares `history`."""
         if not (hasattr(phase, "history") and phase.history):
             return base_context
-        history_context = self._blueprint._build_history_context(phase.history, results)
+        history_context = self._blueprint.build_history_context(phase.history, results)
         return {**base_context, "_history_context": history_context}
 
     async def _run_single_phase(
@@ -123,7 +123,7 @@ class PhaseOrchestrator:
                 )
                 return None
 
-        if phase.condition and not self._blueprint._evaluate_condition(phase.condition, results):
+        if phase.condition and not self._blueprint.evaluate_condition(phase.condition, results):
             logger.info(
                 "Skipping phase — condition not met",
                 extra={"event": "phase.condition_skip", "phase_id": phase.id},
@@ -166,7 +166,7 @@ class PhaseOrchestrator:
         self, phase: PhaseProtocol, context: dict, results: dict, checkpoint: Checkpoint | None
     ) -> dict:
         assert phase.foreach is not None
-        items = self._blueprint._resolve(phase.foreach, results, context)
+        items = self._blueprint.resolve_foreach(phase.foreach, results, context)
         if checkpoint:
             async with self._checkpoint_lock:
                 await checkpoint.phase_started(phase.id, {"foreach": phase.foreach, "item_count": len(items)})

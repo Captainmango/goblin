@@ -6,10 +6,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from goblin.output_schema import SwarmCoordinatorResult
 from goblin.swarm import SwarmPhase
-
-from tests._helpers import MINIMAL_SWARM_RAW, MagicAgent
+from tests._helpers import MINIMAL_SWARM_RAW, _mock_llm_infra
 
 
 def _make_blueprint_with_swarm(raw: dict) -> SwarmPhase:
@@ -43,14 +43,15 @@ class TestSwarmCoordinatorChatTextWrap:
         phase = _make_blueprint_with_swarm(raw)
         phase._setup({})
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(_make_conv())
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation") as mock_conv_cls,
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
             patch("openhands.sdk.conversation.get_agent_final_response", return_value="still work to do"),
         ):
-            mock_agent_cls.return_value = MagicAgent()
-            mock_conv_cls.return_value = _make_conv()
             breaker = MagicMock()
             result = await phase._run_coordinator({}, breaker)
 
@@ -72,14 +73,15 @@ class TestSwarmCoordinatorChatTextWrap:
         phase = _make_blueprint_with_swarm(raw)
         phase._setup({})
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(_make_conv())
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation") as mock_conv_cls,
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
             patch("openhands.sdk.conversation.get_agent_final_response", return_value=""),
         ):
-            mock_agent_cls.return_value = MagicAgent()
-            mock_conv_cls.return_value = _make_conv()
             breaker = MagicMock()
             result = await phase._run_coordinator({}, breaker)
 
@@ -99,17 +101,18 @@ class TestSwarmCoordinatorChatTextWrap:
         phase = _make_blueprint_with_swarm(raw)
         phase._setup({})
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(_make_conv())
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation") as mock_conv_cls,
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
             patch(
                 "openhands.sdk.conversation.get_agent_final_response",
                 return_value='{"done": true, "message": ["all tasks complete"]}',
             ),
         ):
-            mock_agent_cls.return_value = MagicAgent()
-            mock_conv_cls.return_value = _make_conv()
             breaker = MagicMock()
             result = await phase._run_coordinator({}, breaker)
 
@@ -136,13 +139,16 @@ class TestSwarmCoordinatorChatTextWrap:
             def __init__(self, *, tools, **kwargs: Any) -> None:
                 captured_tools.extend(tools)
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(_make_conv())
         with (
-            patch("goblin.utils.llm.build_llm"),
+            p1,
+            p2,
+            p3,
             patch("openhands.sdk.Agent", FakeAgent),
-            patch("goblin.conversation.LocalConversation") as mock_conv_cls,
+            p4,
+            p5,
             patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
         ):
-            mock_conv_cls.return_value = _make_conv()
             breaker = MagicMock()
             await phase._run_coordinator({}, breaker)
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from notifications_relay.config import get_config, load_config, reset_config
 
 

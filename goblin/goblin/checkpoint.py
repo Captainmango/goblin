@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 
 from filelock import FileLock, Timeout
 
@@ -12,8 +13,8 @@ from goblin.enums import PhaseStatus, RunStatus
 
 class Checkpoint:
     def __init__(self, run_dir: str, run_id: str, blueprint_path: str, context: dict):
-        os.makedirs(os.path.join(run_dir, ".goblin"), exist_ok=True)
-        self._path = os.path.join(run_dir, ".goblin", f"run-{run_id}.json")
+        self._path = Path(run_dir) / ".goblin" / f"run-{run_id}.json"
+        self._path.parent.mkdir(parents=True, exist_ok=True)
         self._data = {
             "run_id": run_id,
             "blueprint_path": blueprint_path,
@@ -24,9 +25,25 @@ class Checkpoint:
             "phases": {},
         }
         self._lock = asyncio.Lock()
-        self._file_lock_path = self._path + ".lock"
+        self._file_lock_path = Path(str(self._path) + ".lock")
         self._file_lock_timeout = 30.0
         self._flush()
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    @property
+    def blueprint_path(self) -> str:
+        return self._data["blueprint_path"]
+
+    @property
+    def context(self) -> dict:
+        return self._data["context"]
+
+    @property
+    def run_id(self) -> str:
+        return self._data["run_id"]
 
     async def phase_started(self, phase_id: str, input_data: dict) -> None:
         async with self._lock:
@@ -88,15 +105,6 @@ class Checkpoint:
                 if phase_data["status"] == PhaseStatus.COMPLETED
             }
 
-    async def finished_phase_ids(self) -> set[str]:
-        """Return IDs of phases that are completed, skipped, or failed."""
-        async with self._lock:
-            return {
-                phase_id
-                for phase_id, phase_data in self._data["phases"].items()
-                if phase_data["status"] in (PhaseStatus.COMPLETED, PhaseStatus.SKIPPED, PhaseStatus.FAILED)
-            }
-
     async def skipped_phase_ids(self) -> set[str]:
         async with self._lock:
             return {
@@ -114,15 +122,16 @@ class Checkpoint:
             }
 
     @classmethod
-    async def load(cls, path: str) -> Checkpoint:
+    async def load(cls, path: str | Path) -> Checkpoint:
+        path_obj = Path(path)
         instance = cls.__new__(cls)
-        instance._path = path
+        instance._path = path_obj
         instance._lock = asyncio.Lock()
-        instance._file_lock_path = path + ".lock"
+        instance._file_lock_path = path_obj.with_suffix(path_obj.suffix + ".lock")
         instance._file_lock_timeout = 30.0
 
         loop = asyncio.get_running_loop()
-        data = await loop.run_in_executor(None, instance._read_locked, path)
+        data = await loop.run_in_executor(None, instance._read_locked, str(path_obj))
         instance._data = data
 
         # Remove any phases that were still running when the process died
@@ -134,19 +143,14 @@ class Checkpoint:
         instance._flush()
         return instance
 
-    @property
-    def path(self) -> str:
-        return self._path
-
     def _flush(self) -> None:
         """Synchronous flush for internal use (init/load)."""
-        tmp_path = self._path + ".tmp"
+        tmp_path = Path(str(self._path) + ".tmp")
         payload = json.dumps(self._data, indent=2, default=str)
         lock = FileLock(self._file_lock_path)
         try:
             with lock.acquire(timeout=self._file_lock_timeout):
-                with open(tmp_path, "w") as f:
-                    f.write(payload)
+                tmp_path.write_text(payload)
                 os.replace(tmp_path, self._path)
         except Timeout:
             raise TimeoutError(f"Checkpoint lock acquisition timed out: {self._file_lock_path}")
@@ -160,7 +164,6 @@ class Checkpoint:
         lock = FileLock(self._file_lock_path)
         try:
             with lock.acquire(timeout=self._file_lock_timeout):
-                with open(path) as f:
-                    return json.load(f)
+                return json.loads(Path(path).read_text())
         except Timeout:
             raise TimeoutError(f"Checkpoint lock acquisition timed out: {self._file_lock_path}")

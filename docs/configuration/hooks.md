@@ -47,14 +47,16 @@ phases:
 
 ## Built-in Registries
 
-Hooks are registered by name in a global registry. Goblin provides a decorator for registering hooks in code:
+Hooks are registered by name in a global registry. Register hooks in code with `register_hook`:
 
 ```python
-from goblin.hooks import hook
+from openhands.sdk.hooks import HookDefinition
+from goblin.hooks import register_hook
 
-@hook("check_prometheus", command="curl -sf http://localhost:9090/-/healthy", timeout=30)
-def check_prometheus():
-    pass
+register_hook(
+    "check_prometheus",
+    HookDefinition(command="curl -sf http://localhost:9090/-/healthy", timeout=30),
+)
 ```
 
 ## Project-Level Hooks

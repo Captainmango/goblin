@@ -80,12 +80,23 @@ class StructuredFinishExecutor(ToolExecutor):
             wrapped = self._model.model_validate(payload)
             text = wrapped.model_dump_json()
         elif payload is None:
-            # No payload at all — emit a default-shaped empty body so callers
-            # that key off the observation text still see a JSON object.
-            wrapped = self._model.model_construct()
+            # No payload at all — emit a default-shaped body so callers that
+            # key off the observation text still see a JSON object.
+            try:
+                wrapped = self._model.model_construct(success=False, message=[])
+            except Exception:
+                wrapped = self._model.model_construct()
             text = wrapped.model_dump_json()
         else:
-            wrapped = self._model(result=payload)
+            # Scalar/list payload — attempt to fit it into a ``result`` field
+            # if the model has one, otherwise emit an empty constructed body.
+            try:
+                wrapped = self._model(result=payload)
+            except Exception:
+                try:
+                    wrapped = self._model.model_construct(success=False, message=[])
+                except Exception:
+                    wrapped = self._model.model_construct()
             text = wrapped.model_dump_json()
         return FinishObservation.from_text(text=text)
 

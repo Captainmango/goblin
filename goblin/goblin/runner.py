@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import logging
-import os
 import uuid
+from pathlib import Path
 
 import yaml
 
@@ -27,16 +29,16 @@ def _raise_validation_error(blueprint_path: str, errors: list[dict]) -> None:
 
 class BlueprintRunner:
     def __init__(self, blueprint_path: str, run_dir: str | None = None):
-        with open(blueprint_path) as f:
-            raw = yaml.safe_load(f)
-        base_dir = os.path.dirname(os.path.abspath(blueprint_path))
-        raw = resolve_imports(raw, base_dir, base_dir)
-        errors = validate_blueprint(blueprint_path, raw=raw)
+        path = Path(blueprint_path)
+        raw = yaml.safe_load(path.read_text())
+        base_dir = path.resolve().parent
+        raw = resolve_imports(raw, str(base_dir), str(base_dir))
+        errors = validate_blueprint(str(path), raw=raw)
         if errors:
-            _raise_validation_error(blueprint_path, errors)
+            _raise_validation_error(str(path), errors)
         self.blueprint = self._load_blueprint(raw)
-        self.blueprint_path = blueprint_path
-        self._run_dir = run_dir or os.getcwd()
+        self.blueprint_path = str(path)
+        self._run_dir = Path(run_dir) if run_dir else Path.cwd()
         self._run_id = str(uuid.uuid4())
 
     def _load_blueprint(self, raw: dict) -> Blueprint:
@@ -52,7 +54,7 @@ class BlueprintRunner:
     async def run(self, context: dict | None = None) -> dict:
         logger.info("Blueprint started", extra={"event": "blueprint.start", "run_id": self._run_id})
         checkpoint = Checkpoint(
-            run_dir=self._run_dir,
+            run_dir=str(self._run_dir),
             run_id=self._run_id,
             blueprint_path=self.blueprint_path,
             context=context or {},
@@ -64,25 +66,30 @@ class BlueprintRunner:
         return results
 
     @classmethod
-    async def resume(cls, checkpoint_path: str) -> dict:
+    async def from_checkpoint(cls, checkpoint_path: str) -> BlueprintRunner:
+        """Rehydrate a runner from a persisted checkpoint."""
         checkpoint = await Checkpoint.load(checkpoint_path)
-        blueprint_path = checkpoint._data["blueprint_path"]
-        context = checkpoint._data["context"]
-
-        with open(blueprint_path) as f:
-            raw = yaml.safe_load(f)
-
-        base_dir = os.path.dirname(os.path.abspath(blueprint_path))
-        raw = resolve_imports(raw, base_dir, base_dir)
-        errors = validate_blueprint(blueprint_path, raw=raw)
-        if errors:
-            _raise_validation_error(blueprint_path, errors)
-
         runner = cls.__new__(cls)
+        runner.blueprint_path = checkpoint.blueprint_path
+        runner._run_dir = Path(checkpoint_path).resolve().parent.parent
+        runner._run_id = checkpoint.run_id
+
+        path = Path(runner.blueprint_path)
+        raw = yaml.safe_load(path.read_text())
+        base_dir = path.resolve().parent
+        raw = resolve_imports(raw, str(base_dir), str(base_dir))
+        errors = validate_blueprint(str(path), raw=raw)
+        if errors:
+            _raise_validation_error(runner.blueprint_path, errors)
         runner.blueprint = runner._load_blueprint(raw)
-        runner.blueprint_path = blueprint_path
-        runner._run_dir = os.path.dirname(os.path.dirname(checkpoint_path))
-        runner._run_id = checkpoint._data["run_id"]
+        return runner
+
+    @classmethod
+    async def resume(cls, checkpoint_path: str) -> dict:
+        """Resume a blueprint run from a checkpoint file."""
+        runner = await cls.from_checkpoint(checkpoint_path)
+        checkpoint = await Checkpoint.load(checkpoint_path)
+        context = checkpoint.context
 
         logger.info("Resuming blueprint", extra={"event": "blueprint.resume", "run_id": runner._run_id})
         results = await runner.blueprint.run(context, checkpoint=checkpoint)

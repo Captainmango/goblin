@@ -509,7 +509,7 @@
         },
         "output_schema": {
           "type": "object",
-          "description": "JSON Schema fragment that the agent's response must conform to. When provided, the runner validates the extracted JSON response against this schema and fails the phase if validation does not pass.",
+          "description": "JSON Schema fragment describing the desired output shape. When provided, the runner generates a Pydantic model from the schema, wires a typed Finish tool, and validates the agent's structured output against this schema as a defence-in-depth check. Fails the phase if validation does not pass.",
           "additionalProperties": true,
           "examples": [{"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"]}]
         },

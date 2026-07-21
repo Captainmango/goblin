@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from goblin_common.config import env, load_dotenv_from_cwd, secret_env
 from pydantic import SecretStr
+
+from goblin_common.config import env, load_dotenv_from_cwd, secret_env
 
 
 @dataclass(frozen=True)
@@ -15,9 +16,6 @@ class GoblinConfig:
     created via :func:`load_config` / :func:`get_config` to pull values from
     the current process environment.
     """
-
-    # OpenHands SDK behaviour
-    openhands_suppress_banner: str = field(default_factory=lambda: env("OPENHANDS_SUPPRESS_BANNER", "1"))
 
     # Swarm backend selection
     backend: str | None = field(default_factory=lambda: env("GOBLIN_BACKEND"))
@@ -41,9 +39,9 @@ class GoblinConfig:
     default_model: str | None = field(default_factory=lambda: env("GOBLIN_DEFAULT_MODEL"))
 
     # Relay
-    relay_host: str | None = field(default_factory=lambda: env("RELAY_HOST", fallback="127.0.0.1"))
-    relay_port: int | None = field(default_factory=lambda: env("RELAY_PORT", 8000))
-    relay_api_key: SecretStr | None = field(default_factory=lambda: secret_env("RELAY_API_KEY", fallback=""))
+    relay_host: str = field(default_factory=lambda: env("RELAY_HOST", "127.0.0.1"))
+    relay_port: int = field(default_factory=lambda: env("RELAY_PORT", 8000))
+    relay_api_key: SecretStr | None = field(default_factory=lambda: secret_env("RELAY_API_KEY"))
 
     def require_model_api_key(self) -> SecretStr:
         """Return the model API key, raising if it is not configured."""

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 
 import pytest
+
 from goblin.checkpoint import Checkpoint
 
 
@@ -173,8 +173,8 @@ class TestCheckpointAtomicWrite:
         cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
         await cp.phase_started("s1", {})
         await cp.phase_completed("s1", {"success": True})
-        assert os.path.exists(cp.path)
-        assert not os.path.exists(cp.path + ".tmp")
+        assert cp.path.exists()
+        assert not (cp.path.with_suffix(cp.path.suffix + ".tmp")).exists()
 
 
 # ---------------------------------------------------------------------------
@@ -204,13 +204,3 @@ class TestCheckpointConcurrency:
         assert data["phases"]["c"]["status"] == "completed"
         assert await cp.completed_phase_ids() == {"a", "b", "c"}
 
-    @pytest.mark.asyncio
-    async def test_finished_phase_ids_includes_all_terminal_statuses(self, tmp_path):
-        cp = Checkpoint(str(tmp_path), "r1", "test.yaml", {})
-        await cp.phase_started("a", {})
-        await cp.phase_completed("a", {"success": True})
-        await cp.phase_skipped("b")
-        await cp.phase_started("c", {})
-        await cp.phase_failed("c", {"success": False})
-
-        assert await cp.finished_phase_ids() == {"a", "b", "c"}

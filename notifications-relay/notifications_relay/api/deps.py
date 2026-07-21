@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import secrets
+
 from fastapi import HTTPException, Request
 
 from notifications_relay.config import RelayConfig
@@ -15,7 +17,9 @@ async def require_api_key(request: Request) -> None:
     auth = request.headers.get("Authorization", "")
     prefix = "Bearer "
     api_key = config.require_api_key()
-    if not auth.startswith(prefix) or auth[len(prefix) :] != api_key.get_secret_value():
+    if not auth.startswith(prefix) or not secrets.compare_digest(
+        auth[len(prefix) :], api_key.get_secret_value()
+    ):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 

@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from goblin.blueprint import V1Blueprint
 from goblin.hooks import HOOK_REGISTRY
 

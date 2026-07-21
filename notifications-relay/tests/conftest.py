@@ -7,6 +7,7 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+
 from notifications_relay.config import RelayConfig
 from notifications_relay.core.dispatcher import NotificationDispatcher
 from notifications_relay.core.inbox import InboxService

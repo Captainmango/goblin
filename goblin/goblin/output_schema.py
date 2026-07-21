@@ -395,7 +395,7 @@ def coerce_to_model(text: str, model: type[BaseModel]) -> BaseModel | None:
     2. JSON-object extraction from prose (markdown fences, balanced braces).
     3. ``json_repair.repair_json`` to rescue near-JSON with a small defect.
     """
-    if not text:
+    if not isinstance(text, str) or not text:
         return None
 
     candidates = [text]

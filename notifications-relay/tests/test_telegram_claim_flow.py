@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from notifications_relay.core.pairing import PairingService
 from notifications_relay.store import Store
 from notifications_relay.telegram.config import TelegramConfig

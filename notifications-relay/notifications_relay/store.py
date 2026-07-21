@@ -7,6 +7,10 @@ from typing import Any
 
 import aiosqlite
 
+# Claimed pairings never truly expire, but the schema requires a non-null
+# expires_at. Use a far-future sentinel rather than an inline magic number.
+_CLAIMED_PAIRING_NEVER_EXPIRES_YEARS = 100
+
 
 class Store:
     """SQLite-backed store for pairings, question mappings, inbox replies, and idempotency."""
@@ -43,6 +47,11 @@ class Store:
         if self._connection is None:
             raise RuntimeError("Store is not connected")
         return await self._connection.executemany(sql, parameters)
+
+    async def _commit(self) -> None:
+        if self._connection is None:
+            raise RuntimeError("Store is not connected")
+        await self._connection.commit()
 
     async def _migrate(self) -> None:
         await self._execute(
@@ -95,7 +104,7 @@ class Store:
             )
             """
         )
-        await self._connection.commit()  # type: ignore[union-attr]
+        await self._commit()
 
     # Pairings
 
@@ -112,7 +121,7 @@ class Store:
             "INSERT INTO pairings (token, label, username, status, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
             (token, label, username, "pending", now, expires),
         )
-        await self._connection.commit()  # type: ignore[union-attr]
+        await self._commit()
 
     async def get_pairing_by_token(self, token: str) -> dict[str, Any] | None:
         cursor = await self._execute(
@@ -144,7 +153,9 @@ class Store:
         chat_id: str,
     ) -> None:
         now = self._now()
-        far_future = (datetime.now(UTC) + timedelta(days=365 * 100)).isoformat()
+        never_expires = (
+            datetime.now(UTC) + timedelta(days=365 * _CLAIMED_PAIRING_NEVER_EXPIRES_YEARS)
+        ).isoformat()
         await self._execute(
             """
             UPDATE pairings
@@ -155,16 +166,16 @@ class Store:
                 expires_at = ?
             WHERE token = ? AND status = 'pending'
             """,
-            (telegram_user_id, chat_id, now, far_future, token),
+            (telegram_user_id, chat_id, now, never_expires, token),
         )
-        await self._connection.commit()  # type: ignore[union-attr]
+        await self._commit()
 
     async def revoke_pairing(self, token: str) -> bool:
         cursor = await self._execute(
             "UPDATE pairings SET status = 'revoked' WHERE token = ? AND status = 'claimed'",
             (token,),
         )
-        await self._connection.commit()  # type: ignore[union-attr]
+        await self._commit()
         return cursor.rowcount > 0
 
     async def delete_expired_pending(self) -> int:
@@ -173,7 +184,7 @@ class Store:
             "DELETE FROM pairings WHERE status = 'pending' AND expires_at < ?",
             (now,),
         )
-        await self._connection.commit()  # type: ignore[union-attr]
+        await self._commit()
         return cursor.rowcount
 
     # Question mappings
@@ -195,7 +206,7 @@ class Store:
             """,
             (chat_id, telegram_message_id, token, question_id, expires),
         )
-        await self._connection.commit()  # type: ignore[union-attr]
+        await self._commit()
 
     async def get_question_mapping(self, chat_id: str, telegram_message_id: str) -> dict[str, Any] | None:
         cursor = await self._execute(
@@ -211,7 +222,7 @@ class Store:
             "DELETE FROM question_mappings WHERE expires_at < ?",
             (now,),
         )
-        await self._connection.commit()  # type: ignore[union-attr]
+        await self._commit()
         return cursor.rowcount
 
     # Inbox
@@ -235,7 +246,7 @@ class Store:
             """,
             (message_id, token, telegram_user_id, chat_id, question_id, text, now, expires),
         )
-        await self._connection.commit()  # type: ignore[union-attr]
+        await self._commit()
 
     async def fetch_inbox(
         self,
@@ -266,7 +277,7 @@ class Store:
                 f"DELETE FROM inbox WHERE id IN ({placeholders})",
                 ids,
             )
-            await self._connection.commit()  # type: ignore[union-attr]
+            await self._commit()
         return messages
 
     async def delete_expired_inbox(self) -> int:
@@ -275,7 +286,7 @@ class Store:
             "DELETE FROM inbox WHERE expires_at < ?",
             (now,),
         )
-        await self._connection.commit()  # type: ignore[union-attr]
+        await self._commit()
         return cursor.rowcount
 
     # Idempotency
@@ -302,7 +313,7 @@ class Store:
             "INSERT OR REPLACE INTO idempotency_cache (key, response_json, expires_at) VALUES (?, ?, ?)",
             (key, json.dumps(response), expires),
         )
-        await self._connection.commit()  # type: ignore[union-attr]
+        await self._commit()
 
     async def __aenter__(self) -> Store:
         await self.connect()

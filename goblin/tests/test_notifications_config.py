@@ -11,10 +11,10 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from goblin.blueprint import V1Blueprint
 from goblin.validation import validate_blueprint
-
-from tests._helpers import _make_prompt_phase
+from tests._helpers import _make_prompt_phase, _mock_llm_infra
 
 
 def _make_blueprint(phases: list[dict], defaults: dict | None = None) -> V1Blueprint:
@@ -130,42 +130,46 @@ class TestPromptPhaseAskUserToolParams:
         local_ws.__class__.__name__ = "LocalWorkspace"
         phase._blueprint._get_workspace.return_value = local_ws
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
             patch("goblin.tools.tool_map.resolve_tools") as mock_resolve_tools,
-            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
             patch(
                 "openhands.sdk.conversation.get_agent_final_response",
                 return_value='{"success": true, "message": ["ok"]}',
             ),
         ):
-            mock_agent_cls.return_value = MagicMock()
             await phase.run({})
 
         tool_params = mock_resolve_tools.call_args.kwargs["tool_params"]
         assert "AskUser" not in tool_params
-        phase._blueprint._resolve_notifications_config.assert_not_called()
+        phase._blueprint.resolve_notifications_config.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_ask_user_gets_resolved_label(self, mock_conversation):
         phase = _make_prompt_phase({"id": "p1", "prompt": "hi", "allowed_tools": ["AskUser"]})
-        phase._blueprint._resolve_notifications_config.return_value = {"label": "ops-oncall"}
+        phase._blueprint.resolve_notifications_config.return_value = {"label": "ops-oncall"}
         local_ws = MagicMock()
         local_ws.__class__.__name__ = "LocalWorkspace"
         phase._blueprint._get_workspace.return_value = local_ws
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
             patch("goblin.tools.tool_map.resolve_tools") as mock_resolve_tools,
-            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
             patch(
                 "openhands.sdk.conversation.get_agent_final_response",
                 return_value='{"success": true, "message": ["ok"]}',
             ),
         ):
-            mock_agent_cls.return_value = MagicMock()
             await phase.run({})
 
         tool_params = mock_resolve_tools.call_args.kwargs["tool_params"]
@@ -178,17 +182,19 @@ class TestPromptPhaseAskUserToolParams:
         local_ws.__class__.__name__ = "LocalWorkspace"
         phase._blueprint._get_workspace.return_value = local_ws
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
             patch("goblin.tools.tool_map.resolve_tools") as mock_resolve_tools,
-            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
             patch(
                 "openhands.sdk.conversation.get_agent_final_response",
                 return_value='{"success": true, "message": ["ok"]}',
             ),
         ):
-            mock_agent_cls.return_value = MagicMock()
             await phase.run({})
 
         tool_params = mock_resolve_tools.call_args.kwargs["tool_params"]

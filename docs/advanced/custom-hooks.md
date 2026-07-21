@@ -4,28 +4,17 @@ Hooks can be registered programmatically for developers extending Goblin.
 
 ## Registering a Hook
 
-Use the `@hook` decorator to register a named hook:
-
-```python
-from goblin.hooks import hook
-
-@hook("run_lint", command="ruff check .", timeout=60)
-def run_lint():
-    pass
-```
-
-The decorator registers a `HookDefinition` with a shell command. The command is executed before or after each tool call, depending on whether the hook is listed in `pre_tool` or `post_tool`.
-
-## Manual Registration
-
-You can also register hooks manually:
+Register a named hook manually:
 
 ```python
 from openhands.sdk.hooks import HookDefinition
 from goblin.hooks import register_hook
 
+register_hook("run_lint", HookDefinition(command="ruff check .", timeout=60))
 register_hook("slack_notify", HookDefinition(command="curl -X POST -d 'text=Phase failed' $SLACK_WEBHOOK_URL"))
 ```
+
+The command is executed before or after each tool call, depending on whether the hook is listed in `pre_tool` or `post_tool`.
 
 ## Using Custom Hooks in Blueprints
 

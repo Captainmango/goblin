@@ -4,12 +4,11 @@ import asyncio
 
 import click
 import uvicorn
-from goblin_common.logging import configure_logging
 
+from goblin_common.logging import configure_logging
 from notifications_relay.client import RelayClient
 from notifications_relay.config import get_config
 from notifications_relay.local_store import resolve_token, save_token
-from notifications_relay.main import create_app
 
 
 @click.group()
@@ -54,6 +53,8 @@ def cli(ctx: click.Context, log_config: str | None, log_level: str | None, log_f
 @cli.command()
 def serve() -> None:
     """Run the relay HTTP server."""
+    from notifications_relay.main import create_app
+
     config = get_config()
     app = create_app(config)
     uvicorn.run(app, host=config.host, port=config.port)

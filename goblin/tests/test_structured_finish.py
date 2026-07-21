@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import BaseModel, Field, ValidationError
+
 from goblin.output_schema import PhaseResult
 from goblin.tools.structured_finish import (
     StructuredFinishAction,
@@ -12,7 +15,6 @@ from goblin.tools.structured_finish import (
     extract_structured_result,
     make_structured_finish_action_type,
 )
-from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -83,8 +85,6 @@ class TestStructuredFinishExecutor:
         observation = tool.executor(action)
         text = observation.text
         # Observation text should be the JSON dump of the structured result.
-        import json
-
         parsed = json.loads(text)
         assert parsed["success"] is True
         assert parsed["message"] == ["ok"]
@@ -159,5 +159,5 @@ class TestMakeStructuredFinishActionType:
 
     def test_forbids_extra_fields(self):
         action_type = make_structured_finish_action_type(PhaseResult)
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             action_type.model_validate({"result": PhaseResult(success=True, message=["ok"]), "extra": "junk"})

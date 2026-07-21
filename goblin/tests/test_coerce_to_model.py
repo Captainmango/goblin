@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from goblin.output_schema import PhaseResult, coerce_to_model, json_schema_to_pydantic
 from pydantic import BaseModel
+
+from goblin.output_schema import PhaseResult, coerce_to_model, json_schema_to_pydantic
 
 
 class _Count(BaseModel):
@@ -104,7 +105,7 @@ class TestGenericInputs:
 
     def test_none_text_safe(self):
         # Some callers may pass None — defensive coercion.
-        assert coerce_to_model("", PhaseResult) is None
+        assert coerce_to_model(None, PhaseResult) is None  # type: ignore[arg-type]
 
     def test_schema_mismatch_returns_none(self):
         # ``success: []`` doesn't fit the bool field — even json_repair can't
@@ -145,4 +146,4 @@ class TestInlineSchemaCoercion:
 
 def test_returns_none_for_non_string_input() -> None:
     # Static type hints say str, but a defensive guard keeps callers honest.
-    assert coerce_to_model("", PhaseResult) is None  # type: ignore[arg-type]
+    assert coerce_to_model(123, PhaseResult) is None  # type: ignore[arg-type]

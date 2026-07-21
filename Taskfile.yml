@@ -34,6 +34,7 @@ tasks:
       - task goblin:lint
       - task goblin-common:lint
       - task notifications-relay:lint
+      - task goblin:check-imports
     silent: true
 
   format:
@@ -55,6 +56,7 @@ tasks:
       - task goblin:test
       - task goblin-common:test
       - task notifications-relay:test
+      - task goblin:check-imports
     silent: true
 
   validate:

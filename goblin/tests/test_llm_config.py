@@ -6,12 +6,14 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from goblin.blueprint import V1Blueprint
+from goblin.output_schema import PhaseResult
 from goblin.phase import PromptPhase
 from goblin.swarm import SwarmPhase
 from goblin.utils.llm import build_llm
-
 from tests._helpers import MINIMAL_SWARM_RAW as MINIMAL_SWARM
+from tests._helpers import MagicAgent
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -299,12 +301,10 @@ class TestBuildLlm:
             patch("goblin.conversation.LocalConversation", return_value=conversation),
             patch(
                 "goblin.tools.structured_finish.extract_structured_result",
-                return_value=__import__("goblin.output_schema", fromlist=["PhaseResult"]).PhaseResult(
-                    success=True, message=["ok"]
-                ),
+                return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
-            mock_agent_cls.return_value = MagicMock()
+            mock_agent_cls.return_value = MagicAgent()
             await phase.run({})
 
         # build_llm is called once for the primary run; the structured-output

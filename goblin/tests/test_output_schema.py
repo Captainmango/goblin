@@ -6,18 +6,17 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
+
 from goblin.blueprint import V1Blueprint
 from goblin.output_schema import (
     PhaseResult,
-    coerce_to_model,
     json_schema_to_pydantic,
     register_output_model,
     resolve_output_model,
     validate_against_schema,
 )
-from goblin.phase import PromptPhase
-
-from tests._helpers import _mock_llm_infra
+from tests._helpers import _make_prompt_phase, _mock_llm_infra
 
 # ---------------------------------------------------------------------------
 # _validate_output_schema / validate_against_schema (legacy alias)
@@ -188,49 +187,13 @@ class TestJsonSchemaToPydantic:
         assert instance.count == 5
 
         # Missing required raises
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             M(success=True, message=["ok"], count=5)
-
-
-# ---------------------------------------------------------------------------
-# coerce_to_model
-# ---------------------------------------------------------------------------
-
-
-class TestCoerceToModel:
-    def test_well_formed_json(self):
-        result = coerce_to_model('{"success": true, "message": ["ok"]}', PhaseResult)
-        assert result is not None
-        assert result.success is True
-
-    def test_json_in_fenced_code_block(self):
-        text = '```json\n{"success": true, "message": ["ok"]}\n```'
-        result = coerce_to_model(text, PhaseResult)
-        assert result is not None
-        assert result.success is True
-
-    def test_near_json_repaired(self):
-        text = '{"success": true, "message": ["ok"],}'  # trailing comma
-        result = coerce_to_model(text, PhaseResult)
-        assert result is not None
-        assert result.success is True
-
-    def test_garbage_returns_none(self):
-        result = coerce_to_model("not json at all just prose", PhaseResult)
-        assert result is None
-
-    def test_empty_string_returns_none(self):
-        assert coerce_to_model("", PhaseResult) is None
 
 
 # ---------------------------------------------------------------------------
 # PromptPhase with output_schema (end-to-end via mocks)
 # ---------------------------------------------------------------------------
-
-
-def _make_prompt_phase(raw: dict[str, Any]) -> PromptPhase:
-    blueprint = V1Blueprint({"name": "test_bp", "phases": [raw]})
-    return blueprint.phases[0]  # type: ignore[return-value]
 
 
 class TestPromptPhaseOutputSchema:
@@ -245,7 +208,8 @@ class TestPromptPhaseOutputSchema:
                     "properties": {"status": {"type": "string"}},
                     "required": ["status"],
                 },
-            }
+            },
+            real_blueprint=True,
         )
 
         p1, p2, p3, p4, p5 = _mock_llm_infra()
@@ -276,7 +240,8 @@ class TestPromptPhaseOutputSchema:
                     "properties": {"count": {"type": "integer"}},
                     "required": ["count"],
                 },
-            }
+            },
+            real_blueprint=True,
         )
 
         # The structured finish tool returns a model missing the required field.
@@ -306,7 +271,7 @@ class TestPromptPhaseOutputSchema:
     @pytest.mark.asyncio
     async def test_no_output_schema_wraps_chat_text(self):
         """Default flow (no output_model/output_schema): chat text wraps into PhaseResult."""
-        phase = _make_prompt_phase({"id": "s1", "prompt": "hello"})
+        phase = _make_prompt_phase({"id": "s1", "prompt": "hello"}, real_blueprint=True)
 
         p1, p2, p3, p4, p5 = _mock_llm_infra()
         with (
@@ -328,7 +293,7 @@ class TestPromptPhaseOutputSchema:
     @pytest.mark.asyncio
     async def test_no_output_schema_empty_text_reports_failure(self):
         """With no agent text, the default flow reports failure."""
-        phase = _make_prompt_phase({"id": "s1", "prompt": "hello"})
+        phase = _make_prompt_phase({"id": "s1", "prompt": "hello"}, real_blueprint=True)
 
         p1, p2, p3, p4, p5 = _mock_llm_infra()
         with (
@@ -347,7 +312,7 @@ class TestPromptPhaseOutputSchema:
     @pytest.mark.asyncio
     async def test_no_output_schema_does_not_register_structured_finish(self):
         """Default flow doesn't wire the typed Finish tool into the agent."""
-        phase = _make_prompt_phase({"id": "s1", "prompt": "hello"})
+        phase = _make_prompt_phase({"id": "s1", "prompt": "hello"}, real_blueprint=True)
 
         captured_tools: list = []
 
@@ -371,13 +336,54 @@ class TestPromptPhaseOutputSchema:
         assert "structured_finish" not in names
 
     @pytest.mark.asyncio
+    async def test_output_schema_registers_structured_finish_with_model_ref(self):
+        """Structured-output configuration wires the typed Finish tool."""
+        phase = _make_prompt_phase(
+            {
+                "id": "s1",
+                "prompt": "hello",
+                "output_schema": {
+                    "type": "object",
+                    "properties": {"status": {"type": "string"}},
+                    "required": ["status"],
+                },
+            },
+            real_blueprint=True,
+        )
+
+        captured_tools: list = []
+
+        class FakeAgent:
+            def __init__(self, *, tools, **kwargs: Any) -> None:
+                captured_tools.extend(tools)
+
+        p1, p2, p3, p4, p5 = _mock_llm_infra()
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
+            patch("openhands.sdk.Agent", FakeAgent),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
+        ):
+            await phase.run({})
+
+        finish_tool = next((t for t in captured_tools if t.name == "structured_finish"), None)
+        assert finish_tool is not None
+        assert "output_model_ref" in finish_tool.params
+        resolved = phase._resolve_output_model()
+        assert finish_tool.params["output_model_ref"].endswith(resolved.__name__)
+
+    @pytest.mark.asyncio
     async def test_schema_failure_includes_prompt_and_output(self):
         phase = _make_prompt_phase(
             {
                 "id": "s1",
                 "prompt": "hello",
                 "output_schema": {"type": "object", "required": ["missing"]},
-            }
+            },
+            real_blueprint=True,
         )
 
         p1, p2, p3, p4, p5 = _mock_llm_infra()
@@ -410,7 +416,8 @@ class TestPromptPhaseOutputSchema:
                     "type": "object",
                     "properties": {"status": {"type": "string"}},
                 },
-            }
+            },
+            real_blueprint=True,
         )
 
         p1, p2, p3, p4, p5 = _mock_llm_infra()

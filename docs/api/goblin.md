@@ -71,10 +71,9 @@ from goblin.swarm_db import SwarmDB
 ## Hooks
 
 ```python
-from goblin.hooks import hook, register_hook, HOOK_REGISTRY
+from goblin.hooks import register_hook, HOOK_REGISTRY
 ```
 
-- `hook(name, *, command, timeout)` — Decorator to register shell command hooks.
 - `register_hook(name, definition)` — Manual hook registration.
 
 ## Configuration

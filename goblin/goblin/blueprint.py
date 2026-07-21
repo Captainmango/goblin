@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 if TYPE_CHECKING:
@@ -59,7 +60,7 @@ class V1Blueprint(Blueprint):
             case _:
                 raise ValueError(f"Phase '{raw.get('id', '?')}' must have 'prompt', 'load_project', or 'swarm'")
 
-    def _build_history_context(self, history_ids: list[str], results: dict) -> str:
+    def build_history_context(self, history_ids: list[str], results: dict) -> str:
         """Build a context string from prior phases' prompts and outputs."""
         sections = []
         for phase_id in history_ids:
@@ -82,7 +83,7 @@ class V1Blueprint(Blueprint):
 
         return "## Prior Phase Results\n\n" + "\n".join(sections) + "\n---\n\n"
 
-    def _resolve_llm_config(self, phase: PhaseProtocol, context: dict | None = None) -> dict | str | None:
+    def resolve_llm_config(self, phase: PhaseProtocol, context: dict | None = None) -> dict | str | None:
         """Return the effective OpenHands LLM configuration for a phase.
 
         Precedence: phase.llm > phase.model > defaults.llm > defaults.model > None.
@@ -113,21 +114,21 @@ class V1Blueprint(Blueprint):
         if isinstance(selected, dict):
             validate_env_var_syntax(selected)
             resolved = resolve_env_vars(selected)
-            return self._interpolate_strings(resolved, context or {})
+            return self.interpolate_strings(resolved, context or {})
 
         return selected
 
-    def _resolve_model(self, phase: PhaseProtocol, context: dict | None = None) -> str | None:
+    def resolve_model(self, phase: PhaseProtocol, context: dict | None = None) -> str | None:
         """Return the effective model identifier for a phase.
 
         Precedence: phase.llm.model > phase.model > defaults.llm.model > defaults.model > None.
         """
-        config = self._resolve_llm_config(phase, context)
+        config = self.resolve_llm_config(phase, context)
         if isinstance(config, dict):
             return config.get("model")
         return config
 
-    def _resolve_worktree_config(self, phase: PhaseProtocol) -> dict | None:
+    def resolve_worktree_config(self, phase: PhaseProtocol) -> dict | None:
         """Return the effective worktree config for a phase.
 
         Precedence: phase > blueprint defaults > None. Returns None when no
@@ -140,7 +141,7 @@ class V1Blueprint(Blueprint):
         merged = {**(defaults or {}), **(phase_config or {})}
         return merged
 
-    def _resolve_notifications_config(self, phase: PhaseProtocol) -> dict | None:
+    def resolve_notifications_config(self, phase: PhaseProtocol) -> dict | None:
         """Return the effective notifications config for a phase.
 
         Precedence: phase > blueprint defaults > None. Returns None when no
@@ -154,7 +155,7 @@ class V1Blueprint(Blueprint):
         merged = {**(defaults or {}), **(phase_config or {})}
         return merged
 
-    def _build_hooks(self, phase: HookablePhase) -> HookConfig | None:
+    def build_hooks(self, phase: HookablePhase) -> HookConfig | None:
         from openhands.sdk.hooks import HookConfig, HookDefinition, HookMatcher
 
         from goblin.hooks import HOOK_REGISTRY
@@ -192,7 +193,7 @@ class V1Blueprint(Blueprint):
             post_tool_use=[HookMatcher(hooks=post_defs)] if post_defs else [],
         )
 
-    def _build_mcp_servers(self, phase: HookablePhase, context: dict) -> dict:
+    def build_mcp_servers(self, phase: HookablePhase, context: dict) -> dict:
         from goblin.utils.env import collect_env_vars, resolve_env_vars, validate_env_var_syntax
 
         defaults = self.spec.get("defaults", {}).get("mcp_servers", {})
@@ -206,7 +207,7 @@ class V1Blueprint(Blueprint):
         # forward only those values (plus a small allowlist) to stdio MCP servers.
         referenced_vars = collect_env_vars(merged)
         resolved = resolve_env_vars(merged)
-        interpolated = cast(dict, self._interpolate_strings(resolved, context))
+        interpolated = cast(dict, self.interpolate_strings(resolved, context))
 
         # Forward a conservative allowlist plus any env vars the blueprint explicitly
         # references. This prevents third-party MCP servers from inheriting goblin's
@@ -238,13 +239,13 @@ class V1Blueprint(Blueprint):
 
         return {"mcpServers": interpolated}
 
-    def _interpolate_strings(self, obj: Any, context: dict) -> Any:
+    def interpolate_strings(self, obj: Any, context: dict) -> Any:
         """Recursively apply {variable} interpolation to all string values."""
         from goblin.utils.tree import walk_strings
 
         return walk_strings(obj, lambda s: s.format(**context))
 
-    def _get_workspace(self, context: dict):
+    def get_workspace(self, context: dict):
         """Return the workspace for this blueprint, applying context interpolation.
 
         The workspace is built lazily so that {variable} interpolation can use
@@ -252,7 +253,7 @@ class V1Blueprint(Blueprint):
         """
         from goblin.workspace import build_workspace
 
-        interpolated = self._interpolate_strings(self._workspace_config or {}, context)
+        interpolated = self.interpolate_strings(self._workspace_config or {}, context)
         return build_workspace(interpolated if interpolated else None, self.project_path)
 
     def _jinja_env(self):
@@ -271,7 +272,7 @@ class V1Blueprint(Blueprint):
             raise ValueError(f"foreach count must be non-negative, got {n}")
         return [{"index": i} for i in range(n)]
 
-    def _resolve(self, foreach_expr: str, results: dict, context: dict) -> list[dict]:
+    def resolve_foreach(self, foreach_expr: str, results: dict, context: dict) -> list[dict]:
         if "{{" in foreach_expr:
             env = self._jinja_env()
             expr = foreach_expr.strip()
@@ -292,17 +293,16 @@ class V1Blueprint(Blueprint):
         except ValueError:
             pass
 
-        path = interpolated
-        if not os.path.isabs(path) and self.project_path:
-            path = os.path.join(self.project_path, path)
-        path = os.path.abspath(path)
+        path = Path(interpolated)
+        if not path.is_absolute() and self.project_path:
+            path = Path(self.project_path) / path
+        path = path.resolve()
 
-        with open(path) as f:
-            lines = [line.strip() for line in f if line.strip()]
+        lines = [line.strip() for line in path.read_text().splitlines() if line.strip()]
 
         return [{"index": i, "item": line} for i, line in enumerate(lines)]
 
-    def _evaluate_condition(self, condition: str, results: dict) -> bool:
+    def evaluate_condition(self, condition: str, results: dict) -> bool:
         """Evaluate a Jinja2 condition expression against phase results.
 
         Available in templates:
@@ -325,7 +325,7 @@ class V1Blueprint(Blueprint):
 
         return rendered.lower() not in ("false", "none", "0", "")
 
-    def _load_project(self, path: str):
+    def load_project(self, path: str):
         """Load full project configuration from a project root.
 
         Reads settings, CLAUDE.md references, and agent definitions from the
@@ -342,12 +342,15 @@ class V1Blueprint(Blueprint):
 
         self.project_path = path
 
-        settings_path = os.path.join(path, ".claude", "settings.json")
-        if os.path.isfile(settings_path):
-            logger.info("Loaded project settings", extra={"event": "project.settings_loaded", "path": settings_path})
+        project_dir = Path(path)
+        settings_path = project_dir / ".claude" / "settings.json"
+        if settings_path.is_file():
+            logger.info(
+                "Loaded project settings",
+                extra={"event": "project.settings_loaded", "path": str(settings_path)},
+            )
 
-            with open(settings_path) as f:
-                settings = json.load(f)
+            settings = json.loads(settings_path.read_text())
             hooks_config = settings.get("hooks", {})
             for event_key, registry_name in (
                 ("PreToolUse", "project_pre_tool"),
@@ -377,22 +380,20 @@ class V1Blueprint(Blueprint):
 
         refs = []
         for ref_path in [
-            os.path.join(path, "CLAUDE.md"),
-            os.path.join(path, ".claude", "CLAUDE.md"),
+            project_dir / "CLAUDE.md",
+            project_dir / ".claude" / "CLAUDE.md",
         ]:
-            if os.path.isfile(ref_path):
-                with open(ref_path) as f:
-                    refs.append(f.read())
-                logger.info("Loaded reference", extra={"event": "project.reference_loaded", "path": ref_path})
+            if ref_path.is_file():
+                refs.append(ref_path.read_text())
+                logger.info("Loaded reference", extra={"event": "project.reference_loaded", "path": str(ref_path)})
         self.project_refs = "\n\n".join(refs)
 
-        agents_dir = os.path.join(path, ".claude", "agents")
-        if os.path.isdir(agents_dir):
-            for filename in os.listdir(agents_dir):
-                if filename.endswith(".md"):
-                    agent_name = filename.removesuffix(".md")
-                    with open(os.path.join(agents_dir, filename)) as f:
-                        content = f.read()
+        agents_dir = project_dir / ".claude" / "agents"
+        if agents_dir.is_dir():
+            for agent_file in agents_dir.iterdir():
+                if agent_file.suffix == ".md":
+                    agent_name = agent_file.stem
+                    content = agent_file.read_text()
                     self.project_agents[agent_name] = AgentDefinition(
                         name=agent_name,
                         system_prompt=content,
@@ -406,3 +407,18 @@ class V1Blueprint(Blueprint):
         context = {**blueprint_vars, **(context or {})}
         orchestrator = PhaseOrchestrator(self)
         return await orchestrator.run(self.phases, context, checkpoint)
+
+    # Backwards-compatible aliases for code/tests that still use the old
+    # underscore-prefixed names.
+    _build_history_context = build_history_context
+    _resolve_llm_config = resolve_llm_config
+    _resolve_model = resolve_model
+    _resolve_worktree_config = resolve_worktree_config
+    _resolve_notifications_config = resolve_notifications_config
+    _build_hooks = build_hooks
+    _build_mcp_servers = build_mcp_servers
+    _interpolate_strings = interpolate_strings
+    _get_workspace = get_workspace
+    _evaluate_condition = evaluate_condition
+    _resolve = resolve_foreach
+    _load_project = load_project

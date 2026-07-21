@@ -4,8 +4,9 @@ import os
 from pathlib import Path
 
 import pytest
-from goblin_common.config import env, load_dotenv_from_cwd, secret_env
 from pydantic import SecretStr
+
+from goblin_common.config import env, load_dotenv_from_cwd, secret_env
 
 
 class TestEnv:

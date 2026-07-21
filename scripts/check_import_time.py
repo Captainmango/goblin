@@ -8,6 +8,8 @@ Fails if importing goblin.cli takes longer than the configured threshold
 
 """
 
+from __future__ import annotations
+
 import subprocess
 import sys
 

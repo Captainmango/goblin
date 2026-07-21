@@ -11,11 +11,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from openhands.sdk.mcp import create_mcp_tools
+from openhands.sdk.mcp.tool import MCPToolAction
+
 from goblin.blueprint import V1Blueprint
 from goblin.phase import PromptPhase
 from goblin.utils.env import validate_env_var_syntax
-from openhands.sdk.mcp import create_mcp_tools
-from openhands.sdk.mcp.tool import MCPToolAction
 
 CANARY_SERVER_PATH = Path(__file__).with_name("canary_mcp_server.py")
 

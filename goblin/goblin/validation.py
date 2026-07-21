@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 from importlib import resources
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -39,15 +39,15 @@ def validate_blueprint(path: str, raw: dict[str, Any] | None = None) -> list[dic
       - validator: the schema keyword that failed (e.g. "required", "type")
     """
     if raw is None:
-        with open(path) as f:
-            raw = yaml.safe_load(f)
+        raw = yaml.safe_load(Path(path).read_text())
 
         if raw is None:
             return [{"path": "", "message": "File is empty or not valid YAML", "validator": "parse"}]
 
         from goblin.import_resolver import resolve_imports
 
-        raw = resolve_imports(raw, os.path.dirname(path), os.path.dirname(path))
+        base_dir = str(Path(path).resolve().parent)
+        raw = resolve_imports(raw, base_dir, base_dir)
 
     validator = Draft7Validator(load_schema())
     errors: list[dict[str, Any]] = []
@@ -62,6 +62,66 @@ def validate_blueprint(path: str, raw: dict[str, Any] | None = None) -> list[dic
         )
 
     errors.extend(_validate_output_model_refs(raw))
+    errors.extend(_validate_hook_names(raw))
+    return errors
+
+
+def _validate_hook_names(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Check that every referenced hook name exists in ``HOOK_REGISTRY``."""
+    from goblin.hooks import HOOK_REGISTRY
+
+    blueprint = raw.get("blueprint", raw)
+    if not isinstance(blueprint, dict):
+        return []
+
+    errors: list[dict[str, Any]] = []
+    defaults = blueprint.get("defaults", {})
+    default_hooks = defaults.get("hooks", {}) if isinstance(defaults, dict) else {}
+
+    def _collect_hook_names(hooks: Any) -> list[tuple[str, str]]:
+        if not isinstance(hooks, dict):
+            return []
+        names: list[tuple[str, str]] = []
+        for source in ("pre_tool", "post_tool"):
+            for name in hooks.get(source, []) or []:
+                names.append((name, source))
+        return names
+
+    for name, source in _collect_hook_names(default_hooks):
+        if name not in HOOK_REGISTRY:
+            errors.append(
+                {
+                    "path": f"blueprint.defaults.hooks.{source}",
+                    "message": f"Unknown hook name '{name}'",
+                    "validator": "hook_name",
+                }
+            )
+
+    for idx, phase in enumerate(blueprint.get("phases", [])):
+        if not isinstance(phase, dict):
+            continue
+        phase_hooks = phase.get("hooks", {})
+        for name, source in _collect_hook_names(phase_hooks):
+            if name not in HOOK_REGISTRY:
+                errors.append(
+                    {
+                        "path": f"blueprint.phases[{idx}].hooks.{source}",
+                        "message": f"Unknown hook name '{name}'",
+                        "validator": "hook_name",
+                    }
+                )
+        on_failure = phase.get("on_failure", {})
+        if isinstance(on_failure, dict):
+            notify = on_failure.get("notify")
+            if notify and notify not in HOOK_REGISTRY:
+                errors.append(
+                    {
+                        "path": f"blueprint.phases[{idx}].on_failure.notify",
+                        "message": f"Unknown hook name '{notify}'",
+                        "validator": "hook_name",
+                    }
+                )
+
     return errors
 
 

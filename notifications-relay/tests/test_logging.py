@@ -3,6 +3,7 @@ import logging
 
 import pytest
 import yaml
+
 from goblin_common.logging import JSONFormatter, configure_logging
 from notifications_relay.config import get_config, reset_config
 

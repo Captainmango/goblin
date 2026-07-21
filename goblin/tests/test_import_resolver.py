@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 import yaml
+
 from goblin.import_resolver import (
     _deep_merge,
     _rewrite_condition,

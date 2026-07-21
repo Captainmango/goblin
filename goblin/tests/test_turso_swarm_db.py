@@ -6,6 +6,7 @@ import sqlite3
 from unittest import mock
 
 import pytest
+
 from goblin.enums import AgentStatus, SwarmState
 from goblin.swarm_db import SQLiteSwarmDB, SwarmDB, TursoSwarmDB
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from goblin.blueprint import V1Blueprint
 from goblin.phase import LoadProjectPhase, PromptPhase
 

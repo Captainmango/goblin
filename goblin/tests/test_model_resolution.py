@@ -5,10 +5,10 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+
 from goblin.blueprint import V1Blueprint
 from goblin.phase import PromptPhase
 from goblin.swarm import SwarmPhase
-
 from tests._helpers import MINIMAL_SWARM_RAW, MagicAgent
 
 # ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ class TestPromptPhaseModel:
             patch("openhands.sdk.conversation.get_agent_final_response", return_value=""),
         ):
             mock_agent_cls.return_value = MagicAgent()
-            mock_build_llm.return_value = MagicAgent()
+            mock_build_llm.return_value = MagicMock()
             await phase.run({})
 
         assert mock_build_llm.call_count == 2

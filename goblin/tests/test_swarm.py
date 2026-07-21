@@ -9,11 +9,11 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+
 from goblin.blueprint import V1Blueprint
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState
 from goblin.swarm import SwarmPhase
 from goblin.swarm_db import SQLiteSwarmDB, TursoSwarmDB
-
 from tests._helpers import MINIMAL_SWARM_RAW
 
 # ---------------------------------------------------------------------------
@@ -388,7 +388,8 @@ class TestSwarmDBStateTransitions:
 
 
 class TestSwarmPhaseTeardown:
-    def test_teardown_collects_results(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_teardown_collects_results(self, tmp_path):
         raw = {
             **MINIMAL_SWARM_RAW,
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "never"},
@@ -400,12 +401,13 @@ class TestSwarmPhaseTeardown:
         phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'done')")
         phase._db.execute("INSERT INTO artifacts (agent, name, path) VALUES ('coder', 'main.py', '/shared/main.py')")
 
-        result = phase._teardown()
+        result = await phase._teardown()
         assert result["success"] is True
         assert len(result["tasks"]) == 1
         assert len(result["artifacts"]) == 1
 
-    def test_teardown_reports_failure_when_tasks_incomplete(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_teardown_reports_failure_when_tasks_incomplete(self, tmp_path):
         raw = {
             **MINIMAL_SWARM_RAW,
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "never"},
@@ -416,10 +418,11 @@ class TestSwarmPhaseTeardown:
         phase._setup({})
         phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'pending')")
 
-        result = phase._teardown()
+        result = await phase._teardown()
         assert result["success"] is False
 
-    def test_cleanup_on_success_deletes_workspace(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_cleanup_on_success_deletes_workspace(self, tmp_path):
         raw = {
             **MINIMAL_SWARM_RAW,
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "on_success"},
@@ -429,11 +432,12 @@ class TestSwarmPhaseTeardown:
         assert isinstance(phase, SwarmPhase)
         phase._setup({})
         phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'done')")
-        result = phase._teardown()
+        result = await phase._teardown()
         assert result["success"] is True
         assert not os.path.exists(phase._workspace)
 
-    def test_cleanup_on_success_preserves_on_failure(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_cleanup_on_success_preserves_on_failure(self, tmp_path):
         raw = {
             **MINIMAL_SWARM_RAW,
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "on_success"},
@@ -443,11 +447,12 @@ class TestSwarmPhaseTeardown:
         assert isinstance(phase, SwarmPhase)
         phase._setup({})
         phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'failed')")
-        result = phase._teardown()
+        result = await phase._teardown()
         assert result["success"] is False
         assert os.path.exists(phase._workspace)
 
-    def test_cleanup_never_preserves_workspace(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_cleanup_never_preserves_workspace(self, tmp_path):
         raw = {
             **MINIMAL_SWARM_RAW,
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "never"},
@@ -457,10 +462,11 @@ class TestSwarmPhaseTeardown:
         assert isinstance(phase, SwarmPhase)
         phase._setup({})
         phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'done')")
-        phase._teardown()
+        await phase._teardown()
         assert os.path.exists(phase._workspace)
 
-    def test_cleanup_always_deletes_on_failure(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_cleanup_always_deletes_on_failure(self, tmp_path):
         raw = {
             **MINIMAL_SWARM_RAW,
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws"), "cleanup": "always"},
@@ -470,7 +476,7 @@ class TestSwarmPhaseTeardown:
         assert isinstance(phase, SwarmPhase)
         phase._setup({})
         phase._db.execute("INSERT INTO tasks (title, description, status) VALUES ('T1', 'd1', 'failed')")
-        phase._teardown()
+        await phase._teardown()
         assert not os.path.exists(phase._workspace)
 
 
@@ -819,17 +825,19 @@ class TestAgentAllowedTools:
 
 
 class TestRenderTaskBoard:
-    def test_empty_board_states_no_tasks(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_empty_board_states_no_tasks(self, tmp_path):
         raw = {**MINIMAL_SWARM_RAW, "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")}}
         bp = _make_blueprint([raw])
         phase = bp.phases[0]
         assert isinstance(phase, SwarmPhase)
         phase._setup({})
-        board = phase._render_task_board()
+        board = await phase._render_task_board()
         assert "empty" in board.lower()
         phase._db.close()
 
-    def test_board_lists_tasks_with_status_and_target(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_board_lists_tasks_with_status_and_target(self, tmp_path):
         raw = {**MINIMAL_SWARM_RAW, "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")}}
         bp = _make_blueprint([raw])
         phase = bp.phases[0]
@@ -838,7 +846,7 @@ class TestRenderTaskBoard:
         phase._db.execute("INSERT INTO tasks (title, assigned_to, status) VALUES ('Impl', 'coder', 'done')")
         phase._db.execute("INSERT INTO tasks (title, required_role, status) VALUES ('QA', 'tester', 'pending')")
         phase._db.execute("INSERT INTO tasks (title, status) VALUES ('Docs', 'pending')")
-        board = phase._render_task_board()
+        board = await phase._render_task_board()
         assert "[done] Impl (coder)" in board
         assert "[pending] QA (role:tester)" in board
         assert "[pending] Docs (unassigned)" in board
@@ -967,7 +975,8 @@ class TestSwarmPhaseTrustsDBNotSelfReport:
 
 
 class TestSwarmPhaseAgentFiltering:
-    def test_get_agents_to_run_no_pending_tasks_runs_all(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_get_agents_to_run_no_pending_tasks_runs_all(self, tmp_path):
         raw = {
             **MINIMAL_SWARM_RAW,
             "swarm": {**MINIMAL_SWARM_RAW["swarm"], "workspace": str(tmp_path / "ws")},
@@ -976,11 +985,12 @@ class TestSwarmPhaseAgentFiltering:
         phase = bp.phases[0]
         assert isinstance(phase, SwarmPhase)
         phase._setup({})
-        agents = phase._get_agents_to_run()
+        agents = await phase._get_agents_to_run()
         assert len(agents) == 2
         phase._db.close()
 
-    def test_get_agents_to_run_filters_by_required_role(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_get_agents_to_run_filters_by_required_role(self, tmp_path):
         raw = {
             "id": "role_swarm",
             "swarm": {
@@ -999,12 +1009,13 @@ class TestSwarmPhaseAgentFiltering:
         assert isinstance(phase, SwarmPhase)
         phase._setup({})
         phase._db.execute("INSERT INTO tasks (title, required_role, status) VALUES ('API', 'backend', 'pending')")
-        agents = phase._get_agents_to_run()
+        agents = await phase._get_agents_to_run()
         names = {a["name"] for a in agents}
         assert names == {"backend_dev"}
         phase._db.close()
 
-    def test_get_agents_to_run_filters_by_assigned_to(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_get_agents_to_run_filters_by_assigned_to(self, tmp_path):
         raw = {
             "id": "role_swarm",
             "swarm": {
@@ -1022,12 +1033,13 @@ class TestSwarmPhaseAgentFiltering:
         assert isinstance(phase, SwarmPhase)
         phase._setup({})
         phase._db.execute("INSERT INTO tasks (title, assigned_to, status) VALUES ('T1', 'tester', 'pending')")
-        agents = phase._get_agents_to_run()
+        agents = await phase._get_agents_to_run()
         names = {a["name"] for a in agents}
         assert names == {"tester"}
         phase._db.close()
 
-    def test_get_agents_to_run_general_tasks_run_all(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_get_agents_to_run_general_tasks_run_all(self, tmp_path):
         raw = {
             "id": "role_swarm",
             "swarm": {
@@ -1045,12 +1057,13 @@ class TestSwarmPhaseAgentFiltering:
         assert isinstance(phase, SwarmPhase)
         phase._setup({})
         phase._db.execute("INSERT INTO tasks (title, status) VALUES ('T1', 'pending')")
-        agents = phase._get_agents_to_run()
+        agents = await phase._get_agents_to_run()
         names = {a["name"] for a in agents}
         assert names == {"coder", "tester"}
         phase._db.close()
 
-    def test_get_agents_to_run_mixed_tasks(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_get_agents_to_run_mixed_tasks(self, tmp_path):
         raw = {
             "id": "role_swarm",
             "swarm": {
@@ -1070,7 +1083,7 @@ class TestSwarmPhaseAgentFiltering:
         phase._setup({})
         phase._db.execute("INSERT INTO tasks (title, required_role, status) VALUES ('API', 'backend', 'pending')")
         phase._db.execute("INSERT INTO tasks (title, status) VALUES ('Docs', 'pending')")
-        agents = phase._get_agents_to_run()
+        agents = await phase._get_agents_to_run()
         names = {a["name"] for a in agents}
         # General tasks allow any agent to run; the backend task brings in backend_dev
         assert names == {"backend_dev", "frontend_dev", "generalist"}

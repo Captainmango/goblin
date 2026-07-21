@@ -6,7 +6,7 @@ from typing import Any
 
 from goblin.utils.tree import walk_strings
 
-# Only braced ${VAR} syntax is supported for MCP server config.
+# Only braced ${VAR} syntax is supported.
 _ENV_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 # Detect unbraced $VAR so we can alert the user with a helpful message.
@@ -28,7 +28,7 @@ def validate_env_var_syntax(value):
                 continue  # part of ${VAR}, not $VAR
             var_name = match.group(1)
             raise ValueError(
-                f"Invalid env-var syntax '${var_name}' in MCP server config. "
+                f"Invalid env-var syntax '${var_name}'. "
                 f"Use '${{{var_name}}}' (braced) syntax instead."
             )
         return s
@@ -47,7 +47,7 @@ def resolve_env_vars(value) -> Any:
             var_name = match.group(1)
             val = os.environ.get(var_name)
             if val is None:
-                raise ValueError(f"Environment variable '{var_name}' is not set (referenced in MCP server config)")
+                raise ValueError(f"Environment variable '{var_name}' is not set")
             return val
 
         return _ENV_VAR_RE.sub(_replace, s)

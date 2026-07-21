@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from goblin.output_schema import PhaseResult
 
-from tests._helpers import MagicAgent, _make_prompt_phase
+from goblin.output_schema import PhaseResult
+from tests._helpers import _make_prompt_phase, _mock_llm_infra
 
 # ---------------------------------------------------------------------------
 # Local workspace
@@ -20,15 +20,17 @@ class TestPromptPhaseLocalWorkspace:
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi"})
         local_ws = MagicMock()
         local_ws.__class__.__name__ = "LocalWorkspace"
-        phase._blueprint._get_workspace.return_value = local_ws
+        phase._blueprint.get_workspace.return_value = local_ws
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
+            p1,
+            p2,
+            p3 as mock_conv_cls,
+            p4,
+            p5,
             patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
         ):
-            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         assert result["success"] is True
@@ -41,18 +43,20 @@ class TestPromptPhaseLocalWorkspace:
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi"})
         local_ws = MagicMock()
         local_ws.__class__.__name__ = "LocalWorkspace"
-        phase._blueprint._get_workspace.return_value = local_ws
+        phase._blueprint.get_workspace.return_value = local_ws
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
             patch(
                 "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
-            mock_agent_cls.return_value = MagicAgent()
             await phase.run({})
 
         mock_conversation.arun.assert_awaited_once()
@@ -72,16 +76,19 @@ class TestPromptPhaseRemoteWorkspace:
     async def test_uses_remote_conversation_for_remote_workspace(self, mock_conversation):
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi"})
         remote_ws = _FakeRemoteWorkspace()
-        phase._blueprint._get_workspace.return_value = remote_ws
+        phase._blueprint.get_workspace.return_value = remote_ws
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
             patch("goblin.conversation.RemoteWorkspace", _FakeRemoteWorkspace),
             patch("goblin.conversation.RemoteConversation", return_value=mock_conversation) as mock_conv_cls,
             patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
         ):
-            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         assert result["success"] is True
@@ -93,11 +100,15 @@ class TestPromptPhaseRemoteWorkspace:
     async def test_wraps_run_in_asyncio_to_thread(self, mock_conversation):
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi"})
         remote_ws = _FakeRemoteWorkspace()
-        phase._blueprint._get_workspace.return_value = remote_ws
+        phase._blueprint.get_workspace.return_value = remote_ws
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
             patch("goblin.conversation.RemoteWorkspace", _FakeRemoteWorkspace),
             patch("goblin.conversation.RemoteConversation", return_value=mock_conversation),
             patch("goblin.conversation.asyncio.to_thread") as mock_to_thread,
@@ -106,7 +117,6 @@ class TestPromptPhaseRemoteWorkspace:
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
-            mock_agent_cls.return_value = MagicAgent()
             mock_to_thread.return_value = AsyncMock()
             await phase.run({})
 
@@ -125,18 +135,20 @@ class TestPromptPhaseGetWorkspaceCalled:
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi"})
         local_ws = MagicMock()
         local_ws.__class__.__name__ = "LocalWorkspace"
-        phase._blueprint._get_workspace.return_value = local_ws
+        phase._blueprint.get_workspace.return_value = local_ws
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
             patch(
                 "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
-            mock_agent_cls.return_value = MagicAgent()
             await phase.run({"repo": "my-service"})
 
-        phase._blueprint._get_workspace.assert_called_once_with({"repo": "my-service"})
+        phase._blueprint.get_workspace.assert_called_once_with({"repo": "my-service"})

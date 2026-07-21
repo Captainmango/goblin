@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from goblin.output_schema import reset_output_schema_cache
 from goblin.utils.config import reset_config
 

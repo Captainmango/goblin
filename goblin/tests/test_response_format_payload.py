@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from pydantic import BaseModel, Field
+
 from goblin.output_schema import (
     PhaseResult,
     provider_response_format_for_prefix,
     response_format_payload,
 )
-from pydantic import BaseModel, Field
 
 
 class _Summary(BaseModel):

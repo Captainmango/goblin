@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-from goblin.output_schema import PhaseResult
 
-from tests._helpers import MagicAgent, _make_prompt_phase
+from goblin.output_schema import PhaseResult
+from tests._helpers import _make_prompt_phase, _mock_llm_infra
 
 # ---------------------------------------------------------------------------
 # PromptPhase parsing of new limit fields
@@ -44,16 +44,18 @@ class TestPromptPhaseRunCostControl:
     async def test_result_contains_spend(self, mock_conversation):
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi"})
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
+            p1,
+            p2,
+            p3 as mock_conv_cls,
+            p4,
+            p5,
             patch(
                 "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
-            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         assert "spend" in result
@@ -69,13 +71,15 @@ class TestPromptPhaseRunCostControl:
     async def test_max_iterations_passed_to_conversation(self, mock_conversation):
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi", "max_iterations": 20})
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
+            p1,
+            p2,
+            p3 as mock_conv_cls,
+            p4,
+            p5,
             patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
         ):
-            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         call_kwargs = mock_conv_cls.call_args.kwargs
@@ -86,13 +90,15 @@ class TestPromptPhaseRunCostControl:
     async def test_max_cost_passed_to_conversation(self, mock_conversation):
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi", "max_cost": 0.5})
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
+            p1,
+            p2,
+            p3 as mock_conv_cls,
+            p4,
+            p5,
             patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
         ):
-            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         call_kwargs = mock_conv_cls.call_args.kwargs
@@ -103,12 +109,8 @@ class TestPromptPhaseRunCostControl:
     async def test_max_tokens_stops_when_exceeded(self, mock_conversation):
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi", "max_tokens": 1})
 
-        with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
-        ):
-            mock_agent_cls.return_value = MagicAgent()
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
+        with p1, p2, p3, p4, p5:
             result = await phase.run({})
 
         assert result["success"] is False
@@ -120,17 +122,8 @@ class TestPromptPhaseRunCostControl:
     async def test_max_iterations_stops_when_exceeded(self):
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi", "max_iterations": 1})
 
-        conversation = MagicMock()
-        conversation.arun = AsyncMock()
-        conversation.state.events = []
-        conversation.conversation_stats = None
-
-        with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation", return_value=conversation),
-        ):
-            mock_agent_cls.return_value = MagicAgent()
+        p1, p2, p3, p4, p5 = _mock_llm_infra()
+        with p1, p2, p3, p4, p5:
             # With max_iterations=1, the breaker fires after the first (and only) arun()
             result1 = await phase.run({})
             assert result1["success"] is False
@@ -141,13 +134,15 @@ class TestPromptPhaseRunCostControl:
     async def test_no_text_output_includes_spend(self, mock_conversation):
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi"})
 
+        p1, p2, p3, p4, p5 = _mock_llm_infra(mock_conversation)
         with (
-            patch("goblin.utils.llm.build_llm"),
-            patch("openhands.sdk.Agent") as mock_agent_cls,
-            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
+            p1,
+            p2,
+            p3,
+            p4,
+            p5,
             patch("openhands.sdk.conversation.get_agent_final_response", return_value=None),
         ):
-            mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
         # Empty agent reply reports failure; the spend tracker is still
