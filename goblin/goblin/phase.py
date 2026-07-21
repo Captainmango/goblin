@@ -195,25 +195,32 @@ class PromptPhase(PhaseProtocol):
         base_tools = resolve_tools(self.allowed_tools, tool_params=tool_params)
         if structured_configured:
             # Replace any inherited `finish` tool spec with our typed Finish
-            # tool spec. The Tool registry's ``.create()`` builds the actual
-            # ``ToolDefinition`` at conversation-startup, so the resolved
-            # ``output_model`` flows through ``params`` (dotted-name form)
-            # and is materialised in :meth:`StructuredFinishTool.create`.
+            # tool spec. The registry key is ``"structured_finish"`` but the
+            # runtime tool name is ``"finish"``, so the OpenHands SDK treats
+            # the call as a terminal Finish action.
             structured_spec_params = self._finish_tool_params(output_model)
-            structured_spec = Tool(name=StructuredFinishTool.name, params=structured_spec_params)
-            tools = [t for t in base_tools if t.name not in ("finish", StructuredFinishTool.name)]
+            structured_spec = Tool(name="structured_finish", params=structured_spec_params)
+            tools = [t for t in base_tools if t.name not in ("finish", "structured_finish")]
             tools.append(structured_spec)
         else:
             tools = list(base_tools)
 
-        agent = Agent(
-            llm=llm,
-            tools=tools,
-            mcp_config=self._blueprint._build_mcp_servers(self, context),
-            system_prompt=system_prompt,
-            filter_tools_regex=build_tool_filter_regex(self.allowed_tools),
-            critic=None,
-        )
+        agent_kwargs: dict[str, Any] = {
+            "llm": llm,
+            "tools": tools,
+            "mcp_config": self._blueprint._build_mcp_servers(self, context),
+            "system_prompt": system_prompt,
+            "filter_tools_regex": build_tool_filter_regex(
+                self.allowed_tools,
+                extra_builtin_names=[StructuredFinishTool.name] if structured_configured else None,
+            ),
+            "critic": None,
+        }
+        if structured_configured:
+            # Disable the default FinishTool/ThinkTool so the only ``finish``
+            # in the agent's tool surface is our typed one.
+            agent_kwargs["include_default_tools"] = []
+        agent = Agent(**agent_kwargs)
 
         workspace = self._blueprint._get_workspace(context)
 

@@ -128,10 +128,11 @@ def _resolve_output_model_param(params: dict[str, Any]) -> type[BaseModel]:
 class StructuredFinishTool(ToolDefinition):
     """Typed Finish tool whose action schema is the phase's output model.
 
-    The tool is registered with OpenHands' tool registry at import time so
-    blueprints can pass a ``Tool(name="structured_finish", params={...})``
-    spec and have the agent materialize the right ``ToolDefinition`` instance
-    at conversation-startup.
+    Registered under the key ``"structured_finish"`` so callers can pass a
+    ``Tool(name="structured_finish", params={...})`` spec, but the runtime
+    tool name is ``"finish"``. Using the same name as the OpenHands
+    ``FinishTool`` lets the SDK's finish-detection logic recognise the call
+    and terminate the conversation.
 
     ``params`` accepts either:
       - ``output_model``: a Pydantic class object (for in-process callers
@@ -142,6 +143,10 @@ class StructuredFinishTool(ToolDefinition):
         is what blueprint YAML uses because Pydantic class objects aren't
         YAML-serialisable.
     """
+
+    # Match the OpenHands FinishTool name so the agent loop treats this as
+    # the terminal tool.
+    name = "finish"
 
     @classmethod
     def create(  # type: ignore[override]
@@ -168,7 +173,7 @@ class StructuredFinishTool(ToolDefinition):
         ]
 
 
-register_tool(StructuredFinishTool.name, StructuredFinishTool)
+register_tool("structured_finish", StructuredFinishTool)
 
 
 def extract_structured_result(events, output_model: type[BaseModel]):
