@@ -248,9 +248,18 @@ class PromptPhase(PhaseProtocol):
         if structured_configured:
             structured: BaseModel | None = extract_structured_result(conversation.state.events, output_model)
             if structured is None:
-                structured = await self._request_structured_output(
-                    prompt, text_output, output_model, llm_config=llm_config
-                )
+                try:
+                    structured = await self._request_structured_output(
+                        prompt, text_output, output_model, llm_config=llm_config, breaker=breaker
+                    )
+                except LimitExceeded as exc:
+                    return {
+                        "success": False,
+                        "message": [f"Circuit breaker: {exc.reason} limit exceeded"],
+                        "prompt": prompt,
+                        "output": text_output,
+                        "spend": exc.tracker,
+                    }
             if structured is None:
                 structured = self._fallback_result(text_output, output_model)
         else:
@@ -309,6 +318,7 @@ class PromptPhase(PhaseProtocol):
         output_model: type[BaseModel],
         *,
         llm_config,
+        breaker: CircuitBreaker | None = None,
     ) -> BaseModel | None:
         """Layer 2: tool-less follow-up agent with ``response_format`` attached.
 
@@ -317,6 +327,10 @@ class PromptPhase(PhaseProtocol):
         response_format payload directly. We include the prior run's final
         text and the original task so the follow-up can answer from the work
         already done rather than fabricating from the prompt alone.
+
+        When *breaker* is supplied, the follow-up runs against the phase's
+        remaining budget and its spend is folded back into the breaker so the
+        final phase result accounts for both conversation turns.
         """
         from openhands.sdk import Agent, LocalWorkspace
         from openhands.sdk.conversation import get_agent_final_response
@@ -343,14 +357,21 @@ class PromptPhase(PhaseProtocol):
             critic=None,
         )
         workspace = LocalWorkspace(working_dir=".")
+
+        remaining_budget = None
+        if breaker is not None and breaker.max_cost is not None:
+            remaining_budget = max(0.0, breaker.max_cost - breaker.tracker.cost)
+
         conversation = await run_conversation(
             agent,
             workspace,
             follow_up,
             hook_config=None,
             max_iterations=2,
-            max_cost=None,
+            max_cost=remaining_budget,
         )
+        if breaker is not None:
+            breaker.absorb(conversation)
         text = get_agent_final_response(conversation.state.events) or ""
         return coerce_to_model(text, output_model)
 
