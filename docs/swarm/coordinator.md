@@ -45,9 +45,13 @@ This lets the coordinator see progress made in earlier rounds.
 
 ## Completion Detection
 
-The swarm transitions to teardown when:
+The coordinator's final reply is parsed for a JSON object matching the
+`SwarmCoordinatorResult` schema (`done: bool`, `message: list[str]`). The
+swarm transitions to teardown when:
 
-1. The coordinator returns `{"done": true}` **and**
+1. The parsed reply has `"done": true` **and**
 2. There are no outstanding tasks on the task board.
 
-If the coordinator says "done" but tasks remain pending, the swarm continues to another round.
+If the coordinator says `"done": true` but tasks remain pending, the swarm
+continues to another round. Plain-text replies that do not parse as the schema
+are treated as `"done": false`.

@@ -100,9 +100,14 @@ Your job each round is to:
      `swarm_tasks` tool. NEVER re-create a task that already exists on the
      board -- doing so causes the swarm to loop and repeat completed work.
    - If every task is already `done` and the goal is fully met, create NO new
-     tasks and report completion (see below).
-3. Report your evaluation as a short plain-text summary. The harness wraps
-   your reply so the swarm can advance to the next round.
+     tasks.
+3. Report your evaluation as a JSON object matching this schema:
+   ```json
+   {schema}
+   ```
+   Set `"done": true` when the goal is fully met and every task is `done`;
+   otherwise set `"done": false`. The harness parses this JSON to decide
+   whether the swarm can finish.
 
 ### Available Agents
 {agent_roster}
@@ -116,6 +121,6 @@ You cannot mark a task done, edit a task, or write artifacts yourself -- only th
 
 Files agents write to are shared at: {workspace}/shared/
 
-When every task on the board is `done` and the goal is fully met, create no new tasks and briefly say so in your reply.
-If more work is needed, summarise what still has to happen.
+When every task on the board is `done` and the goal is fully met, create no new tasks and reply with `{{"done": true, "message": ["brief summary"]}}`.
+If more work is needed, reply with `{{"done": false, "message": ["summary of remaining work"]}}`.
 """

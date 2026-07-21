@@ -70,9 +70,8 @@ class TestSwarmCoordinatorChatTextWrap:
             breaker = MagicMock()
             result = await phase._run_coordinator({}, breaker)
 
-        # Chat text wraps into a SwarmCoordinatorResult with done=False (we
-        # can't safely infer done=True from free-form text, so default is
-        # "more work pending" — matches the original pre-structured fallback).
+        # Plain text that does not parse as SwarmCoordinatorResult is treated
+        # as "more work pending".
         assert result["done"] is False
         assert result["message"] == ["still work to do"]
 
@@ -102,6 +101,36 @@ class TestSwarmCoordinatorChatTextWrap:
 
         assert result["done"] is False
         assert result["message"] == ["No response from coordinator"]
+
+    @pytest.mark.asyncio
+    async def test_coordinator_honours_json_done_signal(self, tmp_path):
+        raw = {
+            **MINIMAL_SWARM_RAW,
+            "swarm": {
+                **MINIMAL_SWARM_RAW["swarm"],
+                "workspace": str(tmp_path / "ws"),
+                "cleanup": "never",
+            },
+        }
+        phase = _make_blueprint_with_swarm(raw)
+        phase._setup({})
+
+        with (
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
+            patch("goblin.conversation.LocalConversation") as mock_conv_cls,
+            patch(
+                "openhands.sdk.conversation.get_agent_final_response",
+                return_value='{"done": true, "message": ["all tasks complete"]}',
+            ),
+        ):
+            mock_agent_cls.return_value = MagicAgent()
+            mock_conv_cls.return_value = _make_conv()
+            breaker = MagicMock()
+            result = await phase._run_coordinator({}, breaker)
+
+        assert result["done"] is True
+        assert result["message"] == ["all tasks complete"]
 
     @pytest.mark.asyncio
     async def test_coordinator_does_not_register_structured_finish(self, tmp_path):
