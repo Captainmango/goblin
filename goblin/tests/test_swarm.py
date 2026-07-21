@@ -802,8 +802,8 @@ class TestAgentAllowedTools:
             def __init__(self, *, tools, **kwargs):
                 captured_tools.extend(tools)
 
-        monkeypatch.setattr("goblin.swarm.Agent", FakeAgent)
-        monkeypatch.setattr("goblin.swarm.build_llm", lambda **kwargs: object())
+        monkeypatch.setattr("openhands.sdk.Agent", FakeAgent)
+        monkeypatch.setattr("goblin.utils.llm.build_llm", lambda **kwargs: object())
 
         async def fake_run_conversation(agent, workspace, prompt, **kwargs):
             class FakeConversation:
@@ -811,8 +811,8 @@ class TestAgentAllowedTools:
 
             return FakeConversation()
 
-        monkeypatch.setattr("goblin.swarm.run_conversation", fake_run_conversation)
-        monkeypatch.setattr("goblin.swarm.get_agent_final_response", lambda events: "")
+        monkeypatch.setattr("goblin.conversation.run_conversation", fake_run_conversation)
+        monkeypatch.setattr("openhands.sdk.conversation.get_agent_final_response", lambda events: "")
 
         from goblin.cost_control import CircuitBreaker
 
@@ -879,15 +879,15 @@ class TestRenderTaskBoard:
             def __init__(self, *, tools, **kwargs):
                 self.tools = tools
 
-        monkeypatch.setattr("goblin.swarm.Agent", FakeAgent)
-        monkeypatch.setattr("goblin.swarm.build_llm", lambda **kwargs: object())
+        monkeypatch.setattr("openhands.sdk.Agent", FakeAgent)
+        monkeypatch.setattr("goblin.utils.llm.build_llm", lambda **kwargs: object())
 
         async def fake_run_conversation(agent, workspace, prompt, **kwargs):
             captured["prompt"] = prompt
             captured["tools"] = agent.tools
             raise RuntimeError("stop after capturing prompt")
 
-        monkeypatch.setattr("goblin.swarm.run_conversation", fake_run_conversation)
+        monkeypatch.setattr("goblin.conversation.run_conversation", fake_run_conversation)
 
         from goblin.cost_control import CircuitBreaker
 

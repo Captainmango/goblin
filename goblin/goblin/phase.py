@@ -6,23 +6,14 @@ from typing import TYPE_CHECKING, Any, Dict, Protocol, cast
 
 from pydantic import BaseModel
 
-from openhands.sdk import Agent, LocalWorkspace, Tool
-from openhands.sdk.conversation import get_agent_final_response
-
-from goblin.conversation import run_conversation
 from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import LoadProjectStatus
 from goblin.output_schema import (
     PhaseResult,
     coerce_to_model,
-    register_output_model,
-    resolve_output_model,
     validate_against_schema,
 )
 from goblin.prompts import BASE_SYSTEM_PROMPT, build_system_prompt
-from goblin.tools.structured_finish import StructuredFinishTool, extract_structured_result
-from goblin.tools.tool_map import build_tool_filter_regex, resolve_tools
-from goblin.utils.llm import build_llm
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +33,6 @@ __all__ = [
     "LoadProjectPhase",
     "PhaseResult",
     "_validate_output_schema",
-    "register_output_model",
 ]
 
 
@@ -86,6 +76,8 @@ class PromptPhase(PhaseProtocol):
 
     def _resolve_output_model(self) -> type[BaseModel]:
         """Resolve the Pydantic output model for this phase, cached per instance."""
+        from goblin.output_schema import resolve_output_model
+
         cached = getattr(self, "_cached_output_model", None)
         if cached is not None:
             return cached
@@ -140,6 +132,13 @@ class PromptPhase(PhaseProtocol):
         return {"output_model_ref": "goblin.output_schema.PhaseResult"}
 
     async def run(self, context: dict) -> Dict:
+        from openhands.sdk import Agent, Tool
+        from openhands.sdk.conversation import get_agent_final_response
+        from goblin.conversation import run_conversation
+        from goblin.tools.structured_finish import StructuredFinishTool, extract_structured_result
+        from goblin.tools.tool_map import build_tool_filter_regex, resolve_tools
+        from goblin.utils.llm import build_llm
+
         prompt = self.prompt_template.format(**context)
 
         history_context = context.get("_history_context", "")
@@ -309,6 +308,11 @@ class PromptPhase(PhaseProtocol):
         for some models; the cheap ``coerce_to_model`` fallback handles the
         resulting prose output.
         """
+        from openhands.sdk import Agent, LocalWorkspace
+        from openhands.sdk.conversation import get_agent_final_response
+        from goblin.conversation import run_conversation
+        from goblin.utils.llm import build_llm
+
         follow_up = (
             "Your previous attempt did not return a structured answer. "
             "Respond with the structured final answer now.\n\n"

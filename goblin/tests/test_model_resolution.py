@@ -77,10 +77,10 @@ class TestPromptPhaseModel:
         conversation.conversation_stats = None
 
         with (
-            patch("goblin.phase.build_llm") as mock_build_llm,
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=conversation),
-            patch("goblin.phase.get_agent_final_response", return_value="all done"),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="all done"),
         ):
             mock_agent_cls.return_value = MagicAgent()
             await phase.run({})
@@ -132,11 +132,11 @@ class TestPromptPhaseModel:
             return primary_conversation if kwargs.get("hook_config") is not None else followup_conversation
 
         with (
-            patch("goblin.phase.build_llm") as mock_build_llm,
-            patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.extract_structured_result", return_value=None),
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent") as mock_agent_cls,
+            patch("goblin.tools.structured_finish.extract_structured_result", return_value=None),
             patch("goblin.conversation.LocalConversation", side_effect=make_conv),
-            patch("goblin.phase.get_agent_final_response", return_value=""),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value=""),
         ):
             mock_agent_cls.return_value = MagicAgent()
             mock_build_llm.return_value = MagicAgent()
@@ -196,10 +196,10 @@ class TestSwarmPhaseModel:
         phase._setup({})
 
         with (
-            patch("goblin.swarm.build_llm") as mock_build_llm,
-            patch("goblin.swarm.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation") as mock_conv_cls,
-            patch("goblin.swarm.get_agent_final_response", return_value="still work to do"),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="still work to do"),
         ):
             mock_agent_cls.return_value = MagicAgent()
             mock_conv_cls.return_value = MagicMock()
@@ -233,10 +233,10 @@ class TestSwarmPhaseModel:
         phase._setup({})
 
         with (
-            patch("goblin.swarm.build_llm") as mock_build_llm,
-            patch("goblin.swarm.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation") as mock_conv_cls,
-            patch("goblin.swarm.get_agent_final_response", return_value="still work to do"),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="still work to do"),
         ):
             mock_agent_cls.return_value = MagicAgent()
             mock_conv_cls.return_value = MagicMock()
@@ -265,10 +265,10 @@ class TestSwarmPhaseModel:
         phase._setup({})
 
         with (
-            patch("goblin.swarm.build_llm") as mock_build_llm,
-            patch("goblin.swarm.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation") as mock_conv_cls,
-            patch("goblin.swarm.get_agent_final_response", return_value="done"),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
         ):
             mock_agent_cls.return_value = MagicAgent()
             mock_conv_cls.return_value = MagicMock()
@@ -303,10 +303,10 @@ class TestSwarmPhaseModel:
         phase._setup({})
 
         with (
-            patch("goblin.swarm.build_llm") as mock_build_llm,
-            patch("goblin.swarm.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation") as mock_conv_cls,
-            patch("goblin.swarm.get_agent_final_response", return_value="done"),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
         ):
             mock_agent_cls.return_value = MagicAgent()
             mock_conv_cls.return_value = MagicMock()
@@ -344,10 +344,10 @@ class TestSwarmPhaseModel:
         phase._setup({})
 
         with (
-            patch("goblin.swarm.build_llm") as mock_build_llm,
-            patch("goblin.swarm.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation") as mock_conv_cls,
-            patch("goblin.swarm.get_agent_final_response", return_value="still work to do"),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="still work to do"),
         ):
             mock_agent_cls.return_value = MagicAgent()
             mock_conv_cls.return_value = MagicMock()

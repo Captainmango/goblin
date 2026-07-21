@@ -16,14 +16,27 @@ except ImportError:
         pass
 
 
-from goblin.notifications.cli import notifications
-from goblin.runner import BlueprintRunner
 from goblin.utils.click_helpers import JSON
 from goblin.utils.config import get_config
-from goblin.validation import format_errors, validate_blueprint
 
 
-@click.group()
+class LazyGroup(click.Group):
+    """Click group that lazy-loads the notifications sub-command on first access."""
+
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        rv = super().list_commands(ctx)
+        rv.append("notifications")
+        return rv
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        if cmd_name == "notifications":
+            from goblin.notifications.cli import notifications
+
+            return notifications
+        return super().get_command(ctx, cmd_name)
+
+
+@click.group(cls=LazyGroup)
 def cli():
     """GOBLIN — autonomous agent harness."""
     pass
@@ -85,6 +98,8 @@ def run(
     run_dir: str | None,
 ):
     """Execute a Blueprint."""
+    from goblin.runner import BlueprintRunner
+
     load_dotenv()
 
     configure_logging(
@@ -114,6 +129,8 @@ def run(
 @click.argument("blueprints", nargs=-1, required=True, type=click.Path(exists=True))
 def validate(blueprints: tuple[str, ...]):
     """Validate one or more blueprint YAML files against the JSON Schema."""
+    from goblin.validation import format_errors, validate_blueprint
+
     all_valid = True
 
     for path in blueprints:
@@ -127,9 +144,6 @@ def validate(blueprints: tuple[str, ...]):
 
     if not all_valid:
         sys.exit(1)
-
-
-cli.add_command(notifications)
 
 
 if __name__ == "__main__":

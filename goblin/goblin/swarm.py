@@ -6,20 +6,14 @@ import os
 import shutil
 from typing import TYPE_CHECKING, Dict
 
-from openhands.sdk import Agent
-from openhands.sdk.conversation import get_agent_final_response
-
-from goblin.conversation import run_conversation
 from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
 from goblin.output_schema import SwarmCoordinatorResult
 from goblin.phase import PhaseProtocol
 from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDINATOR_PROMPT
 from goblin.swarm_db import SwarmDB
-from goblin.tools.tool_map import resolve_tools
 from goblin.utils.config import get_config
 from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
-from goblin.utils.llm import build_llm
 
 if TYPE_CHECKING:
     from goblin.blueprint import V1Blueprint
@@ -210,6 +204,12 @@ class SwarmPhase(PhaseProtocol):
         return "\n".join(lines)
 
     async def _run_coordinator(self, context: dict, breaker: CircuitBreaker) -> dict:
+        from openhands.sdk import Agent
+        from openhands.sdk.conversation import get_agent_final_response
+        from goblin.conversation import run_conversation
+        from goblin.tools.tool_map import resolve_tools
+        from goblin.utils.llm import build_llm
+
         assert self._db is not None
         agent_roster = self._build_agent_roster()
 
@@ -264,6 +264,12 @@ class SwarmPhase(PhaseProtocol):
         return result.model_dump()
 
     async def _run_single_agent(self, agent_cfg: dict, context: dict, breaker: CircuitBreaker):
+        from openhands.sdk import Agent
+        from openhands.sdk.conversation import get_agent_final_response
+        from goblin.conversation import run_conversation
+        from goblin.tools.tool_map import resolve_tools
+        from goblin.utils.llm import build_llm
+
         assert self._db is not None
         name = agent_cfg["name"]
         self._db.update_agent_status(name, AgentStatus.RUNNING)

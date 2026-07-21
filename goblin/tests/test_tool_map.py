@@ -11,36 +11,36 @@ from openhands.tools.terminal import TerminalTool
 from goblin.tools.ask_user_tool import AskUserTool
 from goblin.tools.swarm_agent_tool import SwarmAgentTool
 from goblin.tools.swarmdb_tool import SwarmTasksTool
-from goblin.tools.tool_map import TOOL_NAME_MAP, build_tool_filter_regex, resolve_tools
+from goblin.tools.tool_map import _get_tool_name_map, build_tool_filter_regex, resolve_tools
 
 
 class TestToolNameMap:
     def test_bash_maps_to_terminal(self):
-        assert TOOL_NAME_MAP["Bash"].name == TerminalTool.name
+        assert _get_tool_name_map()["Bash"].name == TerminalTool.name
 
     def test_read_maps_to_file_editor(self):
-        assert TOOL_NAME_MAP["Read"].name == FileEditorTool.name
+        assert _get_tool_name_map()["Read"].name == FileEditorTool.name
 
     def test_write_maps_to_file_editor(self):
-        assert TOOL_NAME_MAP["Write"].name == FileEditorTool.name
+        assert _get_tool_name_map()["Write"].name == FileEditorTool.name
 
     def test_edit_maps_to_file_editor(self):
-        assert TOOL_NAME_MAP["Edit"].name == FileEditorTool.name
+        assert _get_tool_name_map()["Edit"].name == FileEditorTool.name
 
     def test_glob_maps_to_glob(self):
-        assert TOOL_NAME_MAP["Glob"].name == GlobTool.name
+        assert _get_tool_name_map()["Glob"].name == GlobTool.name
 
     def test_grep_maps_to_grep(self):
-        assert TOOL_NAME_MAP["Grep"].name == GrepTool.name
+        assert _get_tool_name_map()["Grep"].name == GrepTool.name
 
     def test_swarm_tasks_maps_to_swarm_tasks_tool(self):
-        assert TOOL_NAME_MAP["SwarmTasks"].name == SwarmTasksTool.name
+        assert _get_tool_name_map()["SwarmTasks"].name == SwarmTasksTool.name
 
     def test_swarm_agent_maps_to_swarm_agent_tool(self):
-        assert TOOL_NAME_MAP["SwarmAgent"].name == SwarmAgentTool.name
+        assert _get_tool_name_map()["SwarmAgent"].name == SwarmAgentTool.name
 
     def test_ask_user_maps_to_ask_user_tool(self):
-        assert TOOL_NAME_MAP["AskUser"].name == AskUserTool.name
+        assert _get_tool_name_map()["AskUser"].name == AskUserTool.name
 
 
 class TestResolveTools:

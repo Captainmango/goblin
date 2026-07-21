@@ -294,11 +294,11 @@ class TestBuildLlm:
         conversation.conversation_stats = None
 
         with (
-            patch("goblin.phase.build_llm") as mock_build_llm,
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=conversation),
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=__import__("goblin.output_schema", fromlist=["PhaseResult"]).PhaseResult(
                     success=True, message=["ok"]
                 ),

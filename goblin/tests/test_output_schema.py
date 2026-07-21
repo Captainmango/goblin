@@ -199,10 +199,10 @@ def _mock_llm_infra():
     mock_conversation.arun = AsyncMock()
     mock_agent = MagicAgent()
 
-    patch_build_llm = patch("goblin.phase.build_llm", return_value=mock_llm)
-    patch_agent = patch("goblin.phase.Agent", return_value=mock_agent)
+    patch_build_llm = patch("goblin.utils.llm.build_llm", return_value=mock_llm)
+    patch_agent = patch("openhands.sdk.Agent", return_value=mock_agent)
     patch_local_conv = patch("goblin.conversation.LocalConversation", return_value=mock_conversation)
-    patch_get_final = patch("goblin.phase.get_agent_final_response", return_value="mocked response")
+    patch_get_final = patch("openhands.sdk.conversation.get_agent_final_response", return_value="mocked response")
     patch_workspace = patch.object(V1Blueprint, "_get_workspace", return_value=MagicMock())
 
     return patch_build_llm, patch_agent, patch_local_conv, patch_get_final, patch_workspace
@@ -236,7 +236,7 @@ class TestPromptPhaseOutputSchema:
             p4,
             p5,
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=phase._resolve_output_model()(success=True, message=["ok"], status="done"),
             ),
         ):
@@ -270,7 +270,7 @@ class TestPromptPhaseOutputSchema:
             p4,
             p5,
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=None,
             ),
             patch(
@@ -296,7 +296,7 @@ class TestPromptPhaseOutputSchema:
             p4,
             p5,
             patch(
-                "goblin.phase.get_agent_final_response",
+                "openhands.sdk.conversation.get_agent_final_response",
                 return_value="Some agent reply with arbitrary shape.",
             ),
         ):
@@ -317,7 +317,7 @@ class TestPromptPhaseOutputSchema:
             p3,
             p4,
             p5,
-            patch("goblin.phase.get_agent_final_response", return_value=""),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value=""),
         ):
             result = await phase.run({})
 
@@ -342,8 +342,8 @@ class TestPromptPhaseOutputSchema:
             p3,
             p4,
             p5,
-            patch("goblin.phase.Agent", FakeAgent),
-            patch("goblin.phase.get_agent_final_response", return_value="ok"),
+            patch("openhands.sdk.Agent", FakeAgent),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
         ):
             await phase.run({})
 
@@ -368,7 +368,7 @@ class TestPromptPhaseOutputSchema:
             p4,
             p5,
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
@@ -401,7 +401,7 @@ class TestPromptPhaseOutputSchema:
             p4,
             p5,
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=phase._resolve_output_model()(success=True, message=["ok"], status="done", count=42),
             ),
         ):

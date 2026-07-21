@@ -3,22 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from jinja2 import Environment
-
-from openhands.sdk.hooks import HookConfig, HookDefinition, HookMatcher
-from openhands.sdk.subagent import AgentDefinition
-from goblin.checkpoint import Checkpoint
-from goblin.dependency_graph import DependencyGraph
-from goblin.hooks import HOOK_REGISTRY, register_hook
-from goblin.orchestrator import PhaseOrchestrator
-from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
-from goblin.utils.tree import walk_strings
-from goblin.phase import LoadProjectPhase, PromptPhase, PhaseProtocol
-from goblin.swarm import SwarmPhase
-from goblin.utils.jinja_helpers import filter_contains, filter_json_value
-from goblin.workspace import build_workspace
+if TYPE_CHECKING:
+    from goblin.checkpoint import Checkpoint
+    from goblin.phase import PhaseProtocol
+    from openhands.sdk.hooks import HookConfig
+    from openhands.sdk.subagent import AgentDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +20,18 @@ class HookablePhase(Protocol):
 
 
 class Blueprint(Protocol):
-    async def run(self, context: dict | None = None, checkpoint: Checkpoint | None = None) -> dict: ...
+    async def run(self, context: dict | None = None, checkpoint: "Checkpoint | None" = None) -> dict: ...
 
 
 class V1Blueprint(Blueprint):
     def __init__(self, spec: dict):
+        from goblin.dependency_graph import DependencyGraph
+        from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
+
         self.spec = spec
         self.project_path: str | None = None
         self.project_refs: str = ""
-        self.project_agents: dict[str, AgentDefinition] = {}
+        self.project_agents: dict[str, "AgentDefinition"] = {}
 
         # Resolve blueprint-level workspace config (env vars + interpolation)
         raw_workspace = spec.get("workspace")
@@ -46,16 +40,20 @@ class V1Blueprint(Blueprint):
             validate_env_var_syntax(raw_workspace)
             self._workspace_config = cast(dict, resolve_env_vars(raw_workspace))
 
-        self.phases: list[PhaseProtocol] = [self._parse_phase(s) for s in spec["phases"]]
+        self.phases: list["PhaseProtocol"] = [self._parse_phase(s) for s in spec["phases"]]
         self._dependency_graph = DependencyGraph(self.phases)
 
-    def _parse_phase(self, raw: dict) -> PhaseProtocol:
+    def _parse_phase(self, raw: dict) -> "PhaseProtocol":
+        from goblin.phase import LoadProjectPhase, PromptPhase
+
         match raw:
             case {"load_project": str(), **_rest}:
                 return LoadProjectPhase(raw, self)
             case {"prompt": str(), **_rest}:
                 return PromptPhase(raw, self)
             case {"swarm": dict(), **_rest}:
+                from goblin.swarm import SwarmPhase
+
                 return SwarmPhase(raw, self)
             case _:
                 raise ValueError(f"Phase '{raw.get('id', '?')}' must have 'prompt', 'load_project', or 'swarm'")
@@ -83,7 +81,7 @@ class V1Blueprint(Blueprint):
 
         return "## Prior Phase Results\n\n" + "\n".join(sections) + "\n---\n\n"
 
-    def _resolve_llm_config(self, phase: PhaseProtocol, context: dict | None = None) -> dict | str | None:
+    def _resolve_llm_config(self, phase: "PhaseProtocol", context: dict | None = None) -> dict | str | None:
         """Return the effective OpenHands LLM configuration for a phase.
 
         Precedence: phase.llm > phase.model > defaults.llm > defaults.model > None.
@@ -91,6 +89,8 @@ class V1Blueprint(Blueprint):
         resolved before being returned. String values are returned as-is so that
         build_llm can fall back to environment-based credentials.
         """
+        from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
+
         defaults = self.spec.get("defaults", {})
         default_llm = defaults.get("llm")
         default_model = defaults.get("model")
@@ -153,7 +153,10 @@ class V1Blueprint(Blueprint):
         merged = {**(defaults or {}), **(phase_config or {})}
         return merged
 
-    def _build_hooks(self, phase: HookablePhase) -> HookConfig | None:
+    def _build_hooks(self, phase: HookablePhase) -> "HookConfig | None":
+        from openhands.sdk.hooks import HookConfig, HookDefinition, HookMatcher
+        from goblin.hooks import HOOK_REGISTRY
+
         defaults = self.spec.get("defaults", {}).get("hooks", {})
         phase_hooks = phase.hooks_config
 
@@ -188,6 +191,8 @@ class V1Blueprint(Blueprint):
         )
 
     def _build_mcp_servers(self, phase: HookablePhase, context: dict) -> dict:
+        from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
+
         defaults = self.spec.get("defaults", {}).get("mcp_servers", {})
         phase_servers = phase.mcp_servers_config or {}
         merged = {**defaults, **phase_servers}
@@ -210,6 +215,8 @@ class V1Blueprint(Blueprint):
 
     def _interpolate_strings(self, obj: Any, context: dict) -> Any:
         """Recursively apply {variable} interpolation to all string values."""
+        from goblin.utils.tree import walk_strings
+
         return walk_strings(obj, lambda s: s.format(**context))
 
     def _get_workspace(self, context: dict):
@@ -218,10 +225,15 @@ class V1Blueprint(Blueprint):
         The workspace is built lazily so that {variable} interpolation can use
         the runtime context (including vars from load_project and prior phases).
         """
+        from goblin.workspace import build_workspace
+
         interpolated = self._interpolate_strings(self._workspace_config or {}, context)
         return build_workspace(interpolated if interpolated else None, self.project_path)
 
-    def _jinja_env(self) -> Environment:
+    def _jinja_env(self):
+        from jinja2 import Environment
+        from goblin.utils.jinja_helpers import filter_contains, filter_json_value
+
         env = Environment()
         filters = cast(dict[str, Any], env.filters)
         filters["contains"] = filter_contains
@@ -297,6 +309,10 @@ class V1Blueprint(Blueprint):
         - References: reads CLAUDE.md and .claude/CLAUDE.md, concatenates into project_refs
         - Agents: scans .claude/agents/*.md, each becomes an AgentDefinition
         """
+        from openhands.sdk.hooks import HookDefinition
+        from openhands.sdk.subagent import AgentDefinition
+        from goblin.hooks import register_hook
+
         self.project_path = path
 
         settings_path = os.path.join(path, ".claude", "settings.json")
@@ -356,7 +372,9 @@ class V1Blueprint(Blueprint):
                     )
                     logger.info("Loaded agent definition", extra={"event": "project.agent_loaded", "agent": agent_name})
 
-    async def run(self, context: dict | None = None, checkpoint: Checkpoint | None = None):
+    async def run(self, context: dict | None = None, checkpoint: "Checkpoint | None" = None):
+        from goblin.orchestrator import PhaseOrchestrator
+
         blueprint_vars = self.spec.get("vars", {})
         context = {**blueprint_vars, **(context or {})}
         orchestrator = PhaseOrchestrator(self)

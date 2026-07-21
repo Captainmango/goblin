@@ -74,11 +74,11 @@ class TestPromptPhaseRunCostControl:
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi"})
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
@@ -99,11 +99,11 @@ class TestPromptPhaseRunCostControl:
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi", "max_iterations": 20})
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
@@ -119,11 +119,11 @@ class TestPromptPhaseRunCostControl:
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi", "max_cost": 0.5})
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
@@ -139,8 +139,8 @@ class TestPromptPhaseRunCostControl:
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi", "max_tokens": 1})
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
         ):
             mock_agent_cls.return_value = MagicAgent()
@@ -161,8 +161,8 @@ class TestPromptPhaseRunCostControl:
         conversation.conversation_stats = None
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=conversation),
         ):
             mock_agent_cls.return_value = MagicAgent()
@@ -177,10 +177,10 @@ class TestPromptPhaseRunCostControl:
         phase = _make_prompt_phase({"id": "s1", "prompt": "hi"})
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
-            patch("goblin.phase.get_agent_final_response", return_value=None),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value=None),
         ):
             mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})

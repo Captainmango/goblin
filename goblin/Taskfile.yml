@@ -26,3 +26,9 @@ tasks:
     cmds:
       - uv run goblin validate ../blueprints/*.yaml
     silent: true
+
+  check-imports:
+    desc: Fail if goblin.cli import time exceeds 500 ms
+    cmds:
+      - uv run python ../scripts/check_import_time.py
+    silent: true

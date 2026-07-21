@@ -219,9 +219,9 @@ class TestSwarmPhaseRunCostControl:
 
         with (
             patch("goblin.conversation.LocalConversation", side_effect=fake_local_conversation),
-            patch("goblin.swarm.build_llm"),
-            patch("goblin.swarm.Agent") as mock_agent_cls,
-            patch("goblin.swarm.get_agent_final_response", return_value=""),
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value=""),
         ):
             mock_agent_cls.return_value = MagicMock()
             breaker = MagicMock()
@@ -267,9 +267,9 @@ class TestSwarmCoordinatorLimits:
 
         with (
             patch("goblin.conversation.LocalConversation", side_effect=fake_local_conversation),
-            patch("goblin.swarm.build_llm"),
-            patch("goblin.swarm.Agent") as mock_agent_cls,
-            patch("goblin.swarm.get_agent_final_response", return_value='{"done": true}'),
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value='{"done": true}'),
         ):
             mock_agent_cls.return_value = MagicMock()
             breaker = MagicMock()

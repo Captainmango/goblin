@@ -14,9 +14,7 @@ def _effective_model(model: str | None) -> str:
     config = get_config()
     effective = model or config.default_model
     if not effective:
-        raise RuntimeError(
-            "No model configured. Set GOBLIN_DEFAULT_MODEL or specify a model in the blueprint."
-        )
+        raise RuntimeError("No model configured. Set GOBLIN_DEFAULT_MODEL or specify a model in the blueprint.")
     return effective
 
 

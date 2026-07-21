@@ -60,10 +60,10 @@ class TestSwarmCoordinatorChatTextWrap:
         phase._setup({})
 
         with (
-            patch("goblin.swarm.build_llm"),
-            patch("goblin.swarm.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation") as mock_conv_cls,
-            patch("goblin.swarm.get_agent_final_response", return_value="still work to do"),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="still work to do"),
         ):
             mock_agent_cls.return_value = MagicAgent()
             mock_conv_cls.return_value = _make_conv()
@@ -90,10 +90,10 @@ class TestSwarmCoordinatorChatTextWrap:
         phase._setup({})
 
         with (
-            patch("goblin.swarm.build_llm"),
-            patch("goblin.swarm.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation") as mock_conv_cls,
-            patch("goblin.swarm.get_agent_final_response", return_value=""),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value=""),
         ):
             mock_agent_cls.return_value = MagicAgent()
             mock_conv_cls.return_value = _make_conv()
@@ -124,10 +124,10 @@ class TestSwarmCoordinatorChatTextWrap:
                 captured_tools.extend(tools)
 
         with (
-            patch("goblin.swarm.build_llm"),
-            patch("goblin.swarm.Agent", FakeAgent),
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent", FakeAgent),
             patch("goblin.conversation.LocalConversation") as mock_conv_cls,
-            patch("goblin.swarm.get_agent_final_response", return_value="ok"),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
         ):
             mock_conv_cls.return_value = _make_conv()
             breaker = MagicMock()

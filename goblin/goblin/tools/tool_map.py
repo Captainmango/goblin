@@ -1,35 +1,52 @@
-from openhands.sdk import Tool
-from openhands.sdk.tool.builtins import FinishTool
-from openhands.tools.file_editor import FileEditorTool
-from openhands.tools.glob import GlobTool
-from openhands.tools.grep import GrepTool
-from openhands.tools.terminal import TerminalTool
+from __future__ import annotations
 
-from goblin.tools.ask_user_tool import AskUserTool
-from goblin.tools.structured_finish import StructuredFinishTool
-from goblin.tools.swarm_agent_tool import SwarmAgentTool
-from goblin.tools.swarmdb_tool import SwarmTasksTool
-from goblin.tools.worktree_tool import WorktreeTool
+from typing import TYPE_CHECKING
 
-TOOL_NAME_MAP: dict[str, Tool] = {
-    "Bash": Tool(name=TerminalTool.name),
-    "terminal": Tool(name=TerminalTool.name),
-    "Read": Tool(name=FileEditorTool.name),
-    "Write": Tool(name=FileEditorTool.name),
-    "Edit": Tool(name=FileEditorTool.name),
-    "MultiEdit": Tool(name=FileEditorTool.name),
-    "Glob": Tool(name=GlobTool.name),
-    "Grep": Tool(name=GrepTool.name),
-    "SwarmTasks": Tool(name=SwarmTasksTool.name),
-    "SwarmAgent": Tool(name=SwarmAgentTool.name),
-    "Worktree": Tool(name=WorktreeTool.name),
-    "AskUser": Tool(name=AskUserTool.name),
-    "finish": Tool(name=FinishTool.name),
-    "StructuredFinish": Tool(name=StructuredFinishTool.name),
-}
+if TYPE_CHECKING:
+    from openhands.sdk import Tool
+
+_TOOL_NAME_MAP: dict[str, "Tool"] | None = None
 
 
-def resolve_tools(names: list[str], tool_params: dict[str, dict] | None = None) -> list[Tool]:
+def _get_tool_name_map() -> dict[str, "Tool"]:
+    """Lazily build the tool name map on first use."""
+    global _TOOL_NAME_MAP
+    if _TOOL_NAME_MAP is not None:
+        return _TOOL_NAME_MAP
+
+    from openhands.sdk import Tool
+    from openhands.sdk.tool.builtins import FinishTool
+    from openhands.tools.file_editor import FileEditorTool
+    from openhands.tools.glob import GlobTool
+    from openhands.tools.grep import GrepTool
+    from openhands.tools.terminal import TerminalTool
+
+    from goblin.tools.ask_user_tool import AskUserTool
+    from goblin.tools.structured_finish import StructuredFinishTool
+    from goblin.tools.swarm_agent_tool import SwarmAgentTool
+    from goblin.tools.swarmdb_tool import SwarmTasksTool
+    from goblin.tools.worktree_tool import WorktreeTool
+
+    _TOOL_NAME_MAP = {
+        "Bash": Tool(name=TerminalTool.name),
+        "terminal": Tool(name=TerminalTool.name),
+        "Read": Tool(name=FileEditorTool.name),
+        "Write": Tool(name=FileEditorTool.name),
+        "Edit": Tool(name=FileEditorTool.name),
+        "MultiEdit": Tool(name=FileEditorTool.name),
+        "Glob": Tool(name=GlobTool.name),
+        "Grep": Tool(name=GrepTool.name),
+        "SwarmTasks": Tool(name=SwarmTasksTool.name),
+        "SwarmAgent": Tool(name=SwarmAgentTool.name),
+        "Worktree": Tool(name=WorktreeTool.name),
+        "AskUser": Tool(name=AskUserTool.name),
+        "finish": Tool(name=FinishTool.name),
+        "StructuredFinish": Tool(name=StructuredFinishTool.name),
+    }
+    return _TOOL_NAME_MAP
+
+
+def resolve_tools(names: list[str], tool_params: dict[str, dict] | None = None) -> list["Tool"]:
     """Map blueprint tool names to OpenHands Tool specs.
 
     MCP tool patterns (mcp__* or wildcards) are skipped — MCP tools are
@@ -40,13 +57,16 @@ def resolve_tools(names: list[str], tool_params: dict[str, dict] | None = None) 
     (e.g. `{"SwarmTasks": {"db": swarm_db_instance}}`) for tools that need
     caller-provided state that can't live in the static TOOL_NAME_MAP.
     """
+    from openhands.sdk import Tool
+
     tool_params = tool_params or {}
     seen: set[str] = set()
     result: list[Tool] = []
+    tool_map = _get_tool_name_map()
     for name in names:
         if "*" in name or name.startswith("mcp__"):
             continue
-        tool = TOOL_NAME_MAP.get(name, Tool(name=name))
+        tool = tool_map.get(name, Tool(name=name))
         if name in tool_params:
             tool = Tool(name=tool.name, params=tool_params[name])
         if tool.name not in seen:
@@ -79,12 +99,15 @@ def build_tool_filter_regex(names: list[str]) -> str | None:
     Built-in tools from Agent.include_default_tools (FinishTool, ThinkTool)
     are excluded from the filter: the SDK adds them after the regex is applied.
     """
+    from openhands.sdk import Tool
+
     mcp_patterns = [n for n in names if n.startswith("mcp__")]
     if not mcp_patterns:
         return None
 
+    tool_map = _get_tool_name_map()
     builtin_names = sorted(
-        {TOOL_NAME_MAP.get(n, Tool(name=n)).name for n in names if not n.startswith("mcp__") and "*" not in n}
+        {tool_map.get(n, Tool(name=n)).name for n in names if not n.startswith("mcp__") and "*" not in n}
     )
     mcp_fragments = [_mcp_pattern_to_regex(p) for p in mcp_patterns]
 

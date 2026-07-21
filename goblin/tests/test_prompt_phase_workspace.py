@@ -69,11 +69,11 @@ class TestPromptPhaseLocalWorkspace:
         phase._blueprint._get_workspace.return_value = local_ws
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_local_conversation) as mock_conv_cls,
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
@@ -93,11 +93,11 @@ class TestPromptPhaseLocalWorkspace:
         phase._blueprint._get_workspace.return_value = local_ws
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_local_conversation),
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
@@ -124,12 +124,12 @@ class TestPromptPhaseRemoteWorkspace:
         phase._blueprint._get_workspace.return_value = remote_ws
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.RemoteWorkspace", _FakeRemoteWorkspace),
             patch("goblin.conversation.RemoteConversation", return_value=mock_remote_conversation) as mock_conv_cls,
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
@@ -148,13 +148,13 @@ class TestPromptPhaseRemoteWorkspace:
         phase._blueprint._get_workspace.return_value = remote_ws
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.RemoteWorkspace", _FakeRemoteWorkspace),
             patch("goblin.conversation.RemoteConversation", return_value=mock_remote_conversation),
             patch("goblin.conversation.asyncio.to_thread") as mock_to_thread,
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):
@@ -180,11 +180,11 @@ class TestPromptPhaseGetWorkspaceCalled:
         phase._blueprint._get_workspace.return_value = local_ws
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_local_conversation),
             patch(
-                "goblin.phase.extract_structured_result",
+                "goblin.tools.structured_finish.extract_structured_result",
                 return_value=PhaseResult(success=True, message=["ok"]),
             ),
         ):

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from goblin.phase import LoadProjectPhase, PhaseProtocol, PromptPhase
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from goblin.phase import PhaseProtocol
 
 
 class DependencyGraph:
@@ -10,7 +13,7 @@ class DependencyGraph:
     hooks, or I/O. Constructed once at blueprint parse time.
     """
 
-    def __init__(self, phases: list[PhaseProtocol]):
+    def __init__(self, phases: list["PhaseProtocol"]):
         self.phases = phases
         self._compute_default_dependencies()
         self._validate_dependencies()
@@ -27,6 +30,8 @@ class DependencyGraph:
 
     def _validate_dependencies(self):
         """Validate phase dependencies: existence, cycles, and load_project ordering."""
+        from goblin.phase import LoadProjectPhase
+
         phase_ids = {p.id for p in self.phases}
 
         # Existence check
@@ -89,9 +94,11 @@ class DependencyGraph:
         return visited
 
     def _validate_history_reference(
-        self, phase: PhaseProtocol, ref_id: str, phase_ids: set[str], foreach_phase_ids: set[str]
+        self, phase: "PhaseProtocol", ref_id: str, phase_ids: set[str], foreach_phase_ids: set[str]
     ) -> None:
         """Validate a single `history` reference on *phase*. Raises ValueError on any violation."""
+        from goblin.phase import PromptPhase
+
         if ref_id not in phase_ids:
             raise ValueError(
                 f"Phase '{phase.id}': history references '{ref_id}' which is not defined before this phase"
@@ -115,6 +122,8 @@ class DependencyGraph:
 
     def _validate_history(self):
         """Validate history references at parse time."""
+        from goblin.phase import PromptPhase
+
         foreach_phase_ids: set[str] = set()
         phase_ids = {p.id for p in self.phases}
 

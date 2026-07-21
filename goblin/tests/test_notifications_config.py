@@ -160,11 +160,14 @@ class TestPromptPhaseAskUserToolParams:
         phase._blueprint._get_workspace.return_value = local_ws
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.resolve_tools") as mock_resolve_tools,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
+            patch("goblin.tools.tool_map.resolve_tools") as mock_resolve_tools,
             patch("goblin.conversation.LocalConversation", return_value=_mock_conversation()),
-            patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
+            patch(
+                "openhands.sdk.conversation.get_agent_final_response",
+                return_value='{"success": true, "message": ["ok"]}',
+            ),
         ):
             mock_agent_cls.return_value = MagicMock()
             await phase.run({})
@@ -182,11 +185,14 @@ class TestPromptPhaseAskUserToolParams:
         phase._blueprint._get_workspace.return_value = local_ws
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.resolve_tools") as mock_resolve_tools,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
+            patch("goblin.tools.tool_map.resolve_tools") as mock_resolve_tools,
             patch("goblin.conversation.LocalConversation", return_value=_mock_conversation()),
-            patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
+            patch(
+                "openhands.sdk.conversation.get_agent_final_response",
+                return_value='{"success": true, "message": ["ok"]}',
+            ),
         ):
             mock_agent_cls.return_value = MagicMock()
             await phase.run({})
@@ -202,11 +208,14 @@ class TestPromptPhaseAskUserToolParams:
         phase._blueprint._get_workspace.return_value = local_ws
 
         with (
-            patch("goblin.phase.build_llm"),
-            patch("goblin.phase.Agent") as mock_agent_cls,
-            patch("goblin.phase.resolve_tools") as mock_resolve_tools,
+            patch("goblin.utils.llm.build_llm"),
+            patch("openhands.sdk.Agent") as mock_agent_cls,
+            patch("goblin.tools.tool_map.resolve_tools") as mock_resolve_tools,
             patch("goblin.conversation.LocalConversation", return_value=_mock_conversation()),
-            patch("goblin.phase.get_agent_final_response", return_value='{"success": true, "message": ["ok"]}'),
+            patch(
+                "openhands.sdk.conversation.get_agent_final_response",
+                return_value='{"success": true, "message": ["ok"]}',
+            ),
         ):
             mock_agent_cls.return_value = MagicMock()
             await phase.run({})
