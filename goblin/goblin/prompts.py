@@ -26,6 +26,17 @@ Do not write the answer as free-form text. Use the tool.
 """
 
 
+STRUCTURED_FOLLOW_UP_SYSTEM_PROMPT_TEMPLATE = """
+You are an autonomous agent executing a series of instructions.
+
+The previous run produced an answer but not in the required structured format.
+Respond with a single JSON object matching this schema:
+{schema}
+
+Do not include any preamble, explanation, or markdown formatting. Output only the JSON object.
+"""
+
+
 def build_system_prompt(output_model: type[BaseModel]) -> str:
     """Produce the system prompt for an agent whose Finish tool expects *output_model*.
 
@@ -39,6 +50,17 @@ def build_system_prompt(output_model: type[BaseModel]) -> str:
     """
     schema = json.dumps(output_model.model_json_schema(), indent=2)
     return STRUCTURED_SYSTEM_PROMPT_TEMPLATE.format(schema=schema)
+
+
+def build_structured_follow_up_prompt(output_model: type[BaseModel]) -> str:
+    """Produce the system prompt for the tool-less structured-output follow-up.
+
+    Called when the in-loop typed Finish tool did not fire. The follow-up
+    agent has no tools, so the prompt asks for a raw JSON object matching
+    *output_model* rather than a tool call.
+    """
+    schema = json.dumps(output_model.model_json_schema(), indent=2)
+    return STRUCTURED_FOLLOW_UP_SYSTEM_PROMPT_TEMPLATE.format(schema=schema)
 
 
 SWARM_AGENT_PROMPT = """

@@ -13,7 +13,7 @@ from goblin.output_schema import (
     coerce_to_model,
     validate_against_schema,
 )
-from goblin.prompts import BASE_SYSTEM_PROMPT, build_system_prompt
+from goblin.prompts import BASE_SYSTEM_PROMPT, build_structured_follow_up_prompt, build_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +248,9 @@ class PromptPhase(PhaseProtocol):
         if structured_configured:
             structured: BaseModel | None = extract_structured_result(conversation.state.events, output_model)
             if structured is None:
-                structured = await self._request_structured_output(prompt, output_model, llm_config=llm_config)
+                structured = await self._request_structured_output(
+                    prompt, text_output, output_model, llm_config=llm_config
+                )
             if structured is None:
                 structured = self._fallback_result(text_output, output_model)
         else:
@@ -303,6 +305,7 @@ class PromptPhase(PhaseProtocol):
     async def _request_structured_output(
         self,
         original_prompt: str,
+        prior_text: str,
         output_model: type[BaseModel],
         *,
         llm_config,
@@ -311,9 +314,9 @@ class PromptPhase(PhaseProtocol):
 
         Called when the in-loop Finish tool didn't fire. The follow-up agent
         is a fresh, stateless LLM call (no tool loop), so it can carry the
-        response_format payload directly. Anthropic may drop the parameter
-        for some models; the cheap ``coerce_to_model`` fallback handles the
-        resulting prose output.
+        response_format payload directly. We include the prior run's final
+        text and the original task so the follow-up can answer from the work
+        already done rather than fabricating from the prompt alone.
         """
         from openhands.sdk import Agent, LocalWorkspace
         from openhands.sdk.conversation import get_agent_final_response
@@ -322,6 +325,8 @@ class PromptPhase(PhaseProtocol):
 
         follow_up = (
             "Your previous attempt did not return a structured answer. "
+            "Here is what you produced:\n\n"
+            f"{prior_text}\n\n"
             "Respond with the structured final answer now.\n\n"
             f"Original task:\n{original_prompt}"
         )
@@ -331,7 +336,12 @@ class PromptPhase(PhaseProtocol):
         # through that path keeps the follow-up LLM consistent with the
         # primary run's provider mapping.
         llm = build_llm(model=llm_config, output_model=output_model)
-        agent = Agent(llm=llm, tools=[], system_prompt=BASE_SYSTEM_PROMPT, critic=None)
+        agent = Agent(
+            llm=llm,
+            tools=[],
+            system_prompt=build_structured_follow_up_prompt(output_model),
+            critic=None,
+        )
         workspace = LocalWorkspace(working_dir=".")
         conversation = await run_conversation(
             agent,

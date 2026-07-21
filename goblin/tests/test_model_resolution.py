@@ -148,6 +148,76 @@ class TestPromptPhaseModel:
 
 
 # ---------------------------------------------------------------------------
+# PromptPhase structured-output follow-up
+# ---------------------------------------------------------------------------
+
+
+class TestPromptPhaseStructuredFollowUp:
+    @pytest.mark.asyncio
+    async def test_follow_up_includes_prior_text_and_uses_structured_prompt(self):
+        """J-3: the Layer-2 follow-up must see the prior text and use a structured system prompt."""
+        bp = V1Blueprint(
+            {
+                "name": "test",
+                "defaults": {"model": "openai/gpt-4o"},
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "Summarize the codebase.",
+                        "model": "openai/gpt-4o",
+                        "output_model": "goblin.output_schema.PhaseResult",
+                    }
+                ],
+            }
+        )
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+
+        primary_conversation = MagicMock()
+        primary_conversation.arun = AsyncMock()
+        primary_conversation.state.events = []
+        primary_conversation.conversation_stats = None
+
+        followup_conversation = MagicMock()
+        followup_conversation.arun = AsyncMock()
+        followup_conversation.state.events = []
+        followup_conversation.conversation_stats = None
+
+        def make_conv(*args, **kwargs):
+            return primary_conversation if kwargs.get("hook_config") is not None else followup_conversation
+
+        captured_agents: list[dict] = []
+
+        def capture_agent(*args, **kwargs):
+            captured_agents.append(kwargs)
+            return MagicAgent()
+
+        with (
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent", side_effect=capture_agent),
+            patch("goblin.tools.structured_finish.extract_structured_result", return_value=None),
+            patch("goblin.conversation.LocalConversation", side_effect=make_conv),
+            patch("openhands.sdk.conversation.get_agent_final_response", side_effect=["prior final text", ""]),
+        ):
+            mock_build_llm.return_value = MagicAgent()
+            await phase.run({})
+
+        assert len(captured_agents) == 2
+        follow_up_agent = captured_agents[1]
+
+        # Follow-up agent uses the dedicated structured follow-up prompt, not
+        # the plain-text BASE_SYSTEM_PROMPT.
+        system_prompt = follow_up_agent["system_prompt"]
+        assert "previous run produced an answer but not in the required structured format" in system_prompt.lower()
+        assert "call the `finish` tool" not in system_prompt.lower()
+
+        # Follow-up prompt includes the prior run's final text and the original task.
+        follow_up_prompt = followup_conversation.send_message.call_args[0][0]
+        assert "prior final text" in follow_up_prompt
+        assert "Summarize the codebase." in follow_up_prompt
+
+
+# ---------------------------------------------------------------------------
 # SwarmPhase model propagation
 # ---------------------------------------------------------------------------
 
