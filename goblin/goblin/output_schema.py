@@ -79,10 +79,6 @@ class SwarmCoordinatorResult(BaseModel):
     message: list[str]
 
 
-# Backwards-compatible alias for code that imported the old name.
-PhaseResultMessage = list[str]
-
-
 # ---------------------------------------------------------------------------
 # Provider prefix → response format translation
 # ---------------------------------------------------------------------------

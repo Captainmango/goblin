@@ -26,7 +26,7 @@ from openhands.sdk.tool import (
     register_tool,
 )
 from openhands.sdk.tool.builtins import FinishObservation
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 if TYPE_CHECKING:
     from openhands.sdk.conversation import LocalConversation
@@ -179,10 +179,9 @@ def extract_structured_result(events, output_model: type[BaseModel]):
     """Return the ``result`` from the agent's typed Finish call, or ``None``.
 
     Walks the conversation event log looking for an ``ActionEvent`` whose
-    source is ``"agent"`` and whose action is a ``StructuredFinishAction``
-    (or any Finish action whose ``result`` validates against the requested
-    output model). Returns the most recent such action's validated
-    ``result`` instance — the one the agent emitted last.
+    source is ``"agent"`` and whose action is a ``StructuredFinishAction``.
+    Returns the most recent such action's validated ``result`` instance —
+    the one the agent emitted last.
 
     Uses duck typing (attribute checks) instead of an ``isinstance`` check on
     :class:`openhands.sdk.event.ActionEvent` so tests can pass plain
@@ -207,6 +206,6 @@ def extract_structured_result(events, output_model: type[BaseModel]):
             if isinstance(result, BaseModel):
                 return output_model.model_validate(result.model_dump())
             return output_model.model_validate(result)
-        except Exception:
+        except (ValidationError, ValueError, TypeError):
             continue
     return None

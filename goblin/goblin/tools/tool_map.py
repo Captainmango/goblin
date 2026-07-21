@@ -15,7 +15,6 @@ def _get_tool_name_map() -> dict[str, Tool]:
         return _TOOL_NAME_MAP
 
     from openhands.sdk import Tool
-    from openhands.sdk.tool.builtins import FinishTool
     from openhands.tools.file_editor import FileEditorTool
     from openhands.tools.glob import GlobTool
     from openhands.tools.grep import GrepTool
@@ -39,8 +38,6 @@ def _get_tool_name_map() -> dict[str, Tool]:
         "SwarmAgent": Tool(name=SwarmAgentTool.name),
         "Worktree": Tool(name=WorktreeTool.name),
         "AskUser": Tool(name=AskUserTool.name),
-        "finish": Tool(name=FinishTool.name),
-        "StructuredFinish": Tool(name="structured_finish"),
     }
     return _TOOL_NAME_MAP
 

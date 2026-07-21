@@ -18,21 +18,11 @@ from goblin.prompts import BASE_SYSTEM_PROMPT, build_structured_follow_up_prompt
 logger = logging.getLogger(__name__)
 
 
-def _validate_output_schema(data: dict, schema: dict) -> list[str]:
-    """Backward-compatible thin wrapper around :func:`validate_against_schema`.
-
-    Kept as a module-level symbol so existing callers continue to work; new
-    code should prefer :func:`validate_against_schema` directly.
-    """
-    return validate_against_schema(data, schema)
-
-
 __all__ = [
     "PhaseProtocol",
     "PromptPhase",
     "LoadProjectPhase",
     "PhaseResult",
-    "_validate_output_schema",
 ]
 
 
