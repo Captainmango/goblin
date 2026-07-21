@@ -22,9 +22,13 @@ Tests live in `<project>/tests/` and use pytest with `pytest-asyncio` for async 
 ```
 goblin/tests/
 ├── conftest.py          # Shared fixtures
+├── tools/               # Tool executors
+├── utils/               # Utility modules
+├── notifications/       # Notification client/config
 ├── test_validation.py   # Blueprint schema validation
+├── test_blueprint_run.py  # Blueprint orchestration
 ├── test_swarm.py        # Swarm orchestration
-├── test_resume.py       # Checkpoint resume
+├── test_checkpoint.py   # Checkpoint resume
 └── ...
 ```
 

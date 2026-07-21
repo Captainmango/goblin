@@ -8,7 +8,7 @@ OpenHands SDK conversation/agent machinery is started, per
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from goblin.tools.ask_user_tool import (
     ASK_USER_TIMEOUT_SECONDS,
@@ -44,57 +44,52 @@ class _FakeRelayClient:
 
 
 class TestAskUserExecutorCall:
-    def test_returns_reply_text(self, monkeypatch):
+    def test_returns_reply_text(self):
         fake_client = _FakeRelayClient(reply_text="yes, go ahead")
-        monkeypatch.setattr("goblin.tools.ask_user_tool.make_client", lambda: fake_client)
-
-        executor = AskUserExecutor(token="tok123")
-        obs = executor(AskUserAction(question="Should I proceed?"))
+        with patch("goblin.tools.ask_user_tool.make_client", return_value=fake_client):
+            executor = AskUserExecutor(token="tok123")
+            obs = executor(AskUserAction(question="Should I proceed?"))
 
         assert isinstance(obs, AskUserObservation)
         assert obs.is_error is False
         assert obs.answer == "yes, go ahead"
         assert obs.text == "yes, go ahead"
 
-    def test_sends_the_token_and_question(self, monkeypatch):
+    def test_sends_the_token_and_question(self):
         fake_client = _FakeRelayClient(reply_text="ok")
-        monkeypatch.setattr("goblin.tools.ask_user_tool.make_client", lambda: fake_client)
-
-        executor = AskUserExecutor(token="tok123")
-        executor(AskUserAction(question="Continue?"))
+        with patch("goblin.tools.ask_user_tool.make_client", return_value=fake_client):
+            executor = AskUserExecutor(token="tok123")
+            executor(AskUserAction(question="Continue?"))
 
         fake_client.ask.assert_awaited_once()
         call = fake_client.ask.call_args
         assert call.args[0] == "tok123"
         assert call.args[1] == "Continue?"
 
-    def test_passes_configured_timeout(self, monkeypatch):
+    def test_passes_configured_timeout(self):
         fake_client = _FakeRelayClient(reply_text="ok")
-        monkeypatch.setattr("goblin.tools.ask_user_tool.make_client", lambda: fake_client)
-
-        executor = AskUserExecutor(token="tok123", timeout=42.0)
-        executor(AskUserAction(question="Continue?"))
+        with patch("goblin.tools.ask_user_tool.make_client", return_value=fake_client):
+            executor = AskUserExecutor(token="tok123", timeout=42.0)
+            executor(AskUserAction(question="Continue?"))
 
         assert fake_client.ask.call_args.kwargs["timeout"] == 42.0
 
     def test_default_timeout_is_fifteen_minutes(self):
         assert ASK_USER_TIMEOUT_SECONDS == 15 * 60
 
-    def test_default_executor_uses_fifteen_minute_timeout(self, monkeypatch):
+    def test_default_executor_uses_fifteen_minute_timeout(self):
         fake_client = _FakeRelayClient(reply_text="ok")
-        monkeypatch.setattr("goblin.tools.ask_user_tool.make_client", lambda: fake_client)
-
-        executor = AskUserExecutor(token="tok123")
-        executor(AskUserAction(question="Continue?"))
+        with patch("goblin.tools.ask_user_tool.make_client", return_value=fake_client):
+            executor = AskUserExecutor(token="tok123")
+            executor(AskUserAction(question="Continue?"))
 
         assert fake_client.ask.call_args.kwargs["timeout"] == ASK_USER_TIMEOUT_SECONDS
 
-    def test_timeout_error_returns_error_observation(self, monkeypatch):
+    def test_timeout_error_returns_error_observation(self):
         fake_client = _FakeRelayClient(error=AskTimeoutError("no reply received"))
-        monkeypatch.setattr("goblin.tools.ask_user_tool.make_client", lambda: fake_client)
-
-        executor = AskUserExecutor(token="tok123")
-        obs = executor(AskUserAction(question="Are you there?"))
+        with patch("goblin.tools.ask_user_tool.make_client", return_value=fake_client):
+            executor = AskUserExecutor(token="tok123")
+            obs = executor(AskUserAction(question="Are you there?"))
 
         assert obs.is_error is True
         assert "no reply received" in obs.text
@@ -112,7 +107,7 @@ class TestAskUserToolCreate:
         assert tool.executor._token == "explicit-token"
         assert tool.executor._timeout == ASK_USER_TIMEOUT_SECONDS
 
-    def test_create_resolves_default_label_when_unspecified(self, monkeypatch):
+    def test_create_resolves_default_label_when_unspecified(self):
         captured: dict[str, str | None] = {}
 
         def _fake_resolve(label: str | None = None, token: str | None = None) -> str:
@@ -120,22 +115,20 @@ class TestAskUserToolCreate:
             captured["token"] = token
             return "resolved-token"
 
-        monkeypatch.setattr("goblin.tools.ask_user_tool.resolve", _fake_resolve)
-
-        tools = AskUserTool.create()
+        with patch("goblin.tools.ask_user_tool.resolve", _fake_resolve):
+            tools = AskUserTool.create()
 
         assert captured["label"] == "default"
         assert tools[0].executor._token == "resolved-token"
 
-    def test_create_passes_through_custom_label(self, monkeypatch):
+    def test_create_passes_through_custom_label(self):
         captured: dict[str, str | None] = {}
 
         def _fake_resolve(label: str | None = None, token: str | None = None) -> str:
             captured["label"] = label
             return "resolved-token"
 
-        monkeypatch.setattr("goblin.tools.ask_user_tool.resolve", _fake_resolve)
-
-        AskUserTool.create(label="ops-oncall")
+        with patch("goblin.tools.ask_user_tool.resolve", _fake_resolve):
+            AskUserTool.create(label="ops-oncall")
 
         assert captured["label"] == "ops-oncall"

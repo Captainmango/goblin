@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import json
 import logging
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -115,13 +118,13 @@ class TestConfigureLogging:
         file_handler = next(h for h in logger.handlers if isinstance(h, logging.FileHandler))
         assert file_handler.baseFilename == log_file
 
-    def test_default_log_file_uses_logger_name(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("goblin_common.logging._find_project_root", lambda: tmp_path)
-        configure_logging("goblin_common_test")
-        logger = logging.getLogger("goblin_common_test")
-        file_handler = next(h for h in logger.handlers if isinstance(h, logging.FileHandler))
-        assert file_handler.baseFilename == str(tmp_path / "logs" / "goblin_common_test.jsonl")
-        assert (tmp_path / "logs").is_dir()
+    def test_default_log_file_uses_logger_name(self, tmp_path):
+        with patch("goblin_common.logging._find_project_root", return_value=tmp_path):
+            configure_logging("goblin_common_test")
+            logger = logging.getLogger("goblin_common_test")
+            file_handler = next(h for h in logger.handlers if isinstance(h, logging.FileHandler))
+            assert file_handler.baseFilename == str(tmp_path / "logs" / "goblin_common_test.jsonl")
+            assert (tmp_path / "logs").is_dir()
 
     def test_custom_log_level(self, tmp_path):
         configure_logging("goblin_common_test", log_level="DEBUG", log_file=str(tmp_path / "test.jsonl"))

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from goblin.utils.tree import walk_strings
 
 

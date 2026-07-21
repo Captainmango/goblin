@@ -203,4 +203,3 @@ class TestCheckpointConcurrency:
         assert data["phases"]["b"]["status"] == "completed"
         assert data["phases"]["c"]["status"] == "completed"
         assert await cp.completed_phase_ids() == {"a", "b", "c"}
-

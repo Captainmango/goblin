@@ -5,6 +5,7 @@ Mirrors the `worktree` config pattern (see test_worktree_tool.py): a
 per-phase `label`, which PromptPhase wires into the AskUser tool's
 `tool_params` so blueprint authors can pick which paired operator gets asked.
 """
+
 from __future__ import annotations
 
 from typing import Any

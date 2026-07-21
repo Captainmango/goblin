@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -50,6 +50,7 @@ def _make_blueprint_with_mock_phases(
 # ---------------------------------------------------------------------------
 # 7a: SwarmDB in isolation
 # ---------------------------------------------------------------------------
+
 
 class TestSwarmDBSchema:
     def test_init_schema_creates_tables(self, tmp_path):
@@ -775,7 +776,7 @@ class TestAgentAllowedTools:
         assert "Bash" in tools
 
     @pytest.mark.asyncio
-    async def test_run_single_agent_wires_swarm_agent_tool(self, tmp_path, monkeypatch):
+    async def test_run_single_agent_wires_swarm_agent_tool(self, tmp_path):
         """_run_single_agent must resolve the SwarmAgent tool with the agent's
         name and the phase's db_config so the agent can claim/complete tasks.
         """
@@ -791,21 +792,21 @@ class TestAgentAllowedTools:
             def __init__(self, *, tools, **kwargs):
                 captured_tools.extend(tools)
 
-        monkeypatch.setattr("openhands.sdk.Agent", FakeAgent)
-        monkeypatch.setattr("goblin.utils.llm.build_llm", lambda **kwargs: object())
-
         async def fake_run_conversation(agent, workspace, prompt, **kwargs):
             class FakeConversation:
                 pass
 
             return FakeConversation()
 
-        monkeypatch.setattr("goblin.conversation.run_conversation", fake_run_conversation)
-        monkeypatch.setattr("openhands.sdk.conversation.get_agent_final_response", lambda events: "")
-
         from goblin.cost_control import CircuitBreaker
 
-        await phase._run_single_agent(phase.agents_config[0], {}, CircuitBreaker())
+        with (
+            patch("openhands.sdk.Agent", FakeAgent),
+            patch("goblin.utils.llm.build_llm", side_effect=lambda **kwargs: object()),
+            patch("goblin.conversation.run_conversation", fake_run_conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value=""),
+        ):
+            await phase._run_single_agent(phase.agents_config[0], {}, CircuitBreaker())
 
         tool_names = {t.name for t in captured_tools}
         assert "swarm_agent" in tool_names
@@ -853,7 +854,7 @@ class TestRenderTaskBoard:
         phase._db.close()
 
     @pytest.mark.asyncio
-    async def test_coordinator_prompt_includes_task_board(self, tmp_path, monkeypatch):
+    async def test_coordinator_prompt_includes_task_board(self, tmp_path):
         """The task board must be injected into the coordinator's prompt so a
         stateless coordinator can see prior-round tasks and avoid re-creating
         them (the cause of the never-terminating loop)."""
@@ -870,20 +871,20 @@ class TestRenderTaskBoard:
             def __init__(self, *, tools, **kwargs):
                 self.tools = tools
 
-        monkeypatch.setattr("openhands.sdk.Agent", FakeAgent)
-        monkeypatch.setattr("goblin.utils.llm.build_llm", lambda **kwargs: object())
-
         async def fake_run_conversation(agent, workspace, prompt, **kwargs):
             captured["prompt"] = prompt
             captured["tools"] = agent.tools
             raise RuntimeError("stop after capturing prompt")
 
-        monkeypatch.setattr("goblin.conversation.run_conversation", fake_run_conversation)
-
         from goblin.cost_control import CircuitBreaker
 
-        with pytest.raises(RuntimeError, match="stop after capturing"):
-            await phase._run_coordinator({}, CircuitBreaker())
+        with (
+            patch("openhands.sdk.Agent", FakeAgent),
+            patch("goblin.utils.llm.build_llm", side_effect=lambda **kwargs: object()),
+            patch("goblin.conversation.run_conversation", fake_run_conversation),
+        ):
+            with pytest.raises(RuntimeError, match="stop after capturing"):
+                await phase._run_coordinator({}, CircuitBreaker())
 
         assert "Current Task Board" in captured["prompt"]
         assert "[done] Impl (coder)" in captured["prompt"]
