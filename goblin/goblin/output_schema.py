@@ -25,6 +25,7 @@ blueprints but are generated into Pydantic at load time.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -110,6 +111,12 @@ class _ProviderResponseFormat:
         merged = dict(kwargs.get("litellm_extra_body") or {})
         merged.update(self._extra_body)
         kwargs["litellm_extra_body"] = merged
+
+
+def _schema_hash(schema: dict[str, Any]) -> str:
+    """Return a short, stable hash of a JSON schema for cache keys."""
+    canonical = json.dumps(schema, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
 def response_format_payload(model: type[BaseModel], *, strict: bool = False, name: str | None = None) -> dict:
@@ -220,8 +227,16 @@ def resolve_output_model(blueprint: V1Blueprint, phase: PhaseProtocol) -> type[B
 
     raw_output_schema = getattr(phase, "output_schema", None)
     if raw_output_schema is not None:
-        cache_key = f"{blueprint.spec.get('name', 'bp')}::{phase.id}::schema"
-        return _json_schema_cache.setdefault(cache_key, json_schema_to_pydantic(raw_output_schema))
+        schema_hash = _schema_hash(raw_output_schema)
+        cache_key = f"{blueprint.spec.get('name', 'bp')}::{phase.id}::{schema_hash}"
+        cached = _json_schema_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        generated_name = f"goblin.generated.{blueprint.spec.get('name', 'bp')}::{phase.id}::{schema_hash}"
+        model = json_schema_to_pydantic(raw_output_schema, name=generated_name)
+        register_output_model(generated_name, model)
+        _json_schema_cache[cache_key] = model
+        return model
 
     return PhaseResult
 
@@ -261,7 +276,32 @@ def resolve_output_model_by_ref(ref: str) -> type[BaseModel]:
     return _resolve_dotted_or_registered(ref)
 
 
-def json_schema_to_pydantic(schema: dict[str, Any]) -> type[BaseModel]:
+def ref_for_model(model: type[BaseModel]) -> str | None:
+    """Return the registered dotted-name reference for *model*, if any.
+
+    The canonical default :class:`PhaseResult` is recognised by identity
+    rather than registration so the reference stays stable even when the
+    registry is cleared between tests.
+    """
+    if model is PhaseResult:
+        return "goblin.output_schema.PhaseResult"
+    for ref, registered in _REGISTRY.items():
+        if registered is model:
+            return ref
+    return None
+
+
+def reset_output_schema_cache() -> None:
+    """Clear the inline-schema cache and registry.
+
+    Intended for test isolation. User-registered models are also removed;
+    tests that need a stable registration should re-register each run.
+    """
+    _json_schema_cache.clear()
+    _REGISTRY.clear()
+
+
+def json_schema_to_pydantic(schema: dict[str, Any], name: str = "InlineOutputModel") -> type[BaseModel]:
     """Build a Pydantic class from a JSON Schema fragment.
 
     Supports the common case used by goblin blueprints: a single object with
@@ -275,26 +315,26 @@ def json_schema_to_pydantic(schema: dict[str, Any]) -> type[BaseModel]:
     (see :func:`validate_against_schema`) catches stricter constraints.
     """
     if not isinstance(schema, dict) or schema.get("type", "object") != "object":
-        return _permissive_object_model(schema)
+        return _permissive_object_model(schema, name=name)
 
     properties = schema.get("properties") or {}
     required = set(schema.get("required") or [])
     fields: dict[str, Any] = {}
-    for name, prop in properties.items():
-        fields[name] = (_python_type_for(prop), _field_default(prop, name in required))
+    for field_name, prop in properties.items():
+        fields[field_name] = (_python_type_for(prop), _field_default(prop, field_name in required))
     if not fields:
-        return _permissive_object_model(schema)
-    return create_model("InlineOutputModel", __base__=PhaseResult, **fields)  # type: ignore[call-overload]
+        return _permissive_object_model(schema, name=name)
+    return create_model(name, __base__=PhaseResult, **fields)  # type: ignore[call-overload]
 
 
-def _permissive_object_model(schema: dict[str, Any]) -> type[BaseModel]:
-    name = schema.get("title") or "InlineOutputModel"
+def _permissive_object_model(schema: dict[str, Any], name: str = "InlineOutputModel") -> type[BaseModel]:
+    display_name = schema.get("title") or name
 
     class _Inline(PhaseResult):
         model_config = ConfigDict(extra="allow")
 
-    _Inline.__name__ = name
-    _Inline.__qualname__ = name
+    _Inline.__name__ = display_name
+    _Inline.__qualname__ = display_name
     return _Inline
 
 
@@ -356,9 +396,8 @@ def coerce_to_model(text: str, model: type[BaseModel]) -> BaseModel | None:
     Three tiers, ordered by cost:
 
     1. Direct ``model_validate_json`` — well-formed JSON.
-    2. ``json_repair.repair_json`` to rescue near-JSON with a small defect.
-    3. JSON-object extraction from prose (markdown fences, leading text,
-       trailing commentary).
+    2. JSON-object extraction from prose (markdown fences, balanced braces).
+    3. ``json_repair.repair_json`` to rescue near-JSON with a small defect.
     """
     if not text:
         return None
@@ -404,7 +443,6 @@ def _repair_to_object(text: str) -> Any:
 
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
-_OBJECT_RE = re.compile(r"\{[^{}]*\}", re.DOTALL)
 
 
 def _extract_json_object(text: str) -> str | None:
@@ -414,6 +452,8 @@ def _extract_json_object(text: str) -> str | None:
 
     - Strips markdown code fences even when the JSON inside has trailing
       commentary that would otherwise fail strict parsing.
+    - Uses a balanced-brace scan so nested objects (``{"meta": {"a": 1}}``)
+      are returned whole instead of matching only the inner fragment.
     - When the text contains multiple JSON objects (e.g. ``{'a':1} junk
       {'b':2}``) returns the *last* one — the model's final answer rather
       than its first attempt — instead of silently parsing only the first.
@@ -431,13 +471,45 @@ def _extract_json_object(text: str) -> str | None:
             return json.dumps(parsed)
         # The fenced block wasn't a JSON object — fall through to scan the
         # raw text in case there's a different object nearby.
+
     last_dict_match: str | None = None
-    for match in _OBJECT_RE.finditer(text):
-        candidate = match.group(0)
-        try:
-            parsed = json.loads(candidate)
-        except json.JSONDecodeError:
+    n = len(text)
+    i = 0
+    while i < n:
+        if text[i] != "{":
+            i += 1
             continue
-        if isinstance(parsed, dict):
-            last_dict_match = candidate
+
+        start = i
+        depth = 0
+        in_string = False
+        escape = False
+        while i < n:
+            ch = text[i]
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"' and in_string:
+                in_string = False
+            elif ch == '"' and not in_string:
+                in_string = True
+            elif not in_string:
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = text[start : i + 1]
+                        try:
+                            parsed = json.loads(candidate)
+                        except json.JSONDecodeError:
+                            pass
+                        else:
+                            if isinstance(parsed, dict):
+                                last_dict_match = candidate
+                        break
+            i += 1
+        i += 1
+
     return last_dict_match

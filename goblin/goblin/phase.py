@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from pydantic import BaseModel
 
@@ -47,7 +47,7 @@ class PhaseProtocol(Protocol):
     on_failure: dict | None
     depends_on: list[str] | None
 
-    async def run(self, context: dict) -> Dict: ...
+    async def run(self, context: dict) -> dict: ...
 
 
 class PromptPhase(PhaseProtocol):
@@ -107,35 +107,22 @@ class PromptPhase(PhaseProtocol):
         name. ``PhaseResult`` and any registered model pass through with
         their canonical name.
         """
-        from goblin.output_schema import (
-            _REGISTRY,
-            json_schema_to_pydantic,
-            register_output_model,
-        )
+        from goblin.output_schema import ref_for_model
 
-        # PhaseResult and registered models: emit a dotted-name reference.
-        for ref, registered in _REGISTRY.items():
-            if registered is output_model:
-                return {"output_model_ref": ref}
+        ref = ref_for_model(output_model)
+        if ref is None:
+            # Fall back to PhaseResult's reference so the typed Finish tool still
+            # emits a well-formed payload even when the output model came from an
+            # unknown source. The runner re-resolves to the real model afterwards.
+            ref = "goblin.output_schema.PhaseResult"
+        return {"output_model_ref": ref}
 
-        # Inline JSON Schema output model: cache it under a stable name.
-        raw_schema = getattr(self, "output_schema", None)
-        if raw_schema is not None and getattr(self, "output_model", None) is None:
-            generated = json_schema_to_pydantic(raw_schema)
-            name = f"goblin.generated.{self._blueprint.spec.get('name', 'bp')}::{self.id}"
-            register_output_model(name, generated)
-            return {"output_model_ref": name}
-
-        # Fall back to PhaseResult's reference so the typed Finish tool still
-        # emits a well-formed payload even when the output model came from an
-        # unknown source. The runner re-resolves to the real model afterwards.
-        return {"output_model_ref": "goblin.output_schema.PhaseResult"}
-
-    async def run(self, context: dict) -> Dict:
+    async def run(self, context: dict) -> dict:
         from openhands.sdk import Agent, Tool
         from openhands.sdk.conversation import get_agent_final_response
+
         from goblin.conversation import run_conversation
-        from goblin.tools.structured_finish import StructuredFinishTool, extract_structured_result
+        from goblin.tools.structured_finish import extract_structured_result
         from goblin.tools.tool_map import build_tool_filter_regex, resolve_tools
         from goblin.utils.llm import build_llm
 
@@ -181,7 +168,25 @@ class PromptPhase(PhaseProtocol):
         structured_configured = self._structured_output_configured()
 
         if structured_configured:
-            output_model = self._resolve_output_model()
+            try:
+                output_model = self._resolve_output_model()
+            except (ValueError, ImportError) as exc:
+                logger.warning(
+                    "output_model_resolution_failed",
+                    extra={
+                        "event": "phase.output_model_resolution_failed",
+                        "phase_id": self.id,
+                        "output_model": self.output_model,
+                        "error": str(exc),
+                    },
+                )
+                return {
+                    "success": False,
+                    "message": [f"Could not resolve output_model for phase '{self.id}': {exc}"],
+                    "prompt": prompt,
+                    "output": "",
+                    "spend": {},
+                }
             system_prompt = build_system_prompt(output_model)
             # Keep the provider response_format/guided_json payload off the
             # primary tool loop; it belongs on the follow-up call only.
@@ -214,7 +219,7 @@ class PromptPhase(PhaseProtocol):
             "system_prompt": system_prompt,
             "filter_tools_regex": build_tool_filter_regex(
                 self.allowed_tools,
-                extra_builtin_names=[StructuredFinishTool.name] if structured_configured else None,
+                extra_builtin_names=["structured_finish"] if structured_configured else None,
             ),
             "critic": None,
         }
@@ -299,7 +304,7 @@ class PromptPhase(PhaseProtocol):
         # names at this call site — downstream phases consume whatever the
         # output_model declared, not just ``success``/``message``.
         dumped = typed_result.model_dump()
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "success": dumped.get("success", False),
             "message": list(dumped.get("message", []) or []),
             "prompt": prompt,
@@ -336,6 +341,7 @@ class PromptPhase(PhaseProtocol):
         """
         from openhands.sdk import Agent, LocalWorkspace
         from openhands.sdk.conversation import get_agent_final_response
+
         from goblin.conversation import run_conversation
         from goblin.utils.llm import build_llm
 
@@ -351,7 +357,11 @@ class PromptPhase(PhaseProtocol):
         # guided_json / response_schema) onto ``litellm_extra_body``. Going
         # through that path keeps the follow-up LLM consistent with the
         # primary run's provider mapping.
-        llm = build_llm(model=llm_config, output_model=output_model)
+        llm = build_llm(
+            model=llm_config,
+            output_model=output_model,
+            output_schema_format=self.output_schema_format,
+        )
         agent = Agent(
             llm=llm,
             tools=[],
@@ -397,19 +407,20 @@ class PromptPhase(PhaseProtocol):
         """Final fallback when nothing in the layers produced a valid model.
 
         Try :func:`coerce_to_model` one last time on the Layer 2 text; if that
-        also fails, return a synthetic ``success=False`` result so the caller
-        at least sees a structured PhaseResult rather than an exception.
+        also fails, return a synthetic ``success=False`` :class:`PhaseResult`
+        so the caller at least sees a structured result rather than an
+        exception. User-defined models that lack ``success``/``message`` fields
+        lose the typed contract here by design — fabricating unknown fields
+        would be a worse lie.
         """
         coerced = coerce_to_model(text, output_model)
         if coerced is not None:
             return coerced
-        # Synthesize a minimal failure for the default PhaseResult shape;
-        # for arbitrary user-defined models we accept losing the typed
-        # contract rather than fabricating unknown fields.
-        try:
-            return output_model(success=False, message=["Agent produced no structured output"])
-        except Exception:
-            return PhaseResult(success=False, message=["Agent produced no structured output"])
+        logger.warning(
+            "structured_output_fallback_failed",
+            extra={"event": "phase.structured_fallback_failed"},
+        )
+        return PhaseResult(success=False, message=["Agent produced no structured output"])
 
 
 class LoadProjectPhase(PhaseProtocol):

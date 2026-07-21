@@ -27,8 +27,13 @@ class SpendTracker:
         self.iterations += 1
 
 
-class LimitExceeded(Exception):
+class GoblinError(Exception):
+    """Base exception for the goblin project."""
+
+
+class LimitExceeded(GoblinError):
     def __init__(self, reason: str, tracker: SpendTracker):
+        super().__init__(reason)
         self.reason = reason
         self.tracker = tracker
 

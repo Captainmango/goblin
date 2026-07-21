@@ -6,10 +6,8 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-
 from goblin.blueprint import V1Blueprint
 from goblin.phase import PromptPhase
-
 
 # ---------------------------------------------------------------------------
 # Helpers

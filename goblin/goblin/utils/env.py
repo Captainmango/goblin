@@ -53,3 +53,15 @@ def resolve_env_vars(value) -> Any:
         return _ENV_VAR_RE.sub(_replace, s)
 
     return walk_strings(value, _resolve)
+
+
+def collect_env_vars(value) -> set[str]:
+    """Recursively collect all ``${VAR}`` references from strings in *value*."""
+    names: set[str] = set()
+
+    def _collect(s: str) -> str:
+        names.update(_ENV_VAR_RE.findall(s))
+        return s
+
+    walk_strings(value, _collect)
+    return names

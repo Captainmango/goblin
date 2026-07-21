@@ -7,15 +7,13 @@ from typing import Any
 
 import pytest
 import yaml
-
 from goblin.import_resolver import (
-    resolve_imports,
     _deep_merge,
     _rewrite_condition,
+    resolve_imports,
 )
 from goblin.runner import BlueprintRunner
 from goblin.validation import validate_blueprint
-
 
 # ---------------------------------------------------------------------------
 # Helpers

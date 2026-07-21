@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, TypeVar, overload
+from typing import Any, overload
 
 from pydantic import SecretStr
-
-T = TypeVar("T")
 
 
 @overload
@@ -23,10 +21,6 @@ def env(name: str, default: str, *, fallback: str | None = None) -> str: ...
 
 @overload
 def env(name: str, default: int, *, fallback: str | None = None) -> int: ...
-
-
-@overload
-def env(name: str, default: T, *, fallback: str | None = None) -> T: ...
 
 
 def env(name: str, default: Any = None, *, fallback: str | None = None) -> Any:
@@ -49,9 +43,7 @@ def env(name: str, default: Any = None, *, fallback: str | None = None) -> Any:
     try:
         return type(default)(value)
     except (ValueError, TypeError) as exc:
-        raise ValueError(
-            f"Cannot coerce environment variable {name}={value!r} to {type(default).__name__}"
-        ) from exc
+        raise ValueError(f"Cannot coerce environment variable {name}={value!r} to {type(default).__name__}") from exc
 
 
 def secret_env(name: str, *, fallback: str | None = None) -> SecretStr | None:

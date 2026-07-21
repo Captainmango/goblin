@@ -19,6 +19,57 @@ _TABLE_RE = re.compile(
 )
 
 
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    assigned_to TEXT,
+    required_role TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    result TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS artifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER,
+    agent TEXT,
+    name TEXT,
+    path TEXT,
+    content TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_agent TEXT,
+    to_agent TEXT,
+    type TEXT,
+    payload TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS swarm_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    state TEXT NOT NULL DEFAULT 'setup',
+    round INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS agent_state (
+    name TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'pending',
+    roles TEXT,
+    iterations INTEGER DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT OR IGNORE INTO swarm_state (id, state, round) VALUES (1, 'setup', 0);
+"""
+
+
 def get_write_validation_rules() -> tuple[frozenset[str], str, str]:
     """Return the write-validation rules as plain data (a table-name set and
     two regex pattern strings) so callers outside this module — notably any
@@ -59,74 +110,18 @@ class SwarmDBBackend(Protocol):
     def close(self) -> None: ...
 
 
-class SQLiteSwarmDB:
-    """Local SQLite implementation of the SwarmDB backend."""
+class _BaseSwarmDB:
+    """Shared implementation used by both SQLite and Turso backends.
 
-    def __init__(self, db_path: str):
-        self.db_path = db_path
-        # check_same_thread=False: the OpenHands SDK dispatches tool calls
-        # (e.g. the swarm_tasks tool's executor) from a worker thread pool,
-        # and successive calls to the same tool can land on different
-        # threads even though the SDK already serializes them with a
-        # tool-wide mutex (see ToolDefinition.declared_resources). SQLite's
-        # same-thread check is about thread identity, not concurrency, so
-        # this is safe given that existing serialization.
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
+    Subclasses construct ``self._conn`` using their chosen DB-API driver and
+    set its ``row_factory``; everything else (schema, queries, write validation)
+    lives here so the two backends do not drift out of sync.
+    """
 
-    def init_schema(self):
-        self._conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                description TEXT,
-                assigned_to TEXT,
-                required_role TEXT,
-                status TEXT NOT NULL DEFAULT 'pending',
-                result TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
+    _conn: Any
 
-            CREATE TABLE IF NOT EXISTS artifacts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id INTEGER,
-                agent TEXT,
-                name TEXT,
-                path TEXT,
-                content TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS signals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                from_agent TEXT,
-                to_agent TEXT,
-                type TEXT,
-                payload TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS swarm_state (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                state TEXT NOT NULL DEFAULT 'setup',
-                round INTEGER NOT NULL DEFAULT 0,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS agent_state (
-                name TEXT PRIMARY KEY,
-                status TEXT NOT NULL DEFAULT 'pending',
-                roles TEXT,
-                iterations INTEGER DEFAULT 0,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            INSERT OR IGNORE INTO swarm_state (id, state, round) VALUES (1, 'setup', 0);
-            """
-        )
+    def init_schema(self) -> None:
+        self._conn.executescript(SCHEMA_SQL)
         self._conn.commit()
 
     def query(self, sql: str, params: tuple[Any, ...] | None = None) -> list[dict]:
@@ -155,7 +150,7 @@ class SQLiteSwarmDB:
         row = cursor.fetchone()
         return SwarmState(row["state"])
 
-    def transition(self, new_state: SwarmState):
+    def transition(self, new_state: SwarmState) -> None:
         self._conn.execute(
             "UPDATE swarm_state SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
             (new_state.value,),
@@ -171,7 +166,7 @@ class SQLiteSwarmDB:
         row = cursor.fetchone()
         return row["round"]
 
-    def update_agent_status(self, name: str, status: AgentStatus, iterations: int | None = None):
+    def update_agent_status(self, name: str, status: AgentStatus, iterations: int | None = None) -> None:
         if iterations is not None:
             self._conn.execute(
                 "UPDATE agent_state SET status = ?, iterations = ?, updated_at = CURRENT_TIMESTAMP WHERE name = ?",
@@ -184,7 +179,7 @@ class SQLiteSwarmDB:
             )
         self._conn.commit()
 
-    def register_agent(self, name: str, roles: list[str] | None = None):
+    def register_agent(self, name: str, roles: list[str] | None = None) -> None:
         self._conn.execute(
             "INSERT OR IGNORE INTO agent_state (name, status, roles) VALUES (?, ?, ?)",
             (name, AgentStatus.PENDING.value, json.dumps(roles) if roles else None),
@@ -248,21 +243,36 @@ class SQLiteSwarmDB:
             cursor = self._conn.execute("SELECT * FROM signals")
         return [dict(row) for row in cursor.fetchall()]
 
-    def close(self):
+    def close(self) -> None:
         self._conn.close()
 
 
-class TursoSwarmDB:
+class SQLiteSwarmDB(_BaseSwarmDB):
+    """Local SQLite implementation of the SwarmDB backend."""
+
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        # check_same_thread=False: the OpenHands SDK dispatches tool calls
+        # (e.g. the swarm_tasks tool's executor) from a worker thread pool,
+        # and successive calls to the same tool can land on different
+        # threads even though the SDK already serializes them with a
+        # tool-wide mutex (see ToolDefinition.declared_resources). SQLite's
+        # same-thread check is about thread identity, not concurrency, so
+        # this is safe given that existing serialization.
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA journal_mode=WAL")
+
+
+class TursoSwarmDB(_BaseSwarmDB):
     """Local or remote Turso/libSQL implementation of the SwarmDB backend.
 
     `pyturso` exposes a DB-API 2.0 surface that is nearly identical to the
-    standard `sqlite3` module, so this class mirrors `SQLiteSwarmDB` almost
-    line-for-line.  In local mode it opens a file or in-memory database with
-    `turso.connect`; in remote mode it opens a synced replica to a cloud
-    Turso database with `turso.sync.connect`.
+    standard `sqlite3` module, so this class inherits the bulk of its
+    behaviour from :class:`_BaseSwarmDB`.  In local mode it opens a file or
+    in-memory database with `turso.connect`; in remote mode it opens a synced
+    replica to a cloud Turso database with `turso.sync.connect`.
     """
-
-    _conn: Any
 
     def __init__(
         self,
@@ -291,122 +301,6 @@ class TursoSwarmDB:
 
         self._conn.row_factory = turso.Row
 
-    def init_schema(self):
-        self._conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                description TEXT,
-                assigned_to TEXT,
-                required_role TEXT,
-                status TEXT NOT NULL DEFAULT 'pending',
-                result TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS artifacts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id INTEGER,
-                agent TEXT,
-                name TEXT,
-                path TEXT,
-                content TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS signals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                from_agent TEXT,
-                to_agent TEXT,
-                type TEXT,
-                payload TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS swarm_state (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                state TEXT NOT NULL DEFAULT 'setup',
-                round INTEGER NOT NULL DEFAULT 0,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS agent_state (
-                name TEXT PRIMARY KEY,
-                status TEXT NOT NULL DEFAULT 'pending',
-                roles TEXT,
-                iterations INTEGER DEFAULT 0,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            INSERT OR IGNORE INTO swarm_state (id, state, round) VALUES (1, 'setup', 0);
-            """
-        )
-        self._conn.commit()
-
-    def query(self, sql: str, params: tuple[Any, ...] | None = None) -> list[dict]:
-        stripped = sql.strip()
-        if not stripped.upper().startswith("SELECT"):
-            raise ValueError("query() only accepts SELECT statements")
-        cursor = self._conn.execute(stripped, params or ())
-        return [dict(row) for row in cursor.fetchall()]
-
-    def execute(self, sql: str, params: tuple[Any, ...] | None = None) -> int:
-        stripped = sql.strip()
-        if not _WRITE_RE.match(stripped):
-            raise ValueError("execute() only accepts INSERT, UPDATE, or DELETE statements")
-        match = _TABLE_RE.search(stripped)
-        if not match:
-            raise ValueError("Could not determine target table from SQL statement")
-        table = match.group(1).lower()
-        if table not in _ALLOWED_WRITE_TABLES:
-            raise ValueError(f"Agents cannot write to '{table}'. Allowed tables: {sorted(_ALLOWED_WRITE_TABLES)}")
-        cursor = self._conn.execute(stripped, params or ())
-        self._conn.commit()
-        return cursor.rowcount
-
-    def get_state(self) -> SwarmState:
-        cursor = self._conn.execute("SELECT state FROM swarm_state WHERE id = 1")
-        row = cursor.fetchone()
-        return SwarmState(row["state"])
-
-    def transition(self, new_state: SwarmState):
-        self._conn.execute(
-            "UPDATE swarm_state SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-            (new_state.value,),
-        )
-        self._conn.commit()
-
-    def increment_round(self) -> int:
-        self._conn.execute(
-            "UPDATE swarm_state SET round = round + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
-        )
-        self._conn.commit()
-        cursor = self._conn.execute("SELECT round FROM swarm_state WHERE id = 1")
-        row = cursor.fetchone()
-        return row["round"]
-
-    def update_agent_status(self, name: str, status: AgentStatus, iterations: int | None = None):
-        if iterations is not None:
-            self._conn.execute(
-                "UPDATE agent_state SET status = ?, iterations = ?, updated_at = CURRENT_TIMESTAMP WHERE name = ?",
-                (status.value, iterations, name),
-            )
-        else:
-            self._conn.execute(
-                "UPDATE agent_state SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE name = ?",
-                (status.value, name),
-            )
-        self._conn.commit()
-
-    def register_agent(self, name: str, roles: list[str] | None = None):
-        self._conn.execute(
-            "INSERT OR IGNORE INTO agent_state (name, status, roles) VALUES (?, ?, ?)",
-            (name, AgentStatus.PENDING.value, json.dumps(roles) if roles else None),
-        )
-        self._conn.commit()
-
     def create_task(
         self,
         title: str,
@@ -427,38 +321,6 @@ class TursoSwarmDB:
             rowid = self._conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         assert isinstance(rowid, int)
         return rowid
-
-    def get_tasks(self) -> list[dict]:
-        cursor = self._conn.execute("SELECT * FROM tasks")
-        return [dict(row) for row in cursor.fetchall()]
-
-    def get_pending_tasks(self) -> list[dict]:
-        cursor = self._conn.execute("SELECT * FROM tasks WHERE status = 'pending'")
-        return [dict(row) for row in cursor.fetchall()]
-
-    def has_outstanding_tasks(self) -> bool:
-        cursor = self._conn.execute(
-            "SELECT 1 FROM tasks WHERE status IN (?, ?) LIMIT 1",
-            (TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value),
-        )
-        return cursor.fetchone() is not None
-
-    def get_artifacts(self) -> list[dict]:
-        cursor = self._conn.execute("SELECT * FROM artifacts")
-        return [dict(row) for row in cursor.fetchall()]
-
-    def get_signals(self, to_agent: str | None = None) -> list[dict]:
-        if to_agent is not None:
-            cursor = self._conn.execute(
-                "SELECT * FROM signals WHERE to_agent = ? OR to_agent IS NULL",
-                (to_agent,),
-            )
-        else:
-            cursor = self._conn.execute("SELECT * FROM signals")
-        return [dict(row) for row in cursor.fetchall()]
-
-    def close(self):
-        self._conn.close()
 
 
 class SwarmDB:

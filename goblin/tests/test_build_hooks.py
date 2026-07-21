@@ -5,12 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
-from openhands.sdk.hooks import HookConfig, HookDefinition
 from goblin.blueprint import V1Blueprint
 from goblin.hooks import HOOK_REGISTRY
 from goblin.phase import PromptPhase
-
+from openhands.sdk.hooks import HookConfig, HookDefinition
 
 _hook_a = HookDefinition(command="echo hook_a")
 _hook_b = HookDefinition(command="echo hook_b")

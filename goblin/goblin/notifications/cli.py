@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 
 import click
+from notifications_relay.local_store import save_token
 
 from goblin.notifications.client import make_client, resolve
-from notifications_relay.local_store import save_token
 
 
 @click.group()

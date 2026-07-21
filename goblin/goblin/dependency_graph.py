@@ -13,7 +13,7 @@ class DependencyGraph:
     hooks, or I/O. Constructed once at blueprint parse time.
     """
 
-    def __init__(self, phases: list["PhaseProtocol"]):
+    def __init__(self, phases: list[PhaseProtocol]):
         self.phases = phases
         self._compute_default_dependencies()
         self._validate_dependencies()
@@ -94,7 +94,7 @@ class DependencyGraph:
         return visited
 
     def _validate_history_reference(
-        self, phase: "PhaseProtocol", ref_id: str, phase_ids: set[str], foreach_phase_ids: set[str]
+        self, phase: PhaseProtocol, ref_id: str, phase_ids: set[str], foreach_phase_ids: set[str]
     ) -> None:
         """Validate a single `history` reference on *phase*. Raises ValueError on any violation."""
         from goblin.phase import PromptPhase

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -29,10 +29,10 @@ class Store:
             self._connection = None
 
     def _now(self) -> str:
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     def _expiry(self, ttl_seconds: int) -> str:
-        return (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat()
+        return (datetime.now(UTC) + timedelta(seconds=ttl_seconds)).isoformat()
 
     async def _execute(self, sql: str, parameters: tuple[Any, ...] = ()) -> aiosqlite.Cursor:
         if self._connection is None:
@@ -144,7 +144,7 @@ class Store:
         chat_id: str,
     ) -> None:
         now = self._now()
-        far_future = (datetime.now(timezone.utc) + timedelta(days=365 * 100)).isoformat()
+        far_future = (datetime.now(UTC) + timedelta(days=365 * 100)).isoformat()
         await self._execute(
             """
             UPDATE pairings

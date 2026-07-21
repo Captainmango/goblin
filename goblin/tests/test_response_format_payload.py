@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-
 from goblin.output_schema import (
     PhaseResult,
     provider_response_format_for_prefix,
     response_format_payload,
 )
+from pydantic import BaseModel, Field
 
 
 class _Summary(BaseModel):
@@ -112,48 +111,38 @@ class TestProviderResponseFormat:
 class TestBuildLlmProviderExtras:
     """End-to-end check that build_llm wires the right payload per provider."""
 
-    def test_openai_emits_response_format(self):
-        import os
-
-        os.environ.setdefault("GOBLIN_MODEL_API_KEY", "test")
+    def test_openai_emits_response_format(self, monkeypatch):
+        monkeypatch.setenv("GOBLIN_MODEL_API_KEY", "test")
         from goblin.utils.llm import build_llm
 
         llm = build_llm(model="openai/gpt-4o", output_model=PhaseResult)
         assert "response_format" in llm.litellm_extra_body
 
-    def test_vllm_emits_guided_json(self):
-        import os
-
-        os.environ.setdefault("GOBLIN_MODEL_API_KEY", "test")
+    def test_vllm_emits_guided_json(self, monkeypatch):
+        monkeypatch.setenv("GOBLIN_MODEL_API_KEY", "test")
         from goblin.utils.llm import build_llm
 
         llm = build_llm(model="vllm/my-model", output_model=PhaseResult)
         assert "guided_json" in llm.litellm_extra_body
 
-    def test_gemini_emits_response_schema(self):
-        import os
-
-        os.environ.setdefault("GOBLIN_MODEL_API_KEY", "test")
+    def test_gemini_emits_response_schema(self, monkeypatch):
+        monkeypatch.setenv("GOBLIN_MODEL_API_KEY", "test")
         from goblin.utils.llm import build_llm
 
         llm = build_llm(model="gemini/gemini-2.0", output_model=PhaseResult)
         assert "response_schema" in llm.litellm_extra_body
         assert llm.litellm_extra_body["response_mime_type"] == "application/json"
 
-    def test_explicit_response_format_overrides_output_model(self):
-        import os
-
-        os.environ.setdefault("GOBLIN_MODEL_API_KEY", "test")
+    def test_explicit_response_format_overrides_output_model(self, monkeypatch):
+        monkeypatch.setenv("GOBLIN_MODEL_API_KEY", "test")
         from goblin.utils.llm import build_llm
 
         explicit = {"type": "json_object"}
         llm = build_llm(model="openai/gpt-4o", output_model=PhaseResult, response_format=explicit)
         assert llm.litellm_extra_body["response_format"] == explicit
 
-    def test_no_output_model_no_extras(self):
-        import os
-
-        os.environ.setdefault("GOBLIN_MODEL_API_KEY", "test")
+    def test_no_output_model_no_extras(self, monkeypatch):
+        monkeypatch.setenv("GOBLIN_MODEL_API_KEY", "test")
         from goblin.utils.llm import build_llm
 
         llm = build_llm(model="openai/gpt-4o")

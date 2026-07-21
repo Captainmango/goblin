@@ -6,12 +6,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from goblin.blueprint import V1Blueprint
 from goblin.phase import PromptPhase
 from goblin.swarm import SwarmPhase
 from goblin.utils.llm import build_llm
 
+from tests._helpers import MINIMAL_SWARM_RAW as MINIMAL_SWARM
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -319,16 +319,6 @@ class TestBuildLlm:
 # ---------------------------------------------------------------------------
 # Swarm LLM config resolution
 # ---------------------------------------------------------------------------
-
-
-MINIMAL_SWARM = {
-    "id": "swarm1",
-    "swarm": {
-        "goal": "Build a thing",
-        "coordinator": {"prompt": "Coordinate.", "allowed_tools": ["Read"]},
-        "agents": [{"name": "coder", "prompt": "Code."}],
-    },
-}
 
 
 class TestSwarmLlmConfig:

@@ -3,11 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from filelock import FileLock, Timeout
 
-from goblin.enums import RunStatus, PhaseStatus
+from goblin.enums import PhaseStatus, RunStatus
 
 
 class Checkpoint:
@@ -18,8 +18,8 @@ class Checkpoint:
             "run_id": run_id,
             "blueprint_path": blueprint_path,
             "context": context,
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "started_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
             "status": RunStatus.IN_PROGRESS,
             "phases": {},
         }
@@ -34,26 +34,26 @@ class Checkpoint:
                 "status": PhaseStatus.RUNNING,
                 "input": input_data,
                 "output": None,
-                "started_at": datetime.now(timezone.utc).isoformat(),
+                "started_at": datetime.now(UTC).isoformat(),
                 "completed_at": None,
             }
-            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._data["updated_at"] = datetime.now(UTC).isoformat()
             await self._flush_async()
 
     async def phase_completed(self, phase_id: str, output: dict) -> None:
         async with self._lock:
             self._data["phases"][phase_id]["status"] = PhaseStatus.COMPLETED
             self._data["phases"][phase_id]["output"] = output
-            self._data["phases"][phase_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
-            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._data["phases"][phase_id]["completed_at"] = datetime.now(UTC).isoformat()
+            self._data["updated_at"] = datetime.now(UTC).isoformat()
             await self._flush_async()
 
     async def phase_failed(self, phase_id: str, output: dict) -> None:
         async with self._lock:
             self._data["phases"][phase_id]["status"] = PhaseStatus.FAILED
             self._data["phases"][phase_id]["output"] = output
-            self._data["phases"][phase_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
-            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._data["phases"][phase_id]["completed_at"] = datetime.now(UTC).isoformat()
+            self._data["updated_at"] = datetime.now(UTC).isoformat()
             await self._flush_async()
 
     async def phase_skipped(self, phase_id: str) -> None:
@@ -65,19 +65,19 @@ class Checkpoint:
                 "started_at": None,
                 "completed_at": None,
             }
-            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._data["updated_at"] = datetime.now(UTC).isoformat()
             await self._flush_async()
 
     async def mark_completed(self) -> None:
         async with self._lock:
             self._data["status"] = RunStatus.COMPLETED
-            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._data["updated_at"] = datetime.now(UTC).isoformat()
             await self._flush_async()
 
     async def mark_failed(self) -> None:
         async with self._lock:
             self._data["status"] = RunStatus.FAILED
-            self._data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._data["updated_at"] = datetime.now(UTC).isoformat()
             await self._flush_async()
 
     async def completed_phase_ids(self) -> set[str]:

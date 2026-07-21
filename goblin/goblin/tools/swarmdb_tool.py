@@ -13,8 +13,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import Field
-
 from openhands.sdk.tool import (
     Action,
     Observation,
@@ -23,6 +21,7 @@ from openhands.sdk.tool import (
     ToolExecutor,
     register_tool,
 )
+from pydantic import Field
 
 from goblin.swarm_db import SwarmDB
 
@@ -79,7 +78,7 @@ class SwarmTasksExecutor(ToolExecutor[SwarmTasksAction, SwarmTasksObservation]):
     def __call__(
         self,
         action: SwarmTasksAction,
-        conversation: "LocalConversation | None" = None,
+        conversation: LocalConversation | None = None,
     ) -> SwarmTasksObservation:
         if action.command == "create_task":
             if not action.title:
@@ -102,7 +101,7 @@ class SwarmTasksTool(ToolDefinition[SwarmTasksAction, SwarmTasksObservation]):
     """Typed task-board tool given to the swarm coordinator instead of Bash."""
 
     @classmethod
-    def create(cls, *args: Any, **kwargs: Any) -> Sequence["SwarmTasksTool"]:
+    def create(cls, *args: Any, **kwargs: Any) -> Sequence[SwarmTasksTool]:
         db_config: dict = kwargs["db_config"]
         return [
             cls(

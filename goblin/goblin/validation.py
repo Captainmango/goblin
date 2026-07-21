@@ -2,34 +2,29 @@ from __future__ import annotations
 
 import json
 import os
+from importlib import resources
 from typing import Any
 
 import yaml
 from jsonschema import Draft7Validator, ValidationError
 
-
-SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "../..", "spec", "v1.json")
-
-
 _cached_schema: dict[str, Any] | None = None
 
 
 def load_schema() -> dict[str, Any]:
-    """Load and cache the blueprint JSON Schema."""
+    """Load and cache the blueprint JSON Schema from the package data.
+
+    The schema is shipped as package data (``goblin/spec/v1.json``) so that
+    installed wheels can validate blueprints without requiring the repository
+    root to be the current working directory.
+    """
     global _cached_schema
     if _cached_schema is not None:
         return _cached_schema
 
-    path = SCHEMA_PATH
-    if not os.path.isfile(path):
-        # Fallback to cwd for cases where the package is installed differently
-        path = os.path.join(os.getcwd(), "spec", "v1.json")
-
-    with open(path) as f:
-        _cached_schema = json.load(f)
-
+    schema_bytes = resources.files("goblin").joinpath("spec/v1.json").read_bytes()
+    _cached_schema = json.loads(schema_bytes)
     return _cached_schema
-
 
 def validate_blueprint(path: str, raw: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Load a blueprint YAML file and validate it against the JSON Schema.
@@ -66,6 +61,33 @@ def validate_blueprint(path: str, raw: dict[str, Any] | None = None) -> list[dic
             }
         )
 
+    errors.extend(_validate_output_model_refs(raw))
+    return errors
+
+
+def _validate_output_model_refs(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Check that every ``output_model`` string resolves to a Pydantic model."""
+    from goblin.output_schema import resolve_output_model_by_ref
+
+    blueprint = raw.get("blueprint", raw)
+    phases = blueprint.get("phases", []) if isinstance(blueprint, dict) else []
+    errors: list[dict[str, Any]] = []
+    for idx, phase in enumerate(phases):
+        if not isinstance(phase, dict):
+            continue
+        output_model = phase.get("output_model")
+        if not output_model:
+            continue
+        try:
+            resolve_output_model_by_ref(str(output_model))
+        except (ValueError, ImportError) as exc:
+            errors.append(
+                {
+                    "path": f"blueprint.phases[{idx}].output_model",
+                    "message": f"output_model {output_model!r} cannot be resolved: {exc}",
+                    "validator": "output_model_resolution",
+                }
+            )
     return errors
 
 

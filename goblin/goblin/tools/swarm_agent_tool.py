@@ -13,8 +13,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import Field
-
 from openhands.sdk.tool import (
     Action,
     Observation,
@@ -23,6 +21,7 @@ from openhands.sdk.tool import (
     ToolExecutor,
     register_tool,
 )
+from pydantic import Field
 
 from goblin.swarm_db import SwarmDB
 
@@ -101,7 +100,7 @@ class SwarmAgentExecutor(ToolExecutor[SwarmAgentAction, SwarmAgentObservation]):
     def __call__(
         self,
         action: SwarmAgentAction,
-        conversation: "LocalConversation | None" = None,
+        conversation: LocalConversation | None = None,
     ) -> SwarmAgentObservation:
         try:
             return self._handle(action)
@@ -183,7 +182,7 @@ class SwarmAgentTool(ToolDefinition[SwarmAgentAction, SwarmAgentObservation]):
     """Typed swarm-database tool given to worker agents instead of Bash DB access."""
 
     @classmethod
-    def create(cls, *args: Any, **kwargs: Any) -> Sequence["SwarmAgentTool"]:
+    def create(cls, *args: Any, **kwargs: Any) -> Sequence[SwarmAgentTool]:
         db_config: dict = kwargs["db_config"]
         agent_name: str = kwargs["agent_name"]
         return [

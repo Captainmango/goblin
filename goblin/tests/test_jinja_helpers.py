@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from goblin.utils.jinja_helpers import filter_contains, filter_json_value
 
-
 # ---------------------------------------------------------------------------
 # filter_contains
 # ---------------------------------------------------------------------------

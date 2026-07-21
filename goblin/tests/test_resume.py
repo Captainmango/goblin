@@ -7,10 +7,8 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-
 from goblin.blueprint import V1Blueprint
 from goblin.checkpoint import Checkpoint
-
 
 # ---------------------------------------------------------------------------
 # Helpers

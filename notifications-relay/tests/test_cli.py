@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from click.testing import CliRunner
-
 from notifications_relay.cli import cli
 
 

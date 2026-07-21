@@ -34,11 +34,8 @@ asyncio_mode = "auto"
 [tool.pyrefly]
 project-includes = ["notifications_relay/**/*.py"]
 
-known-first-party = ["notifications_relay"]
-
 [dependency-groups]
 dev = [
-    "dotenv>=0.9.9",
     "pyrefly>=0.54.0",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.4.0",

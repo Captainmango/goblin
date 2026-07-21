@@ -6,10 +6,11 @@ import os
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 if TYPE_CHECKING:
-    from goblin.checkpoint import Checkpoint
-    from goblin.phase import PhaseProtocol
     from openhands.sdk.hooks import HookConfig
     from openhands.sdk.subagent import AgentDefinition
+
+    from goblin.checkpoint import Checkpoint
+    from goblin.phase import PhaseProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class HookablePhase(Protocol):
 
 
 class Blueprint(Protocol):
-    async def run(self, context: dict | None = None, checkpoint: "Checkpoint | None" = None) -> dict: ...
+    async def run(self, context: dict | None = None, checkpoint: Checkpoint | None = None) -> dict: ...
 
 
 class V1Blueprint(Blueprint):
@@ -31,7 +32,7 @@ class V1Blueprint(Blueprint):
         self.spec = spec
         self.project_path: str | None = None
         self.project_refs: str = ""
-        self.project_agents: dict[str, "AgentDefinition"] = {}
+        self.project_agents: dict[str, AgentDefinition] = {}
 
         # Resolve blueprint-level workspace config (env vars + interpolation)
         raw_workspace = spec.get("workspace")
@@ -40,10 +41,10 @@ class V1Blueprint(Blueprint):
             validate_env_var_syntax(raw_workspace)
             self._workspace_config = cast(dict, resolve_env_vars(raw_workspace))
 
-        self.phases: list["PhaseProtocol"] = [self._parse_phase(s) for s in spec["phases"]]
+        self.phases: list[PhaseProtocol] = [self._parse_phase(s) for s in spec["phases"]]
         self._dependency_graph = DependencyGraph(self.phases)
 
-    def _parse_phase(self, raw: dict) -> "PhaseProtocol":
+    def _parse_phase(self, raw: dict) -> PhaseProtocol:
         from goblin.phase import LoadProjectPhase, PromptPhase
 
         match raw:
@@ -81,7 +82,7 @@ class V1Blueprint(Blueprint):
 
         return "## Prior Phase Results\n\n" + "\n".join(sections) + "\n---\n\n"
 
-    def _resolve_llm_config(self, phase: "PhaseProtocol", context: dict | None = None) -> dict | str | None:
+    def _resolve_llm_config(self, phase: PhaseProtocol, context: dict | None = None) -> dict | str | None:
         """Return the effective OpenHands LLM configuration for a phase.
 
         Precedence: phase.llm > phase.model > defaults.llm > defaults.model > None.
@@ -153,8 +154,9 @@ class V1Blueprint(Blueprint):
         merged = {**(defaults or {}), **(phase_config or {})}
         return merged
 
-    def _build_hooks(self, phase: HookablePhase) -> "HookConfig | None":
+    def _build_hooks(self, phase: HookablePhase) -> HookConfig | None:
         from openhands.sdk.hooks import HookConfig, HookDefinition, HookMatcher
+
         from goblin.hooks import HOOK_REGISTRY
 
         defaults = self.spec.get("defaults", {}).get("hooks", {})
@@ -191,7 +193,7 @@ class V1Blueprint(Blueprint):
         )
 
     def _build_mcp_servers(self, phase: HookablePhase, context: dict) -> dict:
-        from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
+        from goblin.utils.env import collect_env_vars, resolve_env_vars, validate_env_var_syntax
 
         defaults = self.spec.get("defaults", {}).get("mcp_servers", {})
         phase_servers = phase.mcp_servers_config or {}
@@ -199,17 +201,40 @@ class V1Blueprint(Blueprint):
         if not merged:
             return {}
         validate_env_var_syntax(merged)
+
+        # Collect explicitly referenced ${VAR}s before interpolation so we can
+        # forward only those values (plus a small allowlist) to stdio MCP servers.
+        referenced_vars = collect_env_vars(merged)
         resolved = resolve_env_vars(merged)
         interpolated = cast(dict, self._interpolate_strings(resolved, context))
 
-        # The mcp library only forwards a minimal env (HOME, PATH, etc.) to stdio
-        # subprocesses. Inject the full parent environment so MCP servers see the same
-        # tokens as goblin — matching OpenHands' behavior. Blueprint env: keys win.
-        parent_env = dict(os.environ)
+        # Forward a conservative allowlist plus any env vars the blueprint explicitly
+        # references. This prevents third-party MCP servers from inheriting goblin's
+        # own secrets (LLM keys, Telegram tokens, Turso auth, etc.) by default.
+        allowed_base_vars = {
+            "HOME",
+            "USER",
+            "LOGNAME",
+            "USERNAME",
+            "PATH",
+            "SHELL",
+            "LANG",
+            "LC_ALL",
+            "PWD",
+            "TMPDIR",
+            "TERM",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_CACHE_HOME",
+        }
+        base_env = {name: os.environ[name] for name in allowed_base_vars if name in os.environ}
+        referenced_env = {name: os.environ[name] for name in referenced_vars if name in os.environ}
+        forwarded = {**base_env, **referenced_env}
+
         for server_config in interpolated.values():
             if isinstance(server_config, dict) and "command" in server_config:
                 explicit_env = server_config.get("env", {})
-                server_config["env"] = {**parent_env, **explicit_env}
+                server_config["env"] = {**forwarded, **explicit_env}
 
         return {"mcpServers": interpolated}
 
@@ -232,6 +257,7 @@ class V1Blueprint(Blueprint):
 
     def _jinja_env(self):
         from jinja2 import Environment
+
         from goblin.utils.jinja_helpers import filter_contains, filter_json_value
 
         env = Environment()
@@ -311,6 +337,7 @@ class V1Blueprint(Blueprint):
         """
         from openhands.sdk.hooks import HookDefinition
         from openhands.sdk.subagent import AgentDefinition
+
         from goblin.hooks import register_hook
 
         self.project_path = path
@@ -372,7 +399,7 @@ class V1Blueprint(Blueprint):
                     )
                     logger.info("Loaded agent definition", extra={"event": "project.agent_loaded", "agent": agent_name})
 
-    async def run(self, context: dict | None = None, checkpoint: "Checkpoint | None" = None):
+    async def run(self, context: dict | None = None, checkpoint: Checkpoint | None = None):
         from goblin.orchestrator import PhaseOrchestrator
 
         blueprint_vars = self.spec.get("vars", {})

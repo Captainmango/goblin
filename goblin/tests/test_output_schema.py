@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from goblin.blueprint import V1Blueprint
 from goblin.output_schema import (
     PhaseResult,
@@ -17,8 +16,8 @@ from goblin.output_schema import (
     validate_against_schema,
 )
 from goblin.phase import PromptPhase
-from tests._helpers import MagicAgent
 
+from tests._helpers import _mock_llm_infra
 
 # ---------------------------------------------------------------------------
 # _validate_output_schema / validate_against_schema (legacy alias)
@@ -119,6 +118,44 @@ class TestResolveOutputModel:
         with pytest.raises((ValueError, ImportError)):
             resolve_output_model(bp, bp.phases[0])
 
+    def test_same_bp_phase_different_schemas_resolve_differently(self):
+        """The schema cache key must include the schema contents, not just ids."""
+        base = {"name": "test_bp", "phases": [{"id": "s1", "prompt": "p"}]}
+
+        raw_a = {
+            **base,
+            "phases": [
+                {
+                    "id": "s1",
+                    "prompt": "p",
+                    "output_schema": {
+                        "type": "object",
+                        "properties": {"status": {"type": "string"}},
+                        "required": ["status"],
+                    },
+                }
+            ],
+        }
+        raw_b = {
+            **base,
+            "phases": [
+                {
+                    "id": "s1",
+                    "prompt": "p",
+                    "output_schema": {
+                        "type": "object",
+                        "properties": {"count": {"type": "integer"}},
+                        "required": ["count"],
+                    },
+                }
+            ],
+        }
+        model_a = resolve_output_model(V1Blueprint(raw_a), V1Blueprint(raw_a).phases[0])
+        model_b = resolve_output_model(V1Blueprint(raw_b), V1Blueprint(raw_b).phases[0])
+        assert model_a is not model_b
+        assert "status" in model_a.model_fields
+        assert "count" in model_b.model_fields
+
     def test_register_output_model_rejects_non_basemodel(self):
         with pytest.raises(ValueError, match="BaseModel"):
             register_output_model("bad", dict)
@@ -189,23 +226,6 @@ class TestCoerceToModel:
 # ---------------------------------------------------------------------------
 # PromptPhase with output_schema (end-to-end via mocks)
 # ---------------------------------------------------------------------------
-
-
-def _mock_llm_infra():
-    """Return patchers for build_llm, Agent, LocalConversation, get_agent_final_response."""
-    mock_llm = MagicMock()
-    mock_conversation = MagicMock()
-    mock_conversation.state.events = []
-    mock_conversation.arun = AsyncMock()
-    mock_agent = MagicAgent()
-
-    patch_build_llm = patch("goblin.utils.llm.build_llm", return_value=mock_llm)
-    patch_agent = patch("openhands.sdk.Agent", return_value=mock_agent)
-    patch_local_conv = patch("goblin.conversation.LocalConversation", return_value=mock_conversation)
-    patch_get_final = patch("openhands.sdk.conversation.get_agent_final_response", return_value="mocked response")
-    patch_workspace = patch.object(V1Blueprint, "_get_workspace", return_value=MagicMock())
-
-    return patch_build_llm, patch_agent, patch_local_conv, patch_get_final, patch_workspace
 
 
 def _make_prompt_phase(raw: dict[str, Any]) -> PromptPhase:

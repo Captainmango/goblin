@@ -29,6 +29,7 @@ def build_llm(
     model: str | dict | None = None,
     *,
     output_model: type[BaseModel] | None = None,
+    output_schema_format: str | None = None,
     response_format: dict | None = None,
 ) -> LLM:
     """Construct an LLM from central configuration or a resolved config dict.
@@ -51,8 +52,11 @@ def build_llm(
     - If *output_model* is provided and no explicit *response_format* was
       given, resolve the provider's preferred structured-output key
       (``vllm/`` → ``guided_json``, ``gemini/`` → ``response_schema``, ...)
-      and attach it as either ``response_format`` or
-      ``litellm_extra_body`` depending on the provider.
+      and attach it inside ``litellm_extra_body`` (the only provider-side
+      hook the OpenHands SDK exposes).
+    - *output_schema_format* overrides the provider-default mapping (e.g.
+      ``"guided_json"``) and is passed through to
+      :func:`goblin.output_schema.provider_response_format_for_prefix`.
     """
     if isinstance(model, dict):
         kwargs: dict[str, Any] = dict(model)
@@ -81,8 +85,11 @@ def build_llm(
         kwargs["litellm_extra_body"] = merged
     elif output_model is not None:
         provider_prefix = _model_id(kwargs.get("model") or model)
-        prefix = provider_prefix.split("/", 1)[0] if isinstance(provider_prefix, str) else None
-        fmt = provider_response_format_for_prefix(output_model, provider_prefix=prefix)
+        fmt = provider_response_format_for_prefix(
+            output_model,
+            provider_prefix=provider_prefix,
+            override_format=output_schema_format,
+        )
         fmt.apply_to_llm_kwargs(kwargs)
 
     return LLM(**kwargs)

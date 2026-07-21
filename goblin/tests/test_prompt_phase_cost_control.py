@@ -5,38 +5,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from goblin.output_schema import PhaseResult
-from goblin.phase import PromptPhase
-from tests._helpers import MagicAgent
 
-
-def _make_prompt_phase(raw: dict) -> PromptPhase:
-    blueprint = MagicMock()
-    blueprint._build_hooks.return_value = None
-    blueprint._build_mcp_servers.return_value = {}
-    blueprint.project_path = None
-    blueprint.project_refs = ""
-    blueprint.project_agents = {}
-    return PromptPhase(raw, blueprint)
-
-
-@pytest.fixture
-def mock_conversation():
-    conversation = MagicMock()
-    conversation.arun = AsyncMock()
-    conversation.state.events = []
-    stats = MagicMock()
-    metrics = MagicMock()
-    token_usage = MagicMock()
-    token_usage.prompt_tokens = 100
-    token_usage.completion_tokens = 50
-    metrics.accumulated_token_usage = token_usage
-    metrics.accumulated_cost = 0.1
-    stats.get_combined_metrics.return_value = metrics
-    conversation.conversation_stats = stats
-    return conversation
-
+from tests._helpers import MagicAgent, _make_prompt_phase
 
 # ---------------------------------------------------------------------------
 # PromptPhase parsing of new limit fields

@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
+from goblin.tools.ask_user_tool import AskUserTool
+from goblin.tools.swarm_agent_tool import SwarmAgentTool
+from goblin.tools.swarmdb_tool import SwarmTasksTool
+from goblin.tools.tool_map import _get_tool_name_map, build_tool_filter_regex, resolve_tools
 from openhands.sdk import Tool
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.glob import GlobTool
 from openhands.tools.grep import GrepTool
 from openhands.tools.terminal import TerminalTool
-
-from goblin.tools.ask_user_tool import AskUserTool
-from goblin.tools.swarm_agent_tool import SwarmAgentTool
-from goblin.tools.swarmdb_tool import SwarmTasksTool
-from goblin.tools.tool_map import _get_tool_name_map, build_tool_filter_regex, resolve_tools
 
 
 class TestToolNameMap:

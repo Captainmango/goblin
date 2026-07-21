@@ -5,8 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from pydantic import BaseModel, Field
-
 from goblin.output_schema import PhaseResult
 from goblin.tools.structured_finish import (
     StructuredFinishAction,
@@ -14,7 +12,7 @@ from goblin.tools.structured_finish import (
     extract_structured_result,
     make_structured_finish_action_type,
 )
-
+from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
 # Helpers

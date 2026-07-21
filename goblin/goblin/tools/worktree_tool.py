@@ -15,8 +15,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import Field
-
 from openhands.sdk.tool import (
     Action,
     Observation,
@@ -25,6 +23,7 @@ from openhands.sdk.tool import (
     ToolExecutor,
     register_tool,
 )
+from pydantic import Field
 
 if TYPE_CHECKING:
     from openhands.sdk.conversation import LocalConversation
@@ -49,11 +48,17 @@ class WorktreeAction(Action):
     )
     deps: list[str] | None = Field(
         default=None,
-        description="Dependency directory names to symlink from the main worktree. Uses the configured list when omitted.",
+        description=(
+            "Dependency directory names to symlink from the main worktree. "
+            "Uses the configured list when omitted."
+        ),
     )
     auto_link: bool | None = Field(
         default=None,
-        description="For `create`: explicitly enable/disable automatic dependency linking. Uses the configured value when omitted.",
+        description=(
+            "For `create`: explicitly enable/disable automatic dependency linking. "
+            "Uses the configured value when omitted."
+        ),
     )
     force: bool = Field(
         default=False,
@@ -118,7 +123,7 @@ class WorktreeExecutor(ToolExecutor[WorktreeAction, WorktreeObservation]):
     def __call__(
         self,
         action: WorktreeAction,
-        conversation: "LocalConversation | None" = None,
+        conversation: LocalConversation | None = None,
     ) -> WorktreeObservation:
         err = self._validate_in_git()
         if err is not None:
@@ -462,7 +467,7 @@ class WorktreeTool(ToolDefinition[WorktreeAction, WorktreeObservation]):
     """Typed git worktree tool for prompt agents."""
 
     @classmethod
-    def create(cls, *args: Any, **kwargs: Any) -> Sequence["WorktreeTool"]:
+    def create(cls, *args: Any, **kwargs: Any) -> Sequence[WorktreeTool]:
         repo_root: str = kwargs.get("repo_root", os.getcwd())
         base_dir: str = kwargs.get("base_dir", ".goblin/worktrees")
         deps: list[str] = list(kwargs.get("deps", []))

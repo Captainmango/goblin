@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-
-from pydantic import BaseModel
-
 from goblin.output_schema import PhaseResult, coerce_to_model, json_schema_to_pydantic
+from pydantic import BaseModel
 
 
 class _Count(BaseModel):
@@ -39,7 +37,7 @@ class TestWellFormedJson:
 
 
 # ---------------------------------------------------------------------------
-# Tier 2: json_repair (near-JSON with small defects)
+# Tier 2: JSON extraction from prose
 # ---------------------------------------------------------------------------
 
 
@@ -64,7 +62,7 @@ class TestJsonRepair:
 
 
 # ---------------------------------------------------------------------------
-# Tier 3: JSON extraction from prose
+# Tier 3: json_repair (near-JSON with small defects)
 # ---------------------------------------------------------------------------
 
 

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-
 from notifications_relay.config import RelayConfig
 from notifications_relay.core.dispatcher import NotificationDispatcher
 from notifications_relay.core.inbox import InboxService
@@ -22,7 +21,7 @@ def temp_db_path(tmp_path: Path) -> Path:
 
 
 @pytest_asyncio.fixture
-async def store(temp_db_path: Path) -> AsyncGenerator[Store, None]:
+async def store(temp_db_path: Path) -> AsyncGenerator[Store]:
     store = Store(temp_db_path)
     await store.connect()
     try:
@@ -42,14 +41,14 @@ def relay_config(temp_db_path: Path) -> RelayConfig:
 
 
 @pytest_asyncio.fixture
-async def app(relay_config: RelayConfig) -> AsyncGenerator[FastAPI, None]:
+async def app(relay_config: RelayConfig) -> AsyncGenerator[FastAPI]:
     app_instance = create_app(relay_config)
     async with app_instance.router.lifespan_context(app_instance):
         yield app_instance
 
 
 @pytest_asyncio.fixture
-async def client(app: FastAPI, relay_config: RelayConfig) -> AsyncGenerator[AsyncClient, None]:
+async def client(app: FastAPI, relay_config: RelayConfig) -> AsyncGenerator[AsyncClient]:
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",

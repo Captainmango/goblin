@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from goblin.utils.config import get_config
 from notifications_relay import RelayClient
 from notifications_relay.local_store import resolve_token
+
+from goblin.utils.config import get_config
 
 
 def make_client() -> RelayClient:

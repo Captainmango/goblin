@@ -5,13 +5,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-
 from goblin.blueprint import V1Blueprint
-from goblin.output_schema import PhaseResult  # noqa: F401  (string ref in structured-output tests)
 from goblin.phase import PromptPhase
 from goblin.swarm import SwarmPhase
-from tests._helpers import MagicAgent
 
+from tests._helpers import MINIMAL_SWARM_RAW, MagicAgent
 
 # ---------------------------------------------------------------------------
 # _resolve_model helper
@@ -218,24 +216,73 @@ class TestPromptPhaseStructuredFollowUp:
 
 
 # ---------------------------------------------------------------------------
-# SwarmPhase model propagation
+# PromptPhase structured-output fallback
 # ---------------------------------------------------------------------------
 
 
-MINIMAL_SWARM_RAW = {
-    "id": "test_swarm",
-    "swarm": {
-        "goal": "Build a calculator",
-        "coordinator": {
-            "prompt": "Break down the goal into tasks.",
-            "allowed_tools": ["Read"],
-        },
-        "agents": [
-            {"name": "coder", "prompt": "Implement assigned tasks."},
-            {"name": "tester", "prompt": "Write tests for completed tasks."},
-        ],
-    },
-}
+class TestPromptPhaseStructuredFallback:
+    @pytest.mark.asyncio
+    async def test_fallback_contract(self):
+        """TS-3: when no layer produces structured output the phase fails cleanly
+        and the follow-up call carries the structured prompt and output_model.
+        """
+        bp = V1Blueprint(
+            {
+                "name": "test",
+                "defaults": {"model": "openai/gpt-4o"},
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "Say something structured.",
+                        "output_model": "goblin.output_schema.PhaseResult",
+                    }
+                ],
+            }
+        )
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+
+        primary_conversation = MagicMock()
+        primary_conversation.arun = AsyncMock()
+        primary_conversation.state.events = []
+        primary_conversation.conversation_stats = None
+
+        followup_conversation = MagicMock()
+        followup_conversation.arun = AsyncMock()
+        followup_conversation.state.events = []
+        followup_conversation.conversation_stats = None
+
+        def make_conv(*args, **kwargs):
+            return primary_conversation if kwargs.get("hook_config") is not None else followup_conversation
+
+        with (
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent") as mock_agent_cls,
+            patch("goblin.tools.structured_finish.extract_structured_result", return_value=None),
+            patch("goblin.conversation.LocalConversation", side_effect=make_conv),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value=""),
+        ):
+            mock_agent_cls.return_value = MagicAgent()
+            mock_build_llm.return_value = MagicAgent()
+            result = await phase.run({})
+
+        assert result["success"] is False
+        assert any("Agent produced no structured output" in m for m in result["message"])
+
+        # Follow-up prompt tells the model why it is being called again.
+        follow_up_prompt = followup_conversation.send_message.call_args[0][0]
+        assert "did not return a structured answer" in follow_up_prompt
+
+        # The follow-up LLM is built with the resolved output model so the
+        # provider receives the right structured-output payload.
+        assert mock_build_llm.call_count == 2
+        follow_up_call = mock_build_llm.call_args_list[1]
+        assert follow_up_call.kwargs["output_model"] is phase._resolve_output_model()
+
+
+# ---------------------------------------------------------------------------
+# SwarmPhase model propagation
+# ---------------------------------------------------------------------------
 
 
 class TestSwarmPhaseModel:

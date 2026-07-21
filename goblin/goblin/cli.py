@@ -4,7 +4,6 @@ import sys
 from typing import Any
 
 import click
-
 from goblin_common.logging import configure_logging
 
 try:

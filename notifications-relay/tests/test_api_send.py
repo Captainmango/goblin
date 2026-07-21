@@ -4,12 +4,14 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-
 from notifications_relay.core.models import SendResponse
 
 
 class FakeProvider:
     name = "telegram"
+
+    def __init__(self, store):
+        self.store = store
 
     async def send(
         self,
@@ -18,12 +20,20 @@ class FakeProvider:
         question_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> SendResponse:
+        if question_id:
+            await self.store.create_question_mapping(
+                chat_id="12345",
+                telegram_message_id="42",
+                token=token,
+                question_id=question_id,
+                ttl_seconds=3600,
+            )
         return SendResponse(message_id=42, channel="telegram")
 
 
 @pytest.fixture
 def registered_app(app: FastAPI) -> FastAPI:
-    app.state.dispatcher.register("telegram", FakeProvider())
+    app.state.dispatcher.register("telegram", FakeProvider(app.state.store))
     return app
 
 

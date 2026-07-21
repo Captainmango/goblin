@@ -52,15 +52,6 @@ class NotificationDispatcher:
         except Exception as exc:
             raise SendError(f"Failed to send message: {exc}") from exc
 
-        if request.question_id:
-            await self.store.create_question_mapping(
-                chat_id=pairing["chat_id"],
-                telegram_message_id=str(response.message_id),
-                token=request.token,
-                question_id=request.question_id,
-                ttl_seconds=self.mapping_ttl_seconds,
-            )
-
         if request.idempotency_key:
             await self.store.set_idempotency_response(
                 request.idempotency_key,

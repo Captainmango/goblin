@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from notifications_relay.core.models import PairingResponse
 from notifications_relay.exceptions import PairingExpiredError, PairingNotFoundError
@@ -23,7 +23,7 @@ class PairingService:
         """Create a pending pairing token."""
         token = secrets.token_urlsafe(32)
         await self.store.create_pairing(token, label, username, self.token_ttl_seconds)
-        expires_at = (datetime.now(timezone.utc) + timedelta(seconds=self.token_ttl_seconds)).isoformat()
+        expires_at = (datetime.now(UTC) + timedelta(seconds=self.token_ttl_seconds)).isoformat()
         return PairingResponse(token=token, expires_at=expires_at)
 
     async def claim(
@@ -38,7 +38,7 @@ class PairingService:
             raise PairingNotFoundError(f"Unknown pairing token: {token}")
         if pairing["status"] != "pending":
             raise PairingNotFoundError(f"Pairing token is not pending: {token}")
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         if pairing["expires_at"] < now:
             raise PairingExpiredError(f"Pairing token expired: {token}")
         await self.store.claim_pairing(token, telegram_user_id, chat_id)

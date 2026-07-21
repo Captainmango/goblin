@@ -1,5 +1,6 @@
-import click
 import json
+
+import click
 
 
 class JsonParamType(click.ParamType):

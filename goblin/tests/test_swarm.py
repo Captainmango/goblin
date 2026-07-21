@@ -9,12 +9,12 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-
 from goblin.blueprint import V1Blueprint
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState
 from goblin.swarm import SwarmPhase
 from goblin.swarm_db import SQLiteSwarmDB, TursoSwarmDB
 
+from tests._helpers import MINIMAL_SWARM_RAW
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,26 +47,9 @@ def _make_blueprint_with_mock_phases(
     return bp
 
 
-MINIMAL_SWARM_RAW = {
-    "id": "test_swarm",
-    "swarm": {
-        "goal": "Build a calculator",
-        "coordinator": {
-            "prompt": "Break down the goal into tasks.",
-            "allowed_tools": ["Read"],
-        },
-        "agents": [
-            {"name": "coder", "prompt": "Implement assigned tasks."},
-            {"name": "tester", "prompt": "Write tests for completed tasks."},
-        ],
-    },
-}
-
-
 # ---------------------------------------------------------------------------
 # 7a: SwarmDB in isolation
 # ---------------------------------------------------------------------------
-
 
 class TestSwarmDBSchema:
     def test_init_schema_creates_tables(self, tmp_path):

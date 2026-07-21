@@ -7,11 +7,9 @@ from typing import Any
 import pytest
 import yaml
 from click.testing import CliRunner
-
 from goblin.cli import cli
 from goblin.runner import BlueprintRunner
 from goblin.validation import format_errors, validate_blueprint
-
 
 # ---------------------------------------------------------------------------
 # Helpers

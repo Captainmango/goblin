@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import shutil
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
@@ -207,6 +207,7 @@ class SwarmPhase(PhaseProtocol):
     async def _run_coordinator(self, context: dict, breaker: CircuitBreaker) -> dict:
         from openhands.sdk import Agent
         from openhands.sdk.conversation import get_agent_final_response
+
         from goblin.conversation import run_conversation
         from goblin.tools.tool_map import resolve_tools
         from goblin.utils.llm import build_llm
@@ -273,6 +274,7 @@ class SwarmPhase(PhaseProtocol):
     async def _run_single_agent(self, agent_cfg: dict, context: dict, breaker: CircuitBreaker):
         from openhands.sdk import Agent
         from openhands.sdk.conversation import get_agent_final_response
+
         from goblin.conversation import run_conversation
         from goblin.tools.tool_map import resolve_tools
         from goblin.utils.llm import build_llm
@@ -376,7 +378,7 @@ class SwarmPhase(PhaseProtocol):
             title = t.get("title", "untitled")
             messages.append(f"[{status}] {title}")
 
-        result: Dict = {
+        result: dict = {
             "success": success,
             "message": messages if messages else ["Swarm completed"],
             "tasks": tasks,
@@ -392,7 +394,7 @@ class SwarmPhase(PhaseProtocol):
 
         return result
 
-    async def run(self, context: dict) -> Dict:
+    async def run(self, context: dict) -> dict:
         self._setup(context)
         assert self._db is not None
 

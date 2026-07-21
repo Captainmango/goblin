@@ -3,6 +3,7 @@ import os
 import uuid
 
 import yaml
+
 from goblin.blueprint import Blueprint, V1Blueprint
 from goblin.checkpoint import Checkpoint
 from goblin.import_resolver import resolve_imports

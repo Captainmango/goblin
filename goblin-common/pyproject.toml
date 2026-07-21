@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.12.5",
+    "python-dotenv>=1.0.0",
     "pyyaml>=6.0.3",
 ]
 
@@ -18,8 +19,6 @@ packages = ["goblin_common"]
 
 [tool.pyrefly]
 project-includes = ["goblin_common/**/*.py"]
-
-known-first-party = ["goblin_common"]
 
 [dependency-groups]
 dev = [

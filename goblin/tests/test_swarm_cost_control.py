@@ -5,29 +5,14 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from goblin.blueprint import V1Blueprint
 from goblin.swarm import SwarmPhase
+
+from tests._helpers import MINIMAL_SWARM_RAW
 
 
 def _make_blueprint(phases: list[dict]) -> V1Blueprint:
     return V1Blueprint({"name": "test_bp", "phases": phases})
-
-
-MINIMAL_SWARM_RAW = {
-    "id": "test_swarm",
-    "swarm": {
-        "goal": "Build a calculator",
-        "coordinator": {
-            "prompt": "Break down the goal into tasks.",
-            "allowed_tools": ["Read"],
-        },
-        "agents": [
-            {"name": "coder", "prompt": "Implement assigned tasks."},
-            {"name": "tester", "prompt": "Write tests for completed tasks."},
-        ],
-    },
-}
 
 
 def _make_conversation(tokens: int = 0, cost: float = 0.0):

@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import SecretStr
-
 from goblin.utils.config import get_config, load_config, reset_config
+from pydantic import SecretStr
 
 
 class TestModelApiKey:

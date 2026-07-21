@@ -18,8 +18,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, ConfigDict, Field, create_model
-
 from openhands.sdk.tool import (
     Action,
     ToolAnnotations,
@@ -28,6 +26,7 @@ from openhands.sdk.tool import (
     register_tool,
 )
 from openhands.sdk.tool.builtins import FinishObservation
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 if TYPE_CHECKING:
     from openhands.sdk.conversation import LocalConversation
@@ -69,7 +68,7 @@ class StructuredFinishExecutor(ToolExecutor):
     def __call__(
         self,
         action: Action,
-        conversation: "LocalConversation | None" = None,  # noqa: ARG002
+        conversation: LocalConversation | None = None,  # noqa: ARG002
     ) -> FinishObservation:
         payload = getattr(action, "result", None)
         if isinstance(payload, BaseModel):
@@ -153,7 +152,7 @@ class StructuredFinishTool(ToolDefinition):
         cls,
         conv_state: Any = None,  # noqa: ARG003
         **params: Any,
-    ) -> Sequence["StructuredFinishTool"]:
+    ) -> Sequence[StructuredFinishTool]:
         output_model = _resolve_output_model_param(params)
         action_type = make_structured_finish_action_type(output_model)
         return [

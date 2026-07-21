@@ -6,26 +6,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from goblin.output_schema import SwarmCoordinatorResult
 from goblin.swarm import SwarmPhase
-from tests._helpers import MagicAgent
 
-
-MINIMAL_SWARM_RAW = {
-    "id": "test_swarm",
-    "swarm": {
-        "goal": "Build a calculator",
-        "coordinator": {
-            "prompt": "Break down the goal into tasks.",
-            "allowed_tools": ["Read"],
-        },
-        "agents": [
-            {"name": "coder", "prompt": "Implement assigned tasks."},
-            {"name": "tester", "prompt": "Write tests for completed tasks."},
-        ],
-    },
-}
+from tests._helpers import MINIMAL_SWARM_RAW, MagicAgent
 
 
 def _make_blueprint_with_swarm(raw: dict) -> SwarmPhase:

@@ -4,10 +4,9 @@ import os
 from dataclasses import field
 from pathlib import Path
 
+from goblin_common.config import env, load_dotenv_from_cwd, secret_env
 from pydantic import SecretStr, field_validator
 from pydantic.dataclasses import dataclass
-
-from goblin_common.config import env, load_dotenv_from_cwd, secret_env
 
 
 @dataclass(frozen=True)
@@ -19,9 +18,7 @@ class RelayConfig:
     :func:`get_config` for the module-level singleton.
     """
 
-    api_key: SecretStr | None = field(
-        default_factory=lambda: secret_env("RELAY_API_KEY", fallback="fake-secret")
-    )
+    api_key: SecretStr | None = field(default_factory=lambda: secret_env("RELAY_API_KEY", fallback="fake-secret"))
 
     def require_api_key(self) -> SecretStr:
         """Return the API key, raising if it is not configured."""
@@ -32,12 +29,8 @@ class RelayConfig:
     host: str = field(default_factory=lambda: env("RELAY_HOST", "127.0.0.1"))
     port: int = field(default_factory=lambda: env("RELAY_PORT", 8000))
     db_path: Path = field(default_factory=lambda: Path(env("RELAY_DB_PATH", ".goblin/relay.db")))
-    pairing_token_ttl_seconds: int = field(
-        default_factory=lambda: env("RELAY_PAIRING_TOKEN_TTL_SECONDS", 900)
-    )
-    question_mapping_ttl_seconds: int = field(
-        default_factory=lambda: env("RELAY_QUESTION_MAPPING_TTL_SECONDS", 3600)
-    )
+    pairing_token_ttl_seconds: int = field(default_factory=lambda: env("RELAY_PAIRING_TOKEN_TTL_SECONDS", 900))
+    question_mapping_ttl_seconds: int = field(default_factory=lambda: env("RELAY_QUESTION_MAPPING_TTL_SECONDS", 3600))
 
     # Logging
     log_config: str | None = field(default_factory=lambda: env("RELAY_LOG_CONFIG"))

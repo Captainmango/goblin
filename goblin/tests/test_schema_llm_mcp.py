@@ -7,7 +7,6 @@ import os
 
 import pytest
 import yaml
-
 from goblin.validation import validate_blueprint
 
 

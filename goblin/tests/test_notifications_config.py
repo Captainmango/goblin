@@ -5,17 +5,16 @@ Mirrors the `worktree` config pattern (see test_worktree_tool.py): a
 per-phase `label`, which PromptPhase wires into the AskUser tool's
 `tool_params` so blueprint authors can pick which paired operator gets asked.
 """
-
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 from goblin.blueprint import V1Blueprint
-from goblin.phase import PromptPhase
 from goblin.validation import validate_blueprint
+
+from tests._helpers import _make_prompt_phase
 
 
 def _make_blueprint(phases: list[dict], defaults: dict | None = None) -> V1Blueprint:
@@ -123,37 +122,9 @@ class TestResolveNotificationsConfig:
 # ---------------------------------------------------------------------------
 
 
-def _make_prompt_phase(raw: dict) -> PromptPhase:
-    blueprint = MagicMock()
-    blueprint._build_hooks.return_value = None
-    blueprint._build_mcp_servers.return_value = {}
-    blueprint._resolve_worktree_config.return_value = None
-    blueprint._resolve_notifications_config.return_value = None
-    blueprint.project_path = None
-    blueprint.project_refs = ""
-    blueprint.project_agents = {}
-    return PromptPhase(raw, blueprint)
-
-
-def _mock_conversation() -> MagicMock:
-    conversation = MagicMock()
-    conversation.arun = AsyncMock()
-    conversation.state.events = []
-    stats = MagicMock()
-    metrics = MagicMock()
-    token_usage = MagicMock()
-    token_usage.prompt_tokens = 100
-    token_usage.completion_tokens = 50
-    metrics.accumulated_token_usage = token_usage
-    metrics.accumulated_cost = 0.1
-    stats.get_combined_metrics.return_value = metrics
-    conversation.conversation_stats = stats
-    return conversation
-
-
 class TestPromptPhaseAskUserToolParams:
     @pytest.mark.asyncio
-    async def test_ask_user_not_requested_gets_no_tool_params(self):
+    async def test_ask_user_not_requested_gets_no_tool_params(self, mock_conversation):
         phase = _make_prompt_phase({"id": "p1", "prompt": "hi", "allowed_tools": ["Bash"]})
         local_ws = MagicMock()
         local_ws.__class__.__name__ = "LocalWorkspace"
@@ -163,7 +134,7 @@ class TestPromptPhaseAskUserToolParams:
             patch("goblin.utils.llm.build_llm"),
             patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.tools.tool_map.resolve_tools") as mock_resolve_tools,
-            patch("goblin.conversation.LocalConversation", return_value=_mock_conversation()),
+            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
             patch(
                 "openhands.sdk.conversation.get_agent_final_response",
                 return_value='{"success": true, "message": ["ok"]}',
@@ -177,7 +148,7 @@ class TestPromptPhaseAskUserToolParams:
         phase._blueprint._resolve_notifications_config.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_ask_user_gets_resolved_label(self):
+    async def test_ask_user_gets_resolved_label(self, mock_conversation):
         phase = _make_prompt_phase({"id": "p1", "prompt": "hi", "allowed_tools": ["AskUser"]})
         phase._blueprint._resolve_notifications_config.return_value = {"label": "ops-oncall"}
         local_ws = MagicMock()
@@ -188,7 +159,7 @@ class TestPromptPhaseAskUserToolParams:
             patch("goblin.utils.llm.build_llm"),
             patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.tools.tool_map.resolve_tools") as mock_resolve_tools,
-            patch("goblin.conversation.LocalConversation", return_value=_mock_conversation()),
+            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
             patch(
                 "openhands.sdk.conversation.get_agent_final_response",
                 return_value='{"success": true, "message": ["ok"]}',
@@ -201,7 +172,7 @@ class TestPromptPhaseAskUserToolParams:
         assert tool_params["AskUser"] == {"label": "ops-oncall"}
 
     @pytest.mark.asyncio
-    async def test_ask_user_with_no_config_gets_no_label_override(self):
+    async def test_ask_user_with_no_config_gets_no_label_override(self, mock_conversation):
         phase = _make_prompt_phase({"id": "p1", "prompt": "hi", "allowed_tools": ["AskUser"]})
         local_ws = MagicMock()
         local_ws.__class__.__name__ = "LocalWorkspace"
@@ -211,7 +182,7 @@ class TestPromptPhaseAskUserToolParams:
             patch("goblin.utils.llm.build_llm"),
             patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.tools.tool_map.resolve_tools") as mock_resolve_tools,
-            patch("goblin.conversation.LocalConversation", return_value=_mock_conversation()),
+            patch("goblin.conversation.LocalConversation", return_value=mock_conversation),
             patch(
                 "openhands.sdk.conversation.get_agent_final_response",
                 return_value='{"success": true, "message": ["ok"]}',

@@ -11,14 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from openhands.sdk.mcp import create_mcp_tools
-from openhands.sdk.mcp.tool import MCPToolAction
-
 from goblin.blueprint import V1Blueprint
 from goblin.phase import PromptPhase
 from goblin.utils.env import validate_env_var_syntax
-
+from openhands.sdk.mcp import create_mcp_tools
+from openhands.sdk.mcp.tool import MCPToolAction
 
 CANARY_SERVER_PATH = Path(__file__).with_name("canary_mcp_server.py")
 
@@ -163,8 +160,8 @@ class TestMcpEnvVarPropagation:
         finally:
             client.sync_close()
 
-    def test_canary_server_reads_arbitrary_env(self, monkeypatch):
-        """Verify that the parent env injection also works for arbitrary vars."""
+    def test_canary_server_reads_referenced_env(self, monkeypatch):
+        """Verify that explicitly referenced ${VAR}s reach the subprocess."""
         monkeypatch.setenv("MY_CUSTOM_VAR", "hello_world")
 
         bp = _make_blueprint(
@@ -176,6 +173,7 @@ class TestMcpEnvVarPropagation:
                         "canary": {
                             "command": "python",
                             "args": [str(CANARY_SERVER_PATH)],
+                            "env": {"MY_CUSTOM_VAR": "${MY_CUSTOM_VAR}"},
                         }
                     },
                 }

@@ -5,10 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
 from goblin.blueprint import V1Blueprint
 from goblin.phase import PromptPhase
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -221,10 +219,16 @@ class TestBuildMcpServersContextInterpolation:
 
 
 class TestBuildMcpServersParentEnvForwarding:
-    def test_stdio_server_gets_parent_env(self, monkeypatch):
+    def test_stdio_server_gets_referenced_parent_env(self, monkeypatch):
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
         bp = _make_blueprint(
-            [{"id": "s1", "prompt": "do stuff", "mcp_servers": {"gh": {"command": "npx"}}}],
+            [
+                {
+                    "id": "s1",
+                    "prompt": "do stuff",
+                    "mcp_servers": {"gh": {"command": "npx", "env": {"GITHUB_TOKEN": "${GITHUB_TOKEN}"}}},
+                }
+            ],
         )
         phase = bp.phases[0]
         assert isinstance(phase, PromptPhase)

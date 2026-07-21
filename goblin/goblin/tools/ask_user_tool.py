@@ -12,8 +12,6 @@ import uuid
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-from pydantic import Field
-
 from openhands.sdk.tool import (
     Action,
     Observation,
@@ -22,6 +20,7 @@ from openhands.sdk.tool import (
     ToolExecutor,
     register_tool,
 )
+from pydantic import Field
 
 from goblin.notifications.client import make_client, resolve
 
@@ -70,7 +69,7 @@ class AskUserExecutor(ToolExecutor[AskUserAction, AskUserObservation]):
     def __call__(
         self,
         action: AskUserAction,
-        conversation: "LocalConversation | None" = None,
+        conversation: LocalConversation | None = None,
     ) -> AskUserObservation:
         question_id = str(uuid.uuid4())
         try:
@@ -89,7 +88,7 @@ class AskUserTool(ToolDefinition[AskUserAction, AskUserObservation]):
     """Typed ask-the-user tool for prompt agents."""
 
     @classmethod
-    def create(cls, *args: Any, **kwargs: Any) -> Sequence["AskUserTool"]:
+    def create(cls, *args: Any, **kwargs: Any) -> Sequence[AskUserTool]:
         label: str | None = kwargs.get("label")
         token: str | None = kwargs.get("token")
         resolved_token = resolve(label=label or DEFAULT_LABEL, token=token)

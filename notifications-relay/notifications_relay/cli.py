@@ -4,7 +4,6 @@ import asyncio
 
 import click
 import uvicorn
-
 from goblin_common.logging import configure_logging
 
 from notifications_relay.client import RelayClient
@@ -189,7 +188,7 @@ def revoke(token: str | None, label: str | None, config_path: str | None) -> Non
     async def _run() -> None:
         async with RelayClient(base_url, relay_config.require_api_key()) as client:
             await client.revoke(resolved)
-            click.echo(f"Revoked pairing {resolved}")
+            click.echo("Revoked pairing")
 
     asyncio.run(_run())
 

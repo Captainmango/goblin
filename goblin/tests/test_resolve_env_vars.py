@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from goblin.utils.env import resolve_env_vars
 
 

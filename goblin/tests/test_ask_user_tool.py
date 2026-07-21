@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
-from notifications_relay.exceptions import AskTimeoutError
-
 from goblin.tools.ask_user_tool import (
     ASK_USER_TIMEOUT_SECONDS,
     AskUserAction,
@@ -19,6 +17,7 @@ from goblin.tools.ask_user_tool import (
     AskUserObservation,
     AskUserTool,
 )
+from notifications_relay.exceptions import AskTimeoutError
 
 
 class _FakeReply:
@@ -37,7 +36,7 @@ class _FakeRelayClient:
             raise self._error
         return _FakeReply(self._reply_text or "")
 
-    async def __aenter__(self) -> "_FakeRelayClient":
+    async def __aenter__(self) -> _FakeRelayClient:
         return self
 
     async def __aexit__(self, *exc_info: object) -> None:

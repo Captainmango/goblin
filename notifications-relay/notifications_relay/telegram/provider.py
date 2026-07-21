@@ -50,7 +50,7 @@ class TelegramNotificationProvider:
         if pairing is None or pairing["status"] != "claimed":
             logger.warning(
                 "telegram_pairing_not_found",
-                extra={"token": token},
+                extra={"token_prefix": token[:8] if token else None},
             )
             raise PairingNotFoundError(f"No active Telegram pairing for token: {token}")
 

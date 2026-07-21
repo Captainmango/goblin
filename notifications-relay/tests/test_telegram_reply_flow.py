@@ -3,7 +3,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from notifications_relay.store import Store
 from notifications_relay.telegram.handlers import reply_handler
 

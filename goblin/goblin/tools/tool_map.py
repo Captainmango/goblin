@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from openhands.sdk import Tool
 
-_TOOL_NAME_MAP: dict[str, "Tool"] | None = None
+_TOOL_NAME_MAP: dict[str, Tool] | None = None
 
 
-def _get_tool_name_map() -> dict[str, "Tool"]:
+def _get_tool_name_map() -> dict[str, Tool]:
     """Lazily build the tool name map on first use."""
     global _TOOL_NAME_MAP
     if _TOOL_NAME_MAP is not None:
@@ -45,7 +45,7 @@ def _get_tool_name_map() -> dict[str, "Tool"]:
     return _TOOL_NAME_MAP
 
 
-def resolve_tools(names: list[str], tool_params: dict[str, dict] | None = None) -> list["Tool"]:
+def resolve_tools(names: list[str], tool_params: dict[str, dict] | None = None) -> list[Tool]:
     """Map blueprint tool names to OpenHands Tool specs.
 
     MCP tool patterns (mcp__* or wildcards) are skipped — MCP tools are

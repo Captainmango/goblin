@@ -27,6 +27,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["goblin"]
+force-include = {"../spec/v1.json" = "goblin/spec/v1.json"}
 
 [tool.pyrefly]
 project-includes = ["goblin/**/*.py"]
@@ -37,7 +38,6 @@ notifications-relay = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "dotenv>=0.9.9",
     "pyrefly>=0.54.0",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",

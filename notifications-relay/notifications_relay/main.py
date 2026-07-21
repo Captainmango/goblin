@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from telegram import Bot
@@ -22,7 +22,7 @@ def create_app(config: RelayConfig | None = None) -> FastAPI:
     config = config or get_config()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         store = Store(config.db_path)
         await store.connect()
         app.state.store = store

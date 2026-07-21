@@ -95,6 +95,7 @@ task notifications-relay:test
 ### Databases and storage
 
 - Use `aiosqlite` for SQLite access; keep schema creation in a `_migrate()` method.
+- Exception: the swarm DB backends (`SQLiteSwarmDB` / `TursoSwarmDB`) use synchronous `sqlite3` / `pyturso` drivers because the OpenHands SDK tool executor runs on a worker thread pool. `SwarmPhase.run()` calls these sync methods directly from async orchestration code; this is a documented deviation to avoid async-driver complexity inside tool executors.
 - Create parent directories with `exist_ok=True` before opening databases or writing files.
 - Write files atomically when durability matters: write to a temp file, then `os.replace` or `Path.replace`.
 - Use restrictive permissions (`0o600`) for files that contain tokens or keys.
