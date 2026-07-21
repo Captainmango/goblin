@@ -72,10 +72,7 @@ class TestPromptPhaseLocalWorkspace:
             patch("goblin.utils.llm.build_llm"),
             patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_local_conversation) as mock_conv_cls,
-            patch(
-                "goblin.tools.structured_finish.extract_structured_result",
-                return_value=PhaseResult(success=True, message=["ok"]),
-            ),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
         ):
             mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
@@ -128,10 +125,7 @@ class TestPromptPhaseRemoteWorkspace:
             patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.RemoteWorkspace", _FakeRemoteWorkspace),
             patch("goblin.conversation.RemoteConversation", return_value=mock_remote_conversation) as mock_conv_cls,
-            patch(
-                "goblin.tools.structured_finish.extract_structured_result",
-                return_value=PhaseResult(success=True, message=["ok"]),
-            ),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
         ):
             mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})

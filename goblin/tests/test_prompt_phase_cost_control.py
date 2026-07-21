@@ -102,10 +102,7 @@ class TestPromptPhaseRunCostControl:
             patch("goblin.utils.llm.build_llm"),
             patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
-            patch(
-                "goblin.tools.structured_finish.extract_structured_result",
-                return_value=PhaseResult(success=True, message=["ok"]),
-            ),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
         ):
             mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
@@ -122,10 +119,7 @@ class TestPromptPhaseRunCostControl:
             patch("goblin.utils.llm.build_llm"),
             patch("openhands.sdk.Agent") as mock_agent_cls,
             patch("goblin.conversation.LocalConversation", return_value=mock_conversation) as mock_conv_cls,
-            patch(
-                "goblin.tools.structured_finish.extract_structured_result",
-                return_value=PhaseResult(success=True, message=["ok"]),
-            ),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="ok"),
         ):
             mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
@@ -185,9 +179,8 @@ class TestPromptPhaseRunCostControl:
             mock_agent_cls.return_value = MagicAgent()
             result = await phase.run({})
 
-        # Default flow wraps even an empty agent reply into a successful
-        # PhaseResult (placeholder message); the spend tracker is still
+        # Empty agent reply reports failure; the spend tracker is still
         # populated from the conversation.
-        assert result["success"] is True
+        assert result["success"] is False
         assert "spend" in result
         assert result["spend"].iterations == 1

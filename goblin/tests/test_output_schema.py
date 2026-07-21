@@ -306,8 +306,8 @@ class TestPromptPhaseOutputSchema:
         assert result["message"] == ["Some agent reply with arbitrary shape."]
 
     @pytest.mark.asyncio
-    async def test_no_output_schema_empty_text_wraps_placeholder(self):
-        """Even with no agent text, default flow wraps a successful placeholder."""
+    async def test_no_output_schema_empty_text_reports_failure(self):
+        """With no agent text, the default flow reports failure."""
         phase = _make_prompt_phase({"id": "s1", "prompt": "hello"})
 
         p1, p2, p3, p4, p5 = _mock_llm_infra()
@@ -321,8 +321,8 @@ class TestPromptPhaseOutputSchema:
         ):
             result = await phase.run({})
 
-        assert result["success"] is True
-        assert result["message"] == ["Agent produced no output"]
+        assert result["success"] is False
+        assert result["message"] == ["Agent produced no text output"]
 
     @pytest.mark.asyncio
     async def test_no_output_schema_does_not_register_structured_finish(self):

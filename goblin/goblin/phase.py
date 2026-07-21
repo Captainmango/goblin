@@ -350,7 +350,7 @@ class PromptPhase(PhaseProtocol):
         """
         if text:
             return PhaseResult(success=True, message=[text])
-        return PhaseResult(success=True, message=["Agent produced no output"])
+        return PhaseResult(success=False, message=["Agent produced no text output"])
 
     @staticmethod
     def _fallback_result(text: str, output_model: type[BaseModel]) -> BaseModel:
