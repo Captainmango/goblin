@@ -183,7 +183,9 @@ class PromptPhase(PhaseProtocol):
         if structured_configured:
             output_model = self._resolve_output_model()
             system_prompt = build_system_prompt(output_model)
-            llm = build_llm(model=llm_config, output_model=output_model)
+            # Keep the provider response_format/guided_json payload off the
+            # primary tool loop; it belongs on the follow-up call only.
+            llm = build_llm(model=llm_config)
         else:
             output_model = PhaseResult
             system_prompt = BASE_SYSTEM_PROMPT
