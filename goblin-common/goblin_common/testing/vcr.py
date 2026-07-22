@@ -17,7 +17,7 @@ import base64
 import gzip
 import json
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager
 from io import BytesIO
 from pathlib import Path
@@ -77,20 +77,70 @@ class Base64YamlSerializer:
 vcr.default_vcr.register_serializer("base64_yaml", Base64YamlSerializer())
 
 
-def _scrub_headers(headers: Any, sensitive_headers: list[str]) -> Any:
+def _patch_aiohttp_record_response() -> None:
+    """Reset aiohttp response streams after VCR records them.
+
+    vcrpy's aiohttp stub consumes the response body when recording.  litellm
+    wraps the same aiohttp response in ``AiohttpResponseStream`` and iterates
+    the (now empty) stream, so downstream code sees an empty body and fails to
+    parse JSON.  After vcrpy records the body we create a fresh ``MockStream``
+    seeded with the captured bytes so the real caller can still read it.
+    """
+    try:
+        from vcr.stubs import aiohttp_stubs
+    except ImportError:
+        return
+
+    original = aiohttp_stubs.record_response
+
+    async def _record_response_with_reset(
+        cassette: Any,
+        vcr_request: Any,
+        response: Any,
+    ) -> None:
+        await original(cassette, vcr_request, response)
+
+        body = getattr(response, "_body", None)
+        if body is None:
+            return
+
+        new_stream = aiohttp_stubs.MockStream()
+        new_stream.feed_data(body)
+        new_stream.feed_eof()
+        response.content = new_stream
+
+    aiohttp_stubs.record_response = _record_response_with_reset
+
+
+_patch_aiohttp_record_response()
+
+
+def _scrub_headers(headers: Any, sensitive_headers: list[str]) -> dict[str, list[Any]]:
     """Redact values for headers whose names match ``sensitive_headers``."""
+    result: dict[str, list[Any]] = {}
     if not sensitive_headers:
-        return headers
+        if isinstance(headers, Mapping):
+            for name, value in headers.items():
+                result[name] = list(value) if isinstance(value, (list, tuple)) else [value]
+            return result
+        for name, value in headers:
+            result.setdefault(name, []).append(value)
+        return result
 
     lowered = {name.lower() for name in sensitive_headers}
 
-    if isinstance(headers, dict):
-        return {
-            name: [_REDACTED if name.lower() in lowered else value for value in values]
-            for name, values in headers.items()
-        }
+    if isinstance(headers, Mapping):
+        for name, value in headers.items():
+            if isinstance(value, (list, tuple)):
+                result[name] = [_REDACTED if name.lower() in lowered else v for v in value]
+            else:
+                result[name] = [_REDACTED if name.lower() in lowered else value]
+    else:
+        for name, value in headers:
+            scrubbed = _REDACTED if name.lower() in lowered else value
+            result.setdefault(name, []).append(scrubbed)
 
-    return [(name, _REDACTED if name.lower() in lowered else value) for name, value in headers]
+    return result
 
 
 def _scrub_uri(uri: str, sensitive_query_params: list[str]) -> str:
@@ -185,11 +235,21 @@ def _scrub_text(text: str, patterns: list[re.Pattern[str]]) -> str:
     return text
 
 
-def _apply_patterns_to_headers(headers: Any, patterns: list[re.Pattern[str]]) -> Any:
+def _apply_patterns_to_headers(headers: Any, patterns: list[re.Pattern[str]]) -> dict[str, list[Any]]:
     """Apply regex patterns to header values."""
-    if isinstance(headers, dict):
-        return {name: [_scrub_text(value, patterns) for value in values] for name, values in headers.items()}
-    return [(name, _scrub_text(value, patterns)) for name, value in headers]
+    result: dict[str, list[Any]] = {}
+
+    if isinstance(headers, Mapping):
+        for name, value in headers.items():
+            if isinstance(value, (list, tuple)):
+                result[name] = [_scrub_text(str(v), patterns) for v in value]
+            else:
+                result[name] = [_scrub_text(str(value), patterns)]
+    else:
+        for name, value in headers:
+            result.setdefault(name, []).append(_scrub_text(str(value), patterns))
+
+    return result
 
 
 def _request_body_is_form_encoded(request: vcr.request.Request) -> bool:

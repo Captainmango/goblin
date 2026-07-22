@@ -17,8 +17,9 @@ from goblin.utils.config import reset_config
 from goblin_common.testing.vcr import use_cassette
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-EXAMPLES_PATH = REPO_ROOT / "examples"
+EXAMPLES_PATH = REPO_ROOT / "examples" / "basic"
 CASSETTES_DIR = Path(__file__).parent / "cassettes"
+CASSETTE_PATH = CASSETTES_DIR / "test_runs_structured_output_example_end_to_end.b64"
 
 
 @pytest.fixture(autouse=True)
@@ -35,15 +36,14 @@ def _reset_output_schema_cache():
     yield
 
 
-class TestStructuredOutputExample:
+class TestBasicExamplesGoldenPath:
     @pytest.mark.asyncio
     async def test_runs_structured_output_example_end_to_end(self, tmp_path):
         """The structured_output example blueprint loads and runs both phases."""
         blueprint_file = EXAMPLES_PATH / "structured_output_example.yaml"
         assert blueprint_file.is_file(), "example blueprint must exist"
 
-        cassette_path = CASSETTES_DIR / "test_runs_structured_output_example_end_to_end.b64"
-        with use_cassette(cassette_path, record_mode="once"):
+        with use_cassette(CASSETTE_PATH, record_mode="once"):
             runner = BlueprintRunner(str(blueprint_file), run_dir=str(tmp_path))
             result = await runner.run(context={"input": "What colour is the sky?"})
             assert result is not None

@@ -14,20 +14,28 @@ Run from the repo root via:
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from goblin_common.testing.vcr import (
-    API_KEYISH_RE,
-    Base64YamlSerializer,
     DEFAULT_SENSITIVE_BODY_FIELDS,
     DEFAULT_SENSITIVE_HEADERS,
     DEFAULT_SENSITIVE_QUERY_PARAMS,
+    Base64YamlSerializer,
 )
 
 CASSETTE_EXTENSION = ".b64"
 REDACTED = "<REDACTED>"
+
+# Common credential patterns.  These are deliberately narrow to avoid flagging
+# hashes, ETags, request IDs, and URLs.
+_CREDENTIAL_PATTERNS = [
+    re.compile(r"\bsk-[a-zA-Z0-9]{20,}\b"),
+    re.compile(r"\bBearer\s+[a-zA-Z0-9_\-]{20,}\b", re.IGNORECASE),
+    re.compile(r"\bBasic\s+[a-zA-Z0-9+/]{20,}=*=\b", re.IGNORECASE),
+]
 
 
 def find_cassettes(root: Path) -> list[Path]:
@@ -41,14 +49,13 @@ def load_cassette(path: Path) -> dict:
     return serializer.deserialize(path.read_text(encoding="ascii"))
 
 
-def _check_keyish_value(value: str, path: Path, location: str, errors: list[str]) -> None:
-    """Flag values that look like API keys or tokens."""
-    if API_KEYISH_RE.search(value):
-        errors.append(f"{path}: {location} contains key-like value: {value!r}")
+def _contains_credential(value: str) -> bool:
+    """Return ``True`` if ``value`` matches a known credential pattern."""
+    return any(pattern.search(value) for pattern in _CREDENTIAL_PATTERNS)
 
 
 def check_headers(interaction: dict, path: Path, errors: list[str]) -> None:
-    """Verify sensitive headers are redacted and contain no key-like values."""
+    """Verify sensitive headers are redacted."""
     lowered_sensitive = {name.lower() for name in DEFAULT_SENSITIVE_HEADERS}
 
     for section in ("request", "response"):
@@ -56,11 +63,15 @@ def check_headers(interaction: dict, path: Path, errors: list[str]) -> None:
         headers = source.get("headers", {})
         for name, values in headers.items():
             for value in values:
-                if name.lower() in lowered_sensitive and value != REDACTED:
+                if name.lower() in lowered_sensitive:
+                    if value != REDACTED:
+                        errors.append(
+                            f"{path}: {section} header '{name}' is not redacted: {value!r}"
+                        )
+                elif _contains_credential(value):
                     errors.append(
-                        f"{path}: {section} header '{name}' is not redacted: {value!r}"
+                        f"{path}: {section} header '{name}' looks like a credential: {value!r}"
                     )
-                _check_keyish_value(value, path, f"{section} header '{name}'", errors)
 
 
 def check_query_params(interaction: dict, path: Path, errors: list[str]) -> None:
@@ -79,7 +90,10 @@ def check_query_params(interaction: dict, path: Path, errors: list[str]) -> None
                 errors.append(
                     f"{path}: query parameter '{name}' is not redacted: {value!r}"
                 )
-            _check_keyish_value(value, path, f"query parameter '{name}'", errors)
+            elif _contains_credential(value):
+                errors.append(
+                    f"{path}: query parameter '{name}' looks like a credential: {value!r}"
+                )
 
 
 def _check_json_body(
@@ -97,8 +111,10 @@ def _check_json_body(
                     errors.append(
                         f"{path}: {section} body field '{key}' is not redacted: {value!r}"
                     )
-            elif isinstance(value, str):
-                _check_keyish_value(value, path, f"{section} body field '{key}'", errors)
+            elif isinstance(value, str) and _contains_credential(value):
+                errors.append(
+                    f"{path}: {section} body field '{key}' looks like a credential: {value!r}"
+                )
             elif isinstance(value, (dict, list)):
                 _check_json_body(value, lowered_sensitive, path, section, errors)
     elif isinstance(data, list):
@@ -121,7 +137,10 @@ def _check_form_body(
                 errors.append(
                     f"{path}: {section} form field '{name}' is not redacted: {value!r}"
                 )
-            _check_keyish_value(value, path, f"{section} form field '{name}'", errors)
+            elif _contains_credential(value):
+                errors.append(
+                    f"{path}: {section} form field '{name}' looks like a credential: {value!r}"
+                )
 
 
 def _extract_body(source: dict) -> str | None:
@@ -155,12 +174,14 @@ def check_body(interaction: dict, path: Path, errors: list[str]) -> None:
             data = json.loads(body)
             _check_json_body(data, lowered_sensitive, path, section, errors)
         except json.JSONDecodeError:
-            if "application/x-www-form-urlencoded" in source.get("headers", {}).get(
-                "Content-Type", [""]
-            ):
+            if "application/x-www-form-urlencoded" in _get_content_type(source):
                 _check_form_body(body, lowered_sensitive, path, section, errors)
-            else:
-                _check_keyish_value(body, path, f"{section} body", errors)
+
+
+def _get_content_type(source: dict) -> str:
+    """Return the Content-Type header value, if present."""
+    content_type = source.get("headers", {}).get("Content-Type", [""])
+    return content_type[0] if isinstance(content_type, list) else str(content_type)
 
 
 def main() -> int:
