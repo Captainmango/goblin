@@ -124,6 +124,7 @@ task notifications-relay:test
 - Use `tmp_path` for any test that touches the filesystem.
 - Name test helpers consistently (`_make_blueprint`, `_make_client`, etc.).
 - Keep tests focused: one behavior per test method, grouped into classes by feature.
+- Prefer unit tests over integration level tests to confirm functionality. Integration tests are reserved for full harness and tool tests.
 
 #### Unit Tests
 - Use `AsyncMock` and `MagicMock` to isolate units from external dependencies.
@@ -131,3 +132,5 @@ task notifications-relay:test
 
 #### Integration Tests
 - Use vcr to record http requests so that tests are deterministic
+- Create BlueprintRunners directly and do not mock any dependencies
+- Do not write tests that include MCP servers. vcr captures all network requests, so MCP set up will not work correctly.
