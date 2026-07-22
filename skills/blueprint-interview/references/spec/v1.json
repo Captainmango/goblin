@@ -1,0 +1,793 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gremlin/spec/v1.json",
+  "title": "GOBLIN Blueprint Definition",
+  "description": "Schema for GOBLIN blueprint files",
+  "type": "object",
+  "required": ["version", "blueprint"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version of the blueprint definition. Determines which blueprint class the runner uses to execute the blueprint.",
+      "examples": ["v1", "v1.1"]
+    },
+    "blueprint": {
+      "type": "object",
+      "required": ["name", "phases"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique identifier name for the blueprint",
+          "examples": ["resolve_jira_epic"]
+        },
+        "vars": {
+          "type": "object",
+          "description": "Blueprint-level variables available for {variable} interpolation in phase prompts",
+          "additionalProperties": { "type": "string" },
+          "examples": [{ "epic": "PROJ-123", "repo": "my-service" }]
+        },
+        "defaults": {
+          "type": "object",
+          "description": "Default values inherited by all phases unless overridden",
+          "additionalProperties": false,
+          "properties": {
+            "hooks": { "$ref": "#/definitions/hooks" },
+            "mcp_servers": { "$ref": "#/definitions/mcpServers" },
+            "worktree": { "$ref": "#/definitions/worktree" },
+            "notifications": { "$ref": "#/definitions/notifications" },
+            "model": {
+              "type": "string",
+              "description": "Default LLM model identifier for all phases in this blueprint. Phase-level model overrides this. Use 'llm' for full OpenHands LLM configuration including auth.",
+              "examples": ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4", "openai/gpt-4o"]
+            },
+            "llm": { "$ref": "#/definitions/llmConfig" }
+          }
+        },
+        "workspace": { "$ref": "#/definitions/workspace" },
+        "imports": {
+          "type": "array",
+          "description": "List of blueprints to import and merge inline before validation or execution",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Relative path to the blueprint file to import. Resolved relative to the importing blueprint's directory.",
+                "examples": ["./common/defaults.yaml", "./setup.yaml"]
+              },
+              "as": {
+                "type": "string",
+                "description": "Optional namespace prefix for imported phases. All phase IDs from the imported blueprint are prefixed with this value.",
+                "examples": ["common", "setup", "gh"]
+              }
+            }
+          },
+          "examples": [[{"path": "./common.yaml", "as": "common"}]]
+        },
+        "phases": {
+          "type": "array",
+          "description": "Ordered list of phases to execute in the blueprint",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/phase" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "workspace": {
+      "type": "object",
+      "description": "Workspace configuration for agent execution. Applies to all phases in the blueprint. Defaults to local filesystem if omitted.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["local", "remote"],
+          "description": "Workspace type. 'local' uses the host filesystem. 'remote' connects to an OpenHands agent server.",
+          "examples": ["local", "remote"]
+        },
+        "host": {
+          "type": "string",
+          "description": "Remote agent server URL. Required when type is 'remote'. Supports $VAR env var references and {variable} interpolation.",
+          "examples": ["https://agent-server.example.com", "http://localhost:3000"]
+        },
+        "working_dir": {
+          "type": "string",
+          "description": "Working directory for agent operations. For remote workspaces this is the path on the remote server. Supports {variable} interpolation.",
+          "examples": ["/workspace", ".", "{clone_dir}"]
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key for remote workspace authentication. Supports $VAR env var references.",
+          "examples": ["$REMOTE_API_KEY"]
+        },
+        "read_timeout": {
+          "type": "number",
+          "description": "HTTP read timeout in seconds for remote workspaces. Default: 600.",
+          "examples": [600, 1200]
+        },
+        "max_connections": {
+          "type": "integer",
+          "description": "Maximum HTTP connections for remote workspace client. Null means unlimited.",
+          "examples": [10, 100]
+        }
+      }
+    },
+    "hooks": {
+      "type": "object",
+      "description": "Lifecycle hooks that run before or after tool calls. Set merge: true to append phase-level hooks to blueprint defaults rather than replacing them.",
+      "additionalProperties": false,
+      "properties": {
+        "merge": {
+          "type": "boolean",
+          "description": "When true, phase-level hooks are appended to blueprint defaults (merge mode). When false or absent, phase-level hooks replace defaults entirely (override mode, default). At the defaults level, sets the default merge behaviour for all phases.",
+          "examples": [true, false]
+        },
+        "pre_tool": {
+          "type": "array",
+          "description": "Hook functions to run before each tool call",
+          "items": { "type": "string" },
+          "examples": [["check_prometheus"]]
+        },
+        "post_tool": {
+          "type": "array",
+          "description": "Hook functions to run after each tool call",
+          "items": { "type": "string" },
+          "examples": [["run_lint", "run_tests"]]
+        }
+      }
+    },
+    "llmConfig": {
+      "type": "object",
+      "description": "OpenHands LLM configuration. Supports all authentication and inference parameters accepted by the OpenHands SDK LLM class. String values support $VAR env var references and {variable} context interpolation. Sensitive fields such as api_key and AWS credentials should be referenced via environment variables.",
+      "additionalProperties": true,
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Model name or identifier (e.g., 'anthropic/claude-sonnet-4-6', 'openai/gpt-4o').",
+          "examples": ["anthropic/claude-sonnet-4-6", "openai/gpt-4o"]
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key for api_key authentication mode. Supports $VAR env var references.",
+          "examples": ["${OPENAI_API_KEY}"]
+        },
+        "auth_type": {
+          "type": "string",
+          "enum": ["api_key", "subscription"],
+          "description": "Authentication mode for the LLM.",
+          "examples": ["api_key", "subscription"]
+        },
+        "subscription_vendor": {
+          "type": "string",
+          "enum": ["openai"],
+          "description": "Subscription provider for subscription-backed LLM access."
+        },
+        "base_url": {
+          "type": "string",
+          "description": "Custom API base URL. Supports $VAR env var references.",
+          "examples": ["https://llm-proxy.example.com"]
+        },
+        "api_version": {
+          "type": "string",
+          "description": "API version (e.g., Azure)."
+        },
+        "aws_access_key_id": {
+          "type": "string",
+          "description": "AWS access key ID for Bedrock authentication. Supports $VAR env var references."
+        },
+        "aws_secret_access_key": {
+          "type": "string",
+          "description": "AWS secret access key for Bedrock authentication. Supports $VAR env var references."
+        },
+        "aws_session_token": {
+          "type": "string",
+          "description": "AWS session token for Bedrock authentication. Supports $VAR env var references."
+        },
+        "aws_region_name": { "type": "string" },
+        "aws_profile_name": { "type": "string" },
+        "aws_role_name": { "type": "string" },
+        "aws_session_name": { "type": "string" },
+        "aws_bedrock_runtime_endpoint": { "type": "string" },
+        "openrouter_site_url": { "type": "string" },
+        "openrouter_app_name": { "type": "string" },
+        "extra_headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Optional HTTP headers forwarded to LiteLLM requests."
+        },
+        "ollama_base_url": { "type": "string" },
+        "num_retries": { "type": "integer", "minimum": 0 },
+        "retry_multiplier": { "type": "number", "minimum": 0 },
+        "retry_min_wait": { "type": "integer", "minimum": 0 },
+        "retry_max_wait": { "type": "integer", "minimum": 0 },
+        "timeout": { "type": "integer", "minimum": 0 },
+        "max_message_chars": { "type": "integer", "minimum": 1 },
+        "temperature": { "type": "number", "minimum": 0 },
+        "top_p": { "type": "number", "minimum": 0, "maximum": 1 },
+        "top_k": { "type": "number", "minimum": 0 },
+        "max_input_tokens": { "type": "integer", "minimum": 1 },
+        "max_output_tokens": { "type": "integer", "minimum": 1 },
+        "model_canonical_name": { "type": "string" },
+        "input_cost_per_token": { "type": "number", "minimum": 0 },
+        "output_cost_per_token": { "type": "number", "minimum": 0 },
+        "stream": { "type": "boolean" },
+        "drop_params": { "type": "boolean" },
+        "modify_params": { "type": "boolean" },
+        "disable_vision": { "type": "boolean" },
+        "disable_stop_word": { "type": "boolean" },
+        "caching_prompt": { "type": "boolean" },
+        "log_completions": { "type": "boolean" },
+        "log_completions_folder": { "type": "string" },
+        "custom_tokenizer": { "type": "string" },
+        "native_tool_calling": { "type": "boolean" },
+        "force_string_serializer": { "type": "boolean" },
+        "inline_image_urls": { "type": "boolean" },
+        "reasoning_effort": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "xhigh", "none"]
+        },
+        "reasoning_summary": {
+          "type": "string",
+          "enum": ["auto", "concise", "detailed"]
+        },
+        "enable_encrypted_reasoning": { "type": "boolean" },
+        "prompt_cache_retention": { "type": "string" },
+        "extended_thinking_budget": { "type": "integer" },
+        "seed": { "type": "integer" },
+        "usage_id": { "type": "string" },
+        "litellm_extra_body": {
+          "type": "object",
+          "description": "Additional key-value pairs forwarded to litellm's extra_body parameter."
+        },
+        "fallback_strategy": {
+          "type": "object",
+          "description": "Fallback strategy for trying alternate LLMs on transient failure.",
+          "additionalProperties": false,
+          "required": ["fallback_llms"],
+          "properties": {
+            "fallback_llms": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Ordered list of LLM profile names to try on transient failure."
+            },
+            "profile_store_dir": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "mcpServerStdio": {
+      "type": "object",
+      "description": "MCP server launched as a subprocess communicating via stdio. Supports all fields accepted by the OpenHands SDK / fastmcp stdio transport.",
+      "required": ["command"],
+      "additionalProperties": true,
+      "properties": {
+        "transport": {
+          "type": "string",
+          "const": "stdio",
+          "description": "Transport type. Optional for stdio servers — inferred when command is present.",
+          "examples": ["stdio"]
+        },
+        "type": {
+          "type": "string",
+          "const": "stdio",
+          "description": "Alternative transport type field. Optional for stdio servers.",
+          "examples": ["stdio"]
+        },
+        "command": {
+          "type": "string",
+          "description": "The command to launch the MCP server process. Supports $VAR env var references.",
+          "examples": ["npx", "uvx", "node"]
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Arguments passed to the command. Supports $VAR env var references and {variable} interpolation.",
+          "examples": [["-y", "@modelcontextprotocol/server-github"]]
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Environment variables passed to the server process. Values support $VAR env var references.",
+          "examples": [{ "GITHUB_TOKEN": "${GITHUB_TOKEN}" }]
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory for command execution. Supports $VAR env var references and {variable} interpolation."
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Maximum response time in milliseconds."
+        },
+        "keep_alive": {
+          "type": "boolean",
+          "description": "Whether to keep the subprocess alive between connections."
+        },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "authentication": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Auth configuration object passed through to the MCP server."
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Tool transform configuration for FastMCP transforming servers."
+        },
+        "include_tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tags to include when using a transforming server."
+        },
+        "exclude_tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tags to exclude when using a transforming server."
+        }
+      }
+    },
+    "mcpServerRemote": {
+      "type": "object",
+      "description": "Remote MCP server using HTTP, streamable HTTP, or Server-Sent Events transport. Supports all fields accepted by the OpenHands SDK / fastmcp remote transport.",
+      "required": ["url"],
+      "additionalProperties": true,
+      "properties": {
+        "transport": {
+          "type": "string",
+          "enum": ["http", "streamable-http", "sse"],
+          "description": "Remote transport type. Inferred from the URL when omitted (sse when path ends in /sse, otherwise http).",
+          "examples": ["http", "streamable-http", "sse"]
+        },
+        "type": {
+          "type": "string",
+          "enum": ["http", "streamable-http", "sse"],
+          "description": "Alternative transport type field.",
+          "examples": ["http", "streamable-http", "sse"]
+        },
+        "url": {
+          "type": "string",
+          "description": "URL of the remote MCP server endpoint. Supports $VAR and {variable} interpolation.",
+          "examples": ["https://example.com/mcp", "https://example.com/mcp/sse"]
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "HTTP headers sent with requests. Values support $VAR env var references.",
+          "examples": [{ "Authorization": "Bearer ${API_TOKEN}" }]
+        },
+        "auth": {
+          "type": "string",
+          "description": "Bearer token or the literal 'oauth' for OAuth authentication. Supports $VAR env var references.",
+          "examples": ["${MCP_AUTH_TOKEN}", "oauth"]
+        },
+        "sse_read_timeout": {
+          "type": ["integer", "number"],
+          "description": "SSE read timeout in seconds."
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Maximum response time in milliseconds."
+        },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "authentication": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Auth configuration object passed through to the MCP server."
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Tool transform configuration for FastMCP transforming servers."
+        },
+        "include_tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tags to include when using a transforming server."
+        },
+        "exclude_tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tags to exclude when using a transforming server."
+        }
+      }
+    },
+    "mcpServers": {
+      "type": "object",
+      "description": "Named MCP server configurations. Keys are server names, values are server configs. Supports stdio (subprocess), http, streamable-http, and sse transports. All string values support $VAR env var references and {variable} context interpolation.",
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/definitions/mcpServerStdio" },
+          { "$ref": "#/definitions/mcpServerRemote" }
+        ]
+      },
+      "examples": [{
+        "github": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-github"],
+          "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" }
+        }
+      }]
+    },
+    "phase": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["prompt"] },
+        { "required": ["load_project"] },
+        { "required": ["swarm"] }
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this phase, referenced by other phases",
+          "examples": ["fetch_tickets", "resolve_ticket", "close_epic"]
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Instruction prompt for the agent. Supports {variable} interpolation from blueprint vars.",
+          "examples": [
+            "Fetch all open tickets in epic {epic} using JIRA",
+            "Resolve ticket {ticket_id}: {ticket_summary}"
+          ]
+        },
+        "load_project": {
+          "type": "string",
+          "description": "Path to a project root from which to load the full project configuration. Loads .claude/settings.json (passed to SDK as settings path), reads CLAUDE.md and .claude/CLAUDE.md as references (appended to system prompt), scans .claude/agents/*.md as agent definitions, and registers shell command hooks as 'project_pre_tool'/'project_post_tool'. Sets cwd to the project path for subsequent prompt phases. Supports {variable} interpolation.",
+          "examples": ["{clone_dir}"]
+        },
+        "allowed_tools": {
+          "type": "array",
+          "description": "Whitelist of tools the agent may call during this phase",
+          "items": { "type": "string" },
+          "examples": [["Bash", "Read", "Write", "mcp__jira__update_ticket"]]
+        },
+        "foreach": {
+          "type": "string",
+          "description": "Controls iteration for the phase. Accepts three forms: (1) An integer — runs the phase that many times. (2) A Jinja2 expression ({{ }}) that evaluates to an integer against prior phase results. (3) A file path — runs the phase once per non-empty line. In all modes, {index} (0-based) is injected into context. File mode also injects {item} with the line content.",
+          "examples": [
+            "5",
+            "{{ steps.fetch_tickets.output.count }}",
+            "tickets.txt",
+            "{output_dir}/items.txt"
+          ]
+        },
+        "condition": {
+          "type": "string",
+          "description": "Jinja2 expression that must evaluate truthy for this phase to run. Access prior phase results via steps.<id>.success (bool) or steps.<id>.message (list). Use the 'contains' filter to search messages for a substring, or 'json_value' to parse message strings as JSON and extract a value by dot-path.",
+          "examples": [
+            "{{ steps.clone_repo.success }}",
+            "{{ steps.clone_repo.message | contains('cloned successfully') }}",
+            "{{ steps.clone_repo.message | json_value('data.status') == 'ok' }}"
+          ]
+        },
+        "history": {
+          "description": "List of prior phase IDs whose prompt and text output should be included as context in this phase's prompt. Context is prepended in order before the phase's own prompt. Referenced phases must be prompt phases defined before this phase. Cannot reference foreach phases.",
+          "type": "array",
+          "items": { "type": "string" },
+          "examples": [["phase_one"], ["analyze", "plan"]]
+        },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum LLM turns for this phase. Default: 500 for prompt phases, 100 for swarm agents.",
+          "examples": [20, 50, 100]
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum cumulative prompt + completion tokens for this phase. Null means unlimited.",
+          "examples": [50000, 100000]
+        },
+        "max_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum cumulative cost in a given currency for the model used in this phase. Null means unlimited.",
+          "examples": [0.5, 1.0, 5.0]
+        },
+        "swarm": { "$ref": "#/definitions/swarm" },
+        "hooks": { "$ref": "#/definitions/hooks" },
+        "mcp_servers": { "$ref": "#/definitions/mcpServers" },
+        "worktree": { "$ref": "#/definitions/worktree" },
+        "notifications": { "$ref": "#/definitions/notifications" },
+        "model": {
+          "type": "string",
+          "description": "LLM model identifier for this phase. Overrides blueprint defaults. Use 'llm' for full OpenHands LLM configuration including auth.",
+          "examples": ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4", "openai/gpt-4o"]
+        },
+        "llm": { "$ref": "#/definitions/llmConfig" },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Phase IDs that must finish before this phase starts. Omitted = sequential default.",
+          "examples": [["clone_repo"], ["lint", "test"]]
+        },
+        "output_schema": {
+          "type": "object",
+          "description": "JSON Schema fragment describing the desired output shape. When provided, the runner generates a Pydantic model from the schema, wires a typed Finish tool, and validates the agent's structured output against this schema as a defence-in-depth check. Fails the phase if validation does not pass.",
+          "additionalProperties": true,
+          "examples": [{"type": "object", "properties": {"status": {"type": "string"}}, "required": ["status"]}]
+        },
+        "output_model": {
+          "type": "string",
+          "description": "Dotted Python path to a registered Pydantic model that defines the phase's output shape. Takes precedence over `output_schema` when both are set. Register the model at startup via `goblin.output_schema.register_output_model(name, model)` so blueprints can reference it by string without importing user code at parse time. The runner builds a typed Finish tool whose `result` field matches the model, then validates the agent's output against it.",
+          "examples": ["myapp.models.SummaryResult", "goblin._demo_models.RepoSummary"]
+        },
+        "output_schema_format": {
+          "type": "string",
+          "enum": ["json_schema", "guided_json", "response_schema"],
+          "default": "json_schema",
+          "description": "Override the provider's default structured-output key. Defaults to the litellm-style provider default (`guided_json` for `vllm/`, `response_schema` for `gemini/` and `vertex_ai/`, `json_schema` for everyone else). Use this to pin the format independent of the model prefix."
+        },
+        "on_failure": {
+          "type": "object",
+          "description": "Behavior when this phase fails",
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "What to do when the phase fails",
+              "enum": ["skip", "retry", "abort"],
+              "examples": ["skip"]
+            },
+            "max_retries": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of retry attempts when action is 'retry'. Defaults to 1.",
+              "examples": [1, 3, 5]
+            },
+            "notify": {
+              "type": "string",
+              "description": "Hook function to call on failure",
+              "examples": ["slack_notify"]
+            }
+          }
+        }
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "description": "Configuration for the Worktree tool. Required when a phase lists `Worktree` in `allowed_tools`.",
+      "additionalProperties": false,
+      "properties": {
+        "base_dir": {
+          "type": "string",
+          "description": "Directory under which all managed worktrees live. Relative to the repository root.",
+          "default": ".goblin/worktrees",
+          "examples": [".goblin/worktrees", "worktrees"]
+        },
+        "deps": {
+          "type": "array",
+          "description": "Dependency directory names that may be symlinked from the main worktree into new worktrees. There is no built-in default list; users must opt in explicitly.",
+          "items": { "type": "string" },
+          "default": [],
+          "examples": [["node_modules", ".venv"]]
+        },
+        "auto_link": {
+          "type": "boolean",
+          "description": "Whether `create` should automatically symlink the configured `deps` after creating a worktree.",
+          "default": false,
+          "examples": [true, false]
+        }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "description": "Configuration for the AskUser tool. Optional even when a phase lists `AskUser` in `allowed_tools` — falls back to the 'default' pairing label when omitted.",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Pairing label identifying which paired operator (e.g. a Telegram user) the AskUser tool sends questions to. Resolved via TELEGRAM_TOKEN_<LABEL> or the local pairing store.",
+          "default": "default",
+          "examples": ["default", "ops-oncall", "release-manager"]
+        }
+      }
+    },
+    "swarm": {
+      "type": "object",
+      "required": ["goal", "coordinator", "agents"],
+      "additionalProperties": false,
+      "description": "Launches a team of concurrent agents coordinating through a shared Turso/libSQL database and filesystem workspace. Turso is the default backend; set backend to 'sqlite' to opt into the legacy SQLite backend.",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "enum": ["turso", "sqlite"],
+          "description": "Swarm database backend. Defaults to 'turso'. Set to 'sqlite' to opt into the legacy SQLite backend.",
+          "examples": ["turso", "sqlite"]
+        },
+        "turso": {
+          "type": "object",
+          "description": "Optional Turso/libSQL backend configuration. When omitted, the swarm defaults to local Turso using the workspace swarm.db file. Use this block to opt into remote cloud mode or to override the local database path.",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["local", "remote"],
+              "description": "Turso operating mode. 'local' uses an on-disk or in-memory libSQL database. 'remote' uses a cloud Turso database with a local replica. Defaults to 'local'.",
+              "examples": ["local", "remote"]
+            },
+            "url": {
+              "type": "string",
+              "description": "Turso database URL or local libSQL path. In remote mode this is the cloud endpoint. In local mode this is a file path or :memory:. Defaults to the workspace swarm.db path. Supports $VAR env var references and {variable} interpolation.",
+              "examples": ["libsql://my-db.turso.io", "${TURSO_URL}", ".goblin/swarms/{phase_id}/swarm.db", ":memory:"]
+            },
+            "auth_token": {
+              "type": "string",
+              "description": "Authentication token for remote Turso databases. Required when mode is 'remote'. Supports $VAR env var references.",
+              "examples": ["${TURSO_AUTH_TOKEN}"]
+            },
+            "local_path": {
+              "type": "string",
+              "description": "Path to the local replica file when mode is 'remote'. Defaults to the swarm workspace's swarm.db. Ignored when mode is 'local'.",
+              "examples": [".goblin/swarms/{phase_id}/swarm.db"]
+            }
+          }
+        },
+        "goal": {
+          "type": "string",
+          "description": "High-level objective injected into every agent's system prompt",
+          "examples": ["Implement user authentication with login, signup, and password reset"]
+        },
+        "workspace": {
+          "type": "string",
+          "description": "Path for shared files and SQLite DB. Supports {variable} interpolation. Default: .goblin/swarms/{phase_id}",
+          "examples": [".goblin/swarms/{phase_id}", "/tmp/swarm-workspace"]
+        },
+        "coordinator": { "$ref": "#/definitions/swarmCoordinator" },
+        "agents": {
+          "type": "array",
+          "description": "List of worker agent definitions",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/swarmAgent" }
+        },
+        "max_rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum coordinator evaluation rounds. Default: 5",
+          "examples": [5, 10]
+        },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Swarm-wide default maximum LLM turns per agent run. Used when an agent does not declare its own max_iterations. Default: 100",
+          "examples": [50, 100]
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Swarm-wide total token budget (prompt + completion). Null means unlimited.",
+          "examples": [500000]
+        },
+        "max_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Swarm-wide total cost budget in USD. Null means unlimited.",
+          "examples": [5.0]
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Swarm-level timeout in seconds. No default (runs until completion or max_rounds).",
+          "examples": [600, 1800]
+        },
+        "cleanup": {
+          "type": "string",
+          "enum": ["on_success", "always", "never"],
+          "description": "Workspace cleanup policy after teardown. Default: on_success",
+          "examples": ["on_success", "never"]
+        },
+        "model": {
+          "type": "string",
+          "description": "Swarm-wide default LLM model identifier. Use 'llm' for full OpenHands LLM configuration including auth.",
+          "examples": ["anthropic/claude-sonnet-4-6", "openai/gpt-4o"]
+        },
+        "llm": { "$ref": "#/definitions/llmConfig" }
+      }
+    },
+    "swarmCoordinator": {
+      "type": "object",
+      "required": ["prompt"],
+      "additionalProperties": false,
+      "description": "The coordinator agent — decomposes the goal into tasks, assigns them to agents, and evaluates completion",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "Coordinator instruction prompt. Supports {variable} interpolation.",
+          "examples": ["Break down the goal into tasks and assign to agents."]
+        },
+        "allowed_tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool whitelist for the coordinator agent",
+          "examples": [["Read", "Write"]]
+        },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum LLM turns for a single coordinator run. Default: 50",
+          "examples": [10, 20]
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum tokens for a single coordinator run. Null means unlimited.",
+          "examples": [20000]
+        },
+        "max_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum cost in USD for a single coordinator run. Null means unlimited.",
+          "examples": [0.25]
+        },
+        "model": {
+          "type": "string",
+          "description": "LLM model identifier for the coordinator agent. Overrides swarm phase-level model. Use 'llm' for full OpenHands LLM configuration including auth.",
+          "examples": ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4", "openai/gpt-4o"]
+        },
+        "llm": { "$ref": "#/definitions/llmConfig" }
+      }
+    },
+    "swarmAgent": {
+      "type": "object",
+      "required": ["name", "prompt"],
+      "additionalProperties": false,
+      "description": "A worker agent in the swarm",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique agent identifier within the swarm",
+          "examples": ["backend", "frontend", "tests"]
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Agent instruction prompt. Supports {variable} interpolation.",
+          "examples": ["You are a backend engineer. Implement assigned tasks."]
+        },
+        "allowed_tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool whitelist for this agent",
+          "examples": [["Bash", "Read", "Write", "Edit"]]
+        },
+        "hooks": { "$ref": "#/definitions/hooks" },
+        "mcp_servers": { "$ref": "#/definitions/mcpServers" },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum LLM turns for a single agent run. Defaults to swarm-level max_iterations.",
+          "examples": [50, 100]
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum tokens for a single agent run. Null means unlimited.",
+          "examples": [100000]
+        },
+        "max_cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum cost in USD for a single agent run. Null means unlimited.",
+          "examples": [1.0]
+        },
+        "model": {
+          "type": "string",
+          "description": "LLM model identifier for this worker agent. Overrides swarm phase-level model. Use 'llm' for full OpenHands LLM configuration including auth.",
+          "examples": ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4", "openai/gpt-4o"]
+        },
+        "llm": { "$ref": "#/definitions/llmConfig" },
+        "roles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of specialisation roles for this agent. Tasks can specify a required_role to be picked up only by agents with matching roles.",
+          "examples": [["backend", "database"]]
+        }
+      }
+    }
+  }
+}

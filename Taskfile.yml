@@ -65,6 +65,12 @@ tasks:
       - task goblin:check-cassettes
     silent: true
   
+  skills:sync-references:
+    desc: Sync docs and schema into the shared skills/references snapshot
+    cmds:
+      - uv run python scripts/sync_skill_references.py
+    silent: true
+
   docs:serve:
     cmds:
       - uvx 'zensical{{.ZENSICAL_VERSION}}' serve

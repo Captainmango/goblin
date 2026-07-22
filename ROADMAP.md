@@ -20,10 +20,9 @@ MAKE THE PAIRING STRING SHORTER (LIKE 8 CHAR LONG)
     - [ ] Map for AI Agents?
     - [ ] Host on Github pages (GHA to build it)
 
-- [ ] Skill that knows about all the documentation and is an expert on building blueprints
-    - [ ] Docs map and docs follow the skill
-    - [ ] Should be installable via skills.sh or some other repo
-    - [ ] Probs also needs a CC plugin?
+- [x] Skill that knows about all the documentation and is an expert on building blueprints
+    - [x] Docs map and docs follow the skill
+    - [x] Should be installable via skills.sh or some other repo
 
 - [ ] Agent Server (Remote runtime with all the GOBLIN stuff)
     - [ ] Should be an ASGI app (Probs just fork the existing server)

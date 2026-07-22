@@ -18,11 +18,13 @@ tasks:
       - uv run pyrefly check
 
   test:
+    desc: Run unit tests for the project
     cmds:
-      - uv run pytest
+      - uv run pytest tests/unit
     silent: true
 
   validate:
+    desc: Validate all example blueprints
     cmds:
       - uv run goblin validate ../examples/*.yaml
     silent: true
