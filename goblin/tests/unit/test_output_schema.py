@@ -16,7 +16,7 @@ from goblin.output_schema import (
     resolve_output_model,
     validate_against_schema,
 )
-from tests._helpers import _make_prompt_phase, _mock_llm_infra
+from tests.unit._helpers import _make_prompt_phase, _mock_llm_infra
 
 # ---------------------------------------------------------------------------
 # _validate_output_schema / validate_against_schema (legacy alias)

@@ -12,7 +12,7 @@ from goblin.validation import validate_blueprint
 
 
 def _load_schema() -> dict:
-    path = os.path.join(os.path.dirname(__file__), "..", "..", "spec", "v1.json")
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "spec", "v1.json")
     with open(path) as f:
         return json.load(f)
 

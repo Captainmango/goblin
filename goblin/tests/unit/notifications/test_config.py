@@ -15,7 +15,7 @@ import pytest
 
 from goblin.blueprint import V1Blueprint
 from goblin.validation import validate_blueprint
-from tests._helpers import _make_prompt_phase, _mock_llm_infra
+from tests.unit._helpers import _make_prompt_phase, _mock_llm_infra
 
 
 def _make_blueprint(phases: list[dict], defaults: dict | None = None) -> V1Blueprint:

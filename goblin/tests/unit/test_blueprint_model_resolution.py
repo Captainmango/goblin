@@ -9,7 +9,7 @@ import pytest
 from goblin.blueprint import V1Blueprint
 from goblin.phase import PromptPhase
 from goblin.swarm import SwarmPhase
-from tests._helpers import MINIMAL_SWARM_RAW, MagicAgent
+from tests.unit._helpers import MINIMAL_SWARM_RAW, MagicAgent
 
 # ---------------------------------------------------------------------------
 # _resolve_model helper

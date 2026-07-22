@@ -12,8 +12,8 @@ from goblin.output_schema import PhaseResult
 from goblin.phase import PromptPhase
 from goblin.swarm import SwarmPhase
 from goblin.utils.llm import build_llm
-from tests._helpers import MINIMAL_SWARM_RAW as MINIMAL_SWARM
-from tests._helpers import MagicAgent
+from tests.unit._helpers import MINIMAL_SWARM_RAW as MINIMAL_SWARM
+from tests.unit._helpers import MagicAgent
 
 # ---------------------------------------------------------------------------
 # Helpers

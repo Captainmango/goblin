@@ -8,7 +8,7 @@ import pytest
 
 from goblin.blueprint import V1Blueprint
 from goblin.swarm import SwarmPhase
-from tests._helpers import MINIMAL_SWARM_RAW
+from tests.unit._helpers import MINIMAL_SWARM_RAW
 
 
 def _make_blueprint(phases: list[dict]) -> V1Blueprint:

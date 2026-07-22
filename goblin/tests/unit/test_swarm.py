@@ -14,7 +14,7 @@ from goblin.blueprint import V1Blueprint
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState
 from goblin.swarm import SwarmPhase
 from goblin.swarm_db import SQLiteSwarmDB, TursoSwarmDB
-from tests._helpers import MINIMAL_SWARM_RAW
+from tests.unit._helpers import MINIMAL_SWARM_RAW
 
 # ---------------------------------------------------------------------------
 # Helpers

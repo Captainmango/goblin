@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from goblin.output_schema import PhaseResult
-from tests._helpers import _make_prompt_phase, _mock_llm_infra
+from tests.unit._helpers import _make_prompt_phase, _mock_llm_infra
 
 # ---------------------------------------------------------------------------
 # Local workspace

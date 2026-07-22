@@ -9,7 +9,7 @@ import pytest
 
 from goblin.output_schema import SwarmCoordinatorResult
 from goblin.swarm import SwarmPhase
-from tests._helpers import MINIMAL_SWARM_RAW, _mock_llm_infra
+from tests.unit._helpers import MINIMAL_SWARM_RAW, _mock_llm_infra
 
 
 def _make_blueprint_with_swarm(raw: dict) -> SwarmPhase:
