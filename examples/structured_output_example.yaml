@@ -23,7 +23,7 @@ blueprint:
             maximum: 1
         required: [intent, confidence]
 
-    - id: summarize
+    - id: summarise
       prompt: |
-        Summarize the user request in one sentence.
+        Summarise the user request in one sentence.
       allowed_tools: []

@@ -62,6 +62,7 @@ tasks:
   validate:
     cmds:
       - task goblin:validate
+      - task goblin:check-cassettes
     silent: true
   
   docs:serve:

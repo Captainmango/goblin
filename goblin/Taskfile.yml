@@ -24,11 +24,17 @@ tasks:
 
   validate:
     cmds:
-      - uv run goblin validate ../blueprints/*.yaml
+      - uv run goblin validate ../examples/*.yaml
     silent: true
 
   check-imports:
     desc: Fail if goblin.cli import time exceeds 500 ms
     cmds:
       - uv run python ../scripts/check_import_time.py
+    silent: true
+
+  check-cassettes:
+    desc: Validate checked-in VCR cassettes contain no leaked secrets
+    cmds:
+      - uv run python ../scripts/check_cassettes.py
     silent: true

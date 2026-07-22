@@ -49,8 +49,7 @@ class WorktreeAction(Action):
     deps: list[str] | None = Field(
         default=None,
         description=(
-            "Dependency directory names to symlink from the main worktree. "
-            "Uses the configured list when omitted."
+            "Dependency directory names to symlink from the main worktree. Uses the configured list when omitted."
         ),
     )
     auto_link: bool | None = Field(

@@ -122,56 +122,12 @@ task notifications-relay:test
 - Put shared fixtures in `conftest.py`.
 - Reset config singletons between tests with an `autouse` fixture.
 - Use `tmp_path` for any test that touches the filesystem.
-- Use `AsyncMock` and `MagicMock` to isolate units from external dependencies.
-- Mock at the project boundary (step/phase, provider, HTTP client), not at internal SDK seams.
 - Name test helpers consistently (`_make_blueprint`, `_make_client`, etc.).
 - Keep tests focused: one behavior per test method, grouped into classes by feature.
 
-## Environment Variables
+#### Unit Tests
+- Use `AsyncMock` and `MagicMock` to isolate units from external dependencies.
+- Mock at the project boundary (step/phase, provider, HTTP client), not at internal SDK seams.
 
-| Variable | Project | Purpose |
-|----------|---------|---------|
-| `GOBLIN_MODEL_API_KEY` | goblin | LLM API key (falls back to `MODEL_API_KEY`). |
-| `GOBLIN_BASE_URL` | goblin | LLM base URL (falls back to `OPENHANDS_BASE_URL`). |
-| `GOBLIN_DEFAULT_MODEL` | goblin | Default LLM model when no model is specified in the blueprint. Required unless all phases/swarm agents declare a model. |
-| `OPENHANDS_SUPPRESS_BANNER` | goblin | Suppress OpenHands startup banner (default: `1`). |
-| `GOBLIN_BACKEND` | goblin | Swarm backend selection. |
-| `GOBLIN_TURSO_URL` | goblin | Turso/libSQL URL for distributed swarm DB. |
-| `GOBLIN_TURSO_AUTH_TOKEN` | goblin | Turso auth token. |
-| `GOBLIN_TURSO_MODE` | goblin | Turso connection mode. |
-| `GOBLIN_TURSO_LOCAL_PATH` | goblin | Local libSQL DB path. |
-| `GOBLIN_LOG_CONFIG` | goblin | Path to YAML logging config. |
-| `RELAY_API_KEY` | all | API key for notifications-relay HTTP API (required by server and clients). |
-| `RELAY_HOST` | all | Relay host (default: `127.0.0.1`). |
-| `RELAY_PORT` | all | Relay port (default: `8000`). |
-| `RELAY_DB_PATH` | notifications-relay | SQLite DB path (default: `.goblin/relay.db`). |
-| `RELAY_PAIRING_TOKEN_TTL_SECONDS` | notifications-relay | Pairing token TTL (default: `900`). |
-| `RELAY_QUESTION_MAPPING_TTL_SECONDS` | notifications-relay | Question mapping TTL (default: `3600`). |
-| `RELAY_LOG_LEVEL` / `RELAY_LOG_FILE` / `RELAY_LOG_QUIET` | notifications-relay | Logging overrides. |
-| `TELEGRAM_BOT_TOKEN` | notifications-relay | Telegram bot token (required for Telegram). |
-| `TELEGRAM_ALLOWED_USER_IDS` | notifications-relay | Comma-separated allowed Telegram user IDs. |
-
-## Project Notes
-
-### goblin
-
-- Entry point: `uv run goblin run <blueprint>`.
-- Validate blueprints: `uv run goblin validate <paths...>`.
-- Blueprint prompt strings use `{variable}` interpolation from the run `context` dict.
-- Blueprint template expressions (conditions, foreach) use Jinja2 `{{ }}` syntax.
-- Hook names in blueprints must exist in `HOOK_REGISTRY` at runtime.
-- Blueprint files live in `blueprints/` at the repo root.
-- Checkpoint files are written to `.goblin/run-<id>.json` under the run directory.
-- The `notifications` subcommand talks to the notifications-relay.
-
-### notifications-relay
-
-- Entry point: `uv run notifications-relay serve`.
-- FastAPI app is created by `notifications_relay.main:create_app`.
-- Telegram is only enabled when `TELEGRAM_BOT_TOKEN` is set.
-
-### goblin-common
-
-- Keep shared code here; avoid duplicating helpers across projects.
-- `env()` coerces values to the type of their default (`int`, `bool`, etc.).
-- `secret_env()` returns a pydantic `SecretStr`.
+#### Integration Tests
+- Use vcr to record http requests so that tests are deterministic

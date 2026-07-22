@@ -992,6 +992,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
+    { name = "vcrpy" },
 ]
 
 [package.metadata]
@@ -1008,6 +1009,7 @@ dev = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "ruff", specifier = ">=0.15.4" },
+    { name = "vcrpy", specifier = ">=8.3.0" },
 ]
 
 [[package]]

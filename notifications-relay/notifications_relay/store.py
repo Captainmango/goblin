@@ -153,9 +153,7 @@ class Store:
         chat_id: str,
     ) -> None:
         now = self._now()
-        never_expires = (
-            datetime.now(UTC) + timedelta(days=365 * _CLAIMED_PAIRING_NEVER_EXPIRES_YEARS)
-        ).isoformat()
+        never_expires = (datetime.now(UTC) + timedelta(days=365 * _CLAIMED_PAIRING_NEVER_EXPIRES_YEARS)).isoformat()
         await self._execute(
             """
             UPDATE pairings

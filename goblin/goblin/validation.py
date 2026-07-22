@@ -26,6 +26,7 @@ def load_schema() -> dict[str, Any]:
     _cached_schema = json.loads(schema_bytes)
     return _cached_schema
 
+
 def validate_blueprint(path: str, raw: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Load a blueprint YAML file and validate it against the JSON Schema.
 

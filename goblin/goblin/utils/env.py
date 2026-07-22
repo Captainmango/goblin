@@ -27,10 +27,7 @@ def validate_env_var_syntax(value):
             if start > 0 and s[start - 1] == "{":
                 continue  # part of ${VAR}, not $VAR
             var_name = match.group(1)
-            raise ValueError(
-                f"Invalid env-var syntax '${var_name}'. "
-                f"Use '${{{var_name}}}' (braced) syntax instead."
-            )
+            raise ValueError(f"Invalid env-var syntax '${var_name}'. Use '${{{var_name}}}' (braced) syntax instead.")
         return s
 
     walk_strings(value, _check)
