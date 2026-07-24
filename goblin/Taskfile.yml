@@ -40,3 +40,9 @@ tasks:
     cmds:
       - uv run python ../scripts/check_cassettes.py
     silent: true
+
+  build-binary:
+    desc: Compile the goblin CLI to a native binary with Nuitka (standalone)
+    cmds:
+      - uv run python -m nuitka --mode=standalone --main=goblin/__main__.py --output-dir=../dist/nuitka --output-filename=goblin --include-package=goblin --include-package-data=goblin --nofollow-import-to='*.tests' --assume-yes-for-downloads --remove-output --jobs=$(nproc) --show-progress
+    silent: true
