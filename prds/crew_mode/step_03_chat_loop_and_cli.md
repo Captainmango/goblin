@@ -33,7 +33,7 @@ goblin crew [--name default] [--model MODEL] [--max-crewmates N] [--max-cost USD
             [--log-config …] [--log-level …] [--log-file …] [--quiet]
 ```
 
-Flow (async main, wired in `cli.py` via the `LazyGroup` pattern used for `notifications`
+Flow (async main, wired in `cli.py` via the existing `LazyGroup` lazy-subcommand pattern
 [L6]; config loaded lazily inside the command per CLI conventions):
 
 1. `load_dotenv_from_cwd()`, `configure_logging(logger_name="goblin-crew", …)` — log file

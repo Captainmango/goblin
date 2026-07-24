@@ -4,7 +4,7 @@
 cross-process fleet list and per-session transcript view.
 
 **Depends on:** step 2 (registry + persisted sessions); can be built in parallel with step 3
-against a hand-seeded crew home. **Blocks:** nothing (step 5 is independent).
+against a hand-seeded crew home. **Blocks:** nothing (steps 5–6 are independent).
 
 ---
 
@@ -68,4 +68,4 @@ Documented and tested behavior while `goblin crew` runs in another terminal:
 - [ ] `goblin crew sessions <name> --tail 5` shows status/cost/result plus the last 5 events
       of a real session produced by the step-3 golden-path test.
 - [ ] All §4.4 tests green; lint/typecheck green.
-- [ ] `docs/cli/goblin.md` gains the `crew sessions` reference (full guide lands in step 5).
+- [ ] `docs/cli/goblin.md` gains the `crew sessions` reference (full guide lands in step 6).

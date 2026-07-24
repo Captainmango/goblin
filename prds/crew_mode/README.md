@@ -14,6 +14,19 @@ Add an interactive **crew mode** to goblin: the user chats with a single top-lev
 agent sessions that do the actual work. A separate `goblin crew sessions` command shows every
 session the crew lead is managing, with status and transcripts, from a second terminal.
 
+Crewmates run on one of two harnesses: goblin's native OpenHands agent loop, or a wrapped
+third-party coding harness (Claude Code, Codex, Gemini CLI) over **ACP**, reusing the
+integration designed in `prds/acp_for_alt_harnesses` [L10]. Both harness kinds run inside
+ordinary persisted `LocalConversation`s, so supervision, session viewing, and cost control
+behave identically.
+
+Two hard constraints shape everything below:
+
+- **Crew mode is CLI-only.** The `goblin crew` chat REPL and the `goblin crew sessions`
+  views are the entire surface — there is no server, HTTP API, or TUI, and none is planned.
+- **notifications-relay development is frozen.** Per `AGENTS.md`, that project must not be
+  read or changed. Crew mode has **zero** references to it and **zero** dependencies on it.
+
 The model is lifted from firstmate [S1]:
 
 - **One liaison.** The user talks only to the crew lead. The lead decomposes requests into
@@ -28,7 +41,8 @@ The key decision of this PRD: **build crew mode as a new interactive CLI surface
 goblin's existing swarm machinery patterns — typed tools, a sqlite coordination DB, persisted
 `LocalConversation`s, and the circuit breaker — and not as a blueprint phase, and not with
 firstmate's tmux/script process model.** Crewmate sessions are in-process asyncio tasks whose
-conversations persist to disk via the SDK's `persistence_dir`, which is what makes them
+conversations persist to disk via the SDK's `persistence_dir` — whether the agent inside is a
+native SDK `Agent` or an ACP-wrapped harness subprocess [L10] — which is what makes them
 viewable from outside the chat process.
 
 ---
@@ -107,9 +121,9 @@ event files, no pane scraping). tmux-style visible terminals are a V2 option (§
 | Conversation runner | `goblin/goblin/conversation.py` [L4] | `run_conversation(agent, workspace, prompt, max_iterations=..., max_cost=...)` → returns the conversation for event/cost reading |
 | Circuit breaker | `goblin/goblin/cost_control.py` [L7] | `CircuitBreaker.absorb(conversation)`; crew-level spend cap reuses it |
 | Config singleton + env conventions | `goblin/goblin/utils/config.py` [L8] | `GOBLIN_*` env vars, `get_config()`/`reset_config()` |
-| Click CLI with lazy subgroup | `goblin/goblin/cli.py` [L6] | `notifications` is already a lazily-loaded subcommand; `crew` follows the same pattern |
-| Worktree machinery | `goblin/goblin/tools/worktree_tool.py`, phase `worktree:` config [L9] | Per-crewmate worktree isolation (step 5) |
-| Notifications relay client | `goblin/goblin/notifications/client.py` [L10] | Crewmate completion/failure alerts (step 5) |
+| Click CLI with lazy subgroup | `goblin/goblin/cli.py` [L6] | Lazy subcommand loading already exists; the `crew` group follows the same pattern |
+| Worktree machinery | `goblin/goblin/tools/worktree_tool.py`, phase `worktree:` config [L9] | Per-crewmate worktree isolation (step 6) |
+| ACP harness wrapping | `prds/acp_for_alt_harnesses` + installed SDK ACP surface [L10] | The `harness` block design and the `ACPAgentSettings.create_agent()` build seam; crew mode reuses both per-spawn so a crewmate can be a Claude Code / Codex / Gemini CLI session (step 5) |
 | Prompt conventions | `goblin/goblin/prompts.py` [L11] | `SWARM_COORDINATOR_PROMPT`/`SWARM_AGENT_PROMPT` are the template for `CREW_LEAD_PROMPT` |
 
 ### 3.3 SDK capabilities this design relies on (verified against installed `openhands-sdk` 1.29.3)
@@ -129,11 +143,17 @@ event files, no pane scraping). tmux-style visible terminals are a V2 option (§
 4. **Tool executors are sync and thread-pooled.** Spawn/list/read/message/stop commands must
    therefore (a) do DB reads/writes via the sync driver [L2], and (b) hand asynchronous work
    to the event loop via `loop.call_soon_threadsafe(...)` rather than creating tasks inline.
+5. **ACP agents fit the same conversation path.** `ACPAgent` is an `AgentBase` subclass that
+   `LocalConversation` accepts unchanged; it emits standard conversation events (tool-call
+   cards, a terminal `FinishAction`) and converts harness usage updates into the same
+   `llm.metrics` the circuit breaker reads [L10]. An ACP crewmate therefore persists to
+   disk, is viewable via `crew sessions`, and is cost-capped exactly like a native crewmate.
+   ACP sessions are keyed by `cwd`, so per-crewmate workspaces (and worktrees) compose.
 
 ### 3.4 What does not exist yet (the work this PRD covers)
 
 - No interactive surface of any kind: goblin has no REPL, no persistent top-level agent, and
-  no `input()` loop. `cli.py` is `run` / `validate` / `notifications` only [L6].
+  no `input()` loop. `cli.py` is `run` / `validate` plus lazily-loaded subcommands only [L6].
 - No session registry: a swarm's `agent_state` table is roster-bound and phase-scoped; nothing
   tracks dynamically-spawned, named, resumable sessions across process restarts [L1, L2].
 - No spawn-at-runtime tool: `SwarmTasks.create_task` creates board rows for a fixed roster;
@@ -178,14 +198,17 @@ scraping panes / status files.
 - The lead's only tool is a typed **Crew** tool (`spawn`/`list`/`read`/`message`/`stop`),
   following the swarm typed-tool pattern [L3]; the lead gets **no Bash** — crewmates do all
   project work (firstmate's "guarded by construction" [S1]).
-- Each crewmate is an asyncio task running one `LocalConversation` with a `persistence_dir`
-  under the crew home [L4, L5]; a sqlite **CrewRegistry** (swarm_db conventions [L2]) tracks
-  sessions, follow-up messages, and lead-visible events.
+- Each crewmate is an asyncio task running one `LocalConversation` — native SDK `Agent`
+  **or** `ACPAgent` wrapping a local third-party harness subprocess [L10] — with a
+  `persistence_dir` under the crew home [L4, L5]; a sqlite **CrewRegistry** (swarm_db
+  conventions [L2]) tracks sessions, follow-up messages, and lead-visible events.
 - `goblin crew sessions` reads the registry + event JSON files from a second terminal — WAL
   allows concurrent readers [L2], and per-event files make live transcripts tail-able [L5].
-- Pros: no new runtime dependencies; supervision is real (task handles, not pane scraping);
-  transcripts viewable cross-process for free; reuses every goblin pattern above; blueprint
-  spec untouched (crew mode is a CLI surface, not a phase — no `spec/v1.json` change).
+- Pros: no new required Python dependencies (the ACP library is already vendored by the
+  pinned SDK, and harness CLIs are only needed when `harness: acp` is actually used [L10]);
+  supervision is real (task handles, not pane scraping); transcripts viewable cross-process
+  for free; reuses every goblin pattern above; blueprint spec untouched (crew mode is a CLI
+  surface, not a phase — no `spec/v1.json` change).
 - Cons: one process hosts all agents (a hard crash kills in-flight turns — mitigated by the
   registry + persisted conversations + startup reconciliation, §5.6); no literal terminal per
   crewmate (V2).
@@ -231,6 +254,11 @@ scraping panes / status files.
  └─────────────────────────────────────────────┘        └──────────────────────────┘
 ```
 
+A crewmate task wraps either a native SDK `Agent` or an `ACPAgent` driving a local harness
+subprocess (Claude Code, Codex, or Gemini CLI over stdio [L10]); both run inside the same
+`LocalConversation` + `persistence_dir` path, so everything to the right of the runtime is
+harness-agnostic.
+
 ### 5.3 Crew home layout
 
 ```
@@ -243,7 +271,7 @@ scraping panes / status files.
 │   └── <crewmate>/             # crewmate persistence_dir
 │       ├── base_state.json
 │       └── events/event-00001-….json …
-└── worktrees/                  # per-crewmate git worktrees (step 5, opt-in)
+└── worktrees/                  # per-crewmate git worktrees (step 6, opt-in)
     └── <crewmate>/
 ```
 
@@ -299,11 +327,16 @@ New `goblin/goblin/crew/tools.py` — one typed tool, `command` literal, followi
 
 | Command | Args | Behavior |
 |---|---|---|
-| `spawn` | `name`, `task`, `model?`, `allowed_tools?`, `worktree?`, `max_cost?`, `max_iterations?` | INSERT session (`pending`) + hand spawn request to the event loop via `call_soon_threadsafe`; returns immediately ("spawned, pending start"). Rejects duplicate names. |
+| `spawn` | `name`, `task`, `harness?`, `server?`, `command?`, `model?`, `allowed_tools?`, `worktree?`, `max_cost?`, `max_iterations?` | INSERT session (`pending`) + hand spawn request to the event loop via `call_soon_threadsafe`; returns immediately ("spawned, pending start"). Rejects duplicate names. `harness: openhands` (default) runs the native agent loop; `harness: acp` wraps the named ACP `server` (`claude-code` default, `codex`, `gemini-cli`, `custom` — `custom` requires `command`) [L10]. |
 | `list` | — | SELECT all sessions with status/cost/updated; rendered as the fleet table. |
 | `read` | `name`, `tail?` | Registry row + last N events read from the session's persisted `events/*.json` (summarized: role/type/text preview). |
 | `message` | `name`, `message` | INSERT undelivered message row; the runtime delivers it as the crewmate's next turn (after its current turn, or starting a new turn if `done`/`stopped`). |
 | `stop` | `name` | Requests cancellation; runtime cancels the asyncio task; status → `stopped`. |
+
+Harness semantics on spawn: under `harness: acp` the harness owns its tools and permissions,
+so `allowed_tools` is **rejected** (native-only) and `model` maps to the harness's model
+(`acp_model`); the SDK bridge auto-approves permission requests, matching unattended runs
+[L10]. Under `harness: openhands`, `allowed_tools` behaves as in blueprint phases.
 
 Tool description carries the same posture as the swarm coordinator's: *you cannot do project
 work yourself; only crewmates touch the filesystem* [L3, L11].
@@ -313,10 +346,20 @@ work yourself; only crewmates touch the filesystem* [L3, L11].
 New `goblin/goblin/crew/runtime.py`. An asyncio supervisor task started beside the chat loop:
 
 1. **Spawn queue.** The tool executor (thread pool) enqueues spawn requests with
-   `loop.call_soon_threadsafe`; the runtime awaits them, builds the crewmate
-   (`build_llm` [L8] + `resolve_tools` + `BASE_SYSTEM_PROMPT`-derived crewmate prompt [L11] +
-   `LocalWorkspace(session workspace)`), and starts `conversation.arun()` under a
-   `max_crewmates` semaphore (default 4).
+   `loop.call_soon_threadsafe`; the runtime awaits them, builds the crewmate, and starts
+   `conversation.arun()` under a `max_crewmates` semaphore (default 4). Crewmate build
+   branches on the spawn's `harness`:
+   - *native* (`harness: openhands`, the default): `build_llm` (spawn model → `crew_model`
+     → `default_model` [L8]) + `resolve_tools(allowed_tools)` (the standard goblin tool set
+     **without** the Crew tool);
+   - *ACP* (`harness: acp`): `ACPAgentSettings(acp_server=server, acp_command=command,
+     acp_model=model, acp_isolate_data_dir=True).create_agent()` [L10] — per-crewmate
+     data-dir isolation so concurrent ACP sessions never race on shared CLI config
+     (`~/.claude`, `CODEX_HOME`); `allowed_tools` is rejected (the harness owns its tools);
+   - both get the `CREW_MATE_PROMPT` [L11] ("your brief is all the context you have; report
+     a concise outcome as your final message") and a `LocalWorkspace` on the session
+     workspace (`<crew_home>/sessions/<name>/ws`, or the session worktree from step 6),
+     which for ACP becomes the harness session `cwd`.
 2. **Lifecycle writes.** `pending → running` on start; on turn end, absorb spend into the
    crew **CircuitBreaker** [L7], store `result`/`cost`, set `done`/`failed`, and
    `emit_event(...)` for the lead. Exceptions follow `_run_single_agent`'s pattern: log
@@ -386,6 +429,11 @@ goblin crew sessions <session> [--tail 20]            # detail + transcript tail
 All via `goblin/utils/config.py` conventions (`env()`, frozen dataclass, `reset_config()`)
 [L8]; CLI flags override env.
 
+ACP crewmates authenticate per the ACP design [L10]: provider keys (`ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `GEMINI_API_KEY`) come from the ambient environment and are never logged;
+the harness CLI itself (the SDK's pinned `npx` commands, or an explicit `command`) is a
+runtime prerequisite only when `harness: acp` is actually used.
+
 ---
 
 ## 6. Requirements
@@ -403,10 +451,17 @@ All via `goblin/utils/config.py` conventions (`env()`, frozen dataclass, `reset_
 | F7 | Startup reconciliation marks orphaned `running`/`pending` sessions `interrupted` and surfaces them to the lead. |
 | F8 | The lead has no Bash/filesystem tools — all project work happens inside crewmate sessions. |
 | F9 | Per-crewmate and per-crew cost limits enforced via the existing circuit breaker. |
-| F10 | (Step 5) `spawn(worktree: true)` isolates the crewmate in a git worktree under the crew home; crewmate completion/failure can fire a notifications-relay alert when relay env is configured. |
+| F10 | (Step 5) `spawn(harness: acp, server: ...)` runs the crewmate on the named local ACP harness (Claude Code, Codex, Gemini CLI, or a custom command); the session persists, is viewable via `crew sessions`, and is cost-capped identically to native crewmates. `allowed_tools` is rejected for ACP spawns (the harness owns its tools). |
+| F11 | (Step 6) `spawn(worktree: true)` isolates the crewmate in a git worktree under the crew home. |
 
 ### 6.2 Non-functional
 
+- **CLI-only.** Crew mode ships exclusively as `goblin` CLI commands (the `goblin crew` chat
+  REPL and the `goblin crew sessions` views). No HTTP server, no API, no TUI, no new
+  entry-point processes beyond the harness subprocesses ACP spawns.
+- **notifications-relay is frozen** (`AGENTS.md`): crew mode must not import, read,
+  reference, or integrate with that project. Review checklist: zero matches for
+  `notifications` / `relay` under `goblin/goblin/crew/` and in this PRD's steps.
 - Repo conventions per `AGENTS.md`: `from __future__ import annotations`, type hints, pydantic
   where parsing, structured logging with dot-notation events (`crew.spawned`,
   `crew.crewmate_done`, `crew.crewmate_failed`, `crew.reconciled`, `crew.stopped`) [L12].
@@ -415,8 +470,11 @@ All via `goblin/utils/config.py` conventions (`env()`, frozen dataclass, `reset_
 - No changes to `spec/v1.json`, blueprint phases, or the swarm phase — crew mode is a new CLI
   surface; `goblin run`/`validate` behavior is untouched.
 - No new required dependencies. The REPL uses stdlib (`input` via executor) — no
-  prompt_toolkit in V1.
-- Secrets posture unchanged: `GOBLIN_MODEL_API_KEY` via existing config; never logged [L8].
+  prompt_toolkit in V1. ACP support uses the SDK-vendored `agent-client-protocol` library
+  already present as a transitive dependency [L10]; harness CLIs are an opt-in runtime
+  prerequisite, not a Python dependency.
+- Secrets posture unchanged: `GOBLIN_MODEL_API_KEY` via existing config; ACP provider keys
+  (`ANTHROPIC_API_KEY` etc.) ride the ambient environment per [L10]; never logged [L8].
 - Tests per conventions: unit tests mock at the project boundary (conversation runner, tool
   executors with real registry on `tmp_path`); integration tests use vcr cassettes and no MCP
   servers [L12].
@@ -429,6 +487,7 @@ All via `goblin/utils/config.py` conventions (`env()`, frozen dataclass, `reset_
 | `goblin/crew/db.py` | `CrewRegistry` (schema §5.4, typed methods). |
 | `goblin/crew/runtime.py` | `CrewRuntime` supervisor (spawn queue, semaphore, lifecycle, message delivery, stop, reconciliation). |
 | `goblin/crew/tools.py` | Typed `Crew` tool (§5.5) + registration. |
+| `goblin/crew/acp.py` | Harness branch: map spawn args → `ACPAgentSettings(...).create_agent()` [L10]; ACP-only spawn validation (§5.5). |
 | `goblin/crew/chat.py` | REPL + lead construction + CLI entry helpers. |
 | `goblin/crew/sessions_view.py` | Read-only fleet/detail rendering for `crew sessions`. |
 | `goblin/prompts.py` | `CREW_LEAD_PROMPT`, `CREW_MATE_PROMPT` [L11]. |
@@ -442,19 +501,20 @@ All via `goblin/utils/config.py` conventions (`env()`, frozen dataclass, `reset_
 
 ### 6.4 Out of scope (V2+)
 
+- **Server, API, or TUI surfaces** — crew mode is CLI-only by design (§6.2). Any future
+  remote hosting would be a separate PRD composing with `prds/agent_server_plan` [L13], not
+  an extension of this one.
 - **Visible terminal backends** (tmux/zellij panes per crewmate, firstmate-style [S1, S2]) —
   V1's view surface is `crew sessions`; the registry/backend seam allows a terminal backend
   later.
 - **Blueprint crewmates** — spawning a full `goblin run <blueprint>` as a session (heavy tasks
-  with phases); V1 crewmates are single-prompt conversations.
-- **ACP harness crewmates** — composing with `prds/acp_for_alt_harnesses` so a crewmate can be
-  a Claude Code/Codex/Gemini session; independent of this PRD by design.
-- **Remote crews** — hosting crew mode in the agent server (`prds/agent_server_plan`), with
-  Canvas visibility for crewmate conversations.
-- **Crewmate → user questions** — routing `AskUser` from inside a crewmate to the user via the
-  notifications-relay, and richer lead↔crewmate signal channels (the swarm's `signals` table
-  idea [L2]) beyond lead-initiated messages.
-- **A TUI/dashboard** for sessions; `--follow` live tailing.
+  with phases); V1 crewmates are single-prompt conversations (native or ACP).
+- **Remote ACP** — harness subprocesses on a remote host; same local-only boundary as the
+  ACP PRD [L10].
+- **Crewmate → user mid-run questions** — `AskUser` routed up through the lead's chat
+  surface, and richer lead↔crewmate signal channels (the swarm's `signals` table idea [L2])
+  beyond lead-initiated messages.
+- **A dashboard/`--follow` live tailing** for sessions.
 
 ---
 
@@ -469,6 +529,10 @@ All via `goblin/utils/config.py` conventions (`env()`, frozen dataclass, `reset_
 | One process hosts all agents: a crewmate wedge (e.g. stuck tool) blocks the loop | Whole crew stalls | `arun()` is async and per-crewmate `max_iterations`/`max_cost` bound turns; `stop` cancels; SDK stuck-detector exists [L5]; V2 process isolation noted (§6.4) |
 | Thread-pool executor ↔ event-loop handoff races (spawn before runtime ready) | Lost spawn | Spawn requests are durable registry rows *first* (`pending`); the runtime drains `pending` rows on startup as well as the live queue, so the queue is an optimization, not the source of truth |
 | Lead conversation grows unbounded | Context blowout in long crews | Lead is instructed to keep briefs self-contained and summaries short; SDK compaction is a conversation capability to verify in the spike; `--max-cost` backstops [L5] |
+| ACP harness subprocess leaks on crewmate failure/cancel | Orphan `node` processes, cost leak | Rely on SDK cleanup in `conversation.close()` [L10]; the runtime closes every crewmate conversation in a `finally`; step-5 tests assert process reaping on failure paths |
+| Concurrent ACP crewmates race on shared CLI config (`~/.claude`, `CODEX_HOME`) | Corrupt auth/config state | `acp_isolate_data_dir=True` is forced per crewmate (§5.6); isolation is credential-blind and per-conversation [L10] |
+| ACP PRD (`prds/acp_for_alt_harnesses`) not yet landed when step 5 starts | No shared harness-resolution helpers to reuse | Step 5 implements the minimal `ACPAgentSettings` build inline in `goblin/crew/acp.py` (a small, public seam per [L10]); if the ACP PRD lands first, reuse its resolution helpers instead |
+| Harness CLI missing or `npx` first-run latency for ACP spawns | Spawn fails or stalls | Spawn-time validation returns a typed error the lead reports; provider commands are version-pinned by the SDK; `command` override points at preinstalled binaries [L10] |
 
 ---
 
@@ -480,11 +544,12 @@ All via `goblin/utils/config.py` conventions (`env()`, frozen dataclass, `reset_
 | 2 | `step_02_crew_runtime_and_tools.md` | `CrewRuntime` supervisor + typed `Crew` tool with lifecycle, message delivery, stop, reconciliation |
 | 3 | `step_03_chat_loop_and_cli.md` | `goblin crew` REPL: lead prompt, event digest injection, circuit breaker, CLI wiring |
 | 4 | `step_04_sessions_command.md` | `goblin crew sessions` fleet + detail views (cross-process, live-safe) |
-| 5 | `step_05_worktrees_notifications_docs.md` | Per-crewmate worktrees, relay notifications, docs/AGENTS/ROADMAP updates |
+| 5 | `step_05_acp_harness_crewmates.md` | ACP-wrapped crewmates: harness spawn branch, per-session isolation, provider verification |
+| 6 | `step_06_worktrees_and_docs.md` | Per-crewmate worktrees; docs/AGENTS/ROADMAP updates |
 
 Steps 1–3 are the MVP critical path (chat with the lead, spawn and supervise crewmates).
 Step 4 completes the user's "view all sessions" requirement as a first-class surface.
-Step 5 is hardening and polish. All five are V1 scope.
+Step 5 adds ACP harness wrapping; step 6 is hardening and polish. All six are V1 scope.
 
 ---
 
@@ -520,21 +585,24 @@ Step 5 is hardening and polish. All five are V1 scope.
   autosave, `persistence_dir` field); `conversation/event_store.py` (`EventLog`,
   thread/process-safe per-event files); `conversation/persistence_const.py`
   (`base_state.json`, `events/event-NNNNN-<id>.json` naming); `conversation/cancellation.py`.
-- **[L6]** `goblin/goblin/cli.py` — Click `LazyGroup` (lazy `notifications` subcommand),
+- **[L6]** `goblin/goblin/cli.py` — Click `LazyGroup` (lazy subcommand loading pattern),
   global logging options, `run`/`validate` surface.
 - **[L7]** `goblin/goblin/cost_control.py` — `CircuitBreaker.absorb()`, `LimitExceeded`.
 - **[L8]** `goblin/goblin/utils/config.py`, `goblin/goblin/utils/env.py` — env-driven frozen
   config singleton, `resolve_env_vars`; `goblin/goblin/utils/llm.py` — `build_llm`.
 - **[L9]** `goblin/goblin/tools/worktree_tool.py` + phase `worktree:` support —
   existing worktree isolation machinery.
-- **[L10]** `goblin/goblin/notifications/client.py` — notifications-relay client used from
-  the CLI.
+- **[L10]** `prds/acp_for_alt_harnesses/README.md` — the ACP `harness` block design this PRD
+  reuses for crewmates, plus the installed SDK ACP surface it documents
+  (`.venv/lib/python3.13/site-packages/openhands/sdk/agent/acp_agent.py` — `ACPAgent`;
+  `settings/model.py` — `ACPAgentSettings.create_agent()`; `settings/acp_providers.py` —
+  provider registry, pinned `npx` commands, data-dir isolation levers).
 - **[L11]** `goblin/goblin/prompts.py` — `BASE_SYSTEM_PROMPT`, `SWARM_COORDINATOR_PROMPT`,
   `SWARM_AGENT_PROMPT` (role/roster/board prompt conventions).
 - **[L12]** `AGENTS.md` — repo conventions (typed tools, sync-DB exception, structured
   logging events, unit-over-integration testing, vcr integration rules, no MCP in
-  integration tests).
-- **[L13]** `prds/acp_for_alt_harnesses/README.md`, `prds/agent_server_plan/README.md` —
-  sibling PRDs (composition boundaries referenced in §6.4; PRD format template).
+  integration tests; the notifications-relay development freeze).
+- **[L13]** `prds/agent_server_plan/README.md` — sibling PRD (composition boundary
+  referenced in §6.4; PRD format template).
 - **[L14]** `goblin/VISION.md`, `ROADMAP.md` — project positioning (orchestration between
   chat and maximalist frameworks) this feature extends interactively.

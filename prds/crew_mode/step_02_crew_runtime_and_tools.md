@@ -17,7 +17,7 @@ defaults, a `max_crewmates` semaphore count, and a crew-level `CircuitBreaker` [
   hands off to the loop with `loop.call_soon_threadsafe`. A supervisor coroutine consumes
   requests and also drains any leftover `pending` rows on startup.
 - **Crewmate construction.** Per spawn: workspace (`LocalWorkspace` on
-  `<crew_home>/sessions/<name>/ws` in V1; worktree support arrives in step 5),
+  `<crew_home>/sessions/<name>/ws` in V1; worktree support arrives in step 6),
   `persistence_dir=<crew_home>/sessions/<name>`, agent built with `build_llm` (spawn model
   override → `crew_model` → `default_model` [L8]), `resolve_tools` for the spawn's
   `allowed_tools` (default: the standard goblin tool set **without** the Crew tool), and the
