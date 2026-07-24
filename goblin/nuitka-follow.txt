@@ -1,0 +1,81 @@
+# Nuitka import control for the goblin binary build.
+#
+# This file is read by the build-binary task in Taskfile.yml and appended to
+# the Nuitka command line. It documents the dependency audit and keeps the
+# standalone binary from pulling in packages that are installed in the
+# workspace but are not used by goblin at runtime.
+#
+# Audit summary (source-only imports in goblin/ and goblin_common/):
+#   Direct third-party imports: click, filelock, goblin_common, jinja2,
+#     json_repair, jsonschema, notifications_relay, openhands, pydantic,
+#     turso (pyturso), yaml (pyyaml).
+#   litellm is required at runtime by openhands-sdk but is not imported
+#     directly by goblin, so it is no longer declared as a direct dependency.
+#
+# Heavy optional distributions that are present in the lock file but are not
+# imported by goblin or its runtime dependencies are excluded below.
+
+# --- Runtime packages goblin actually needs ---
+--follow-import-to=goblin
+--follow-import-to=goblin_common
+--follow-import-to=notifications_relay
+--follow-import-to=click
+--follow-import-to=filelock
+--follow-import-to=jinja2
+--follow-import-to=json_repair
+--follow-import-to=jsonschema
+--follow-import-to=openhands
+--follow-import-to=pydantic
+--follow-import-to=turso
+--follow-import-to=yaml
+
+# --- Tests / dev tooling that must never be embedded ---
+--nofollow-import-to=*.tests
+--nofollow-import-to=goblin.tests
+--nofollow-import-to=goblin_common.tests
+--nofollow-import-to=notifications_relay.tests
+--nofollow-import-to=pytest
+--nofollow-import-to=_pytest
+--nofollow-import-to=vcr
+--nofollow-import-to=vcrpy
+
+# --- Optional / heavy distributions not used by goblin ---
+--nofollow-import-to=browser_use
+--nofollow-import-to=browser_use_sdk
+--nofollow-import-to=cdp_use
+--nofollow-import-to=google.api
+--nofollow-import-to=google_api_core
+--nofollow-import-to=googleapiclient
+--nofollow-import-to=google_auth
+--nofollow-import-to=google_auth_httplib2
+--nofollow-import-to=google_auth_oauthlib
+--nofollow-import-to=google_genai
+--nofollow-import-to=googleapis_common_protos
+--nofollow-import-to=griffelib
+--nofollow-import-to=groq
+--nofollow-import-to=hf_xet
+--nofollow-import-to=huggingface_hub
+--nofollow-import-to=inquirerpy
+--nofollow-import-to=lmnr
+--nofollow-import-to=lmnr_claude_code_proxy
+--nofollow-import-to=lupa
+--nofollow-import-to=lxml
+--nofollow-import-to=markdownify
+--nofollow-import-to=ollama
+--nofollow-import-to=openapi_pydantic
+--nofollow-import-to=posthog
+--nofollow-import-to=pyotp
+--nofollow-import-to=pypdf
+--nofollow-import-to=python_docx
+--nofollow-import-to=redis
+--nofollow-import-to=redis_commands
+--nofollow-import-to=reportlab
+--nofollow-import-to=screeninfo
+--nofollow-import-to=secretstorage
+--nofollow-import-to=keyring
+--nofollow-import-to=jeepney
+--nofollow-import-to=sortedcontainers
+--nofollow-import-to=soupsieve
+--nofollow-import-to=tom_swe
+--nofollow-import-to=uncalled_for
+--nofollow-import-to=uuid7

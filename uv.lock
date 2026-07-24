@@ -938,6 +938,7 @@ dependencies = [
     { name = "openhands-tools" },
     { name = "pydantic" },
     { name = "pyturso" },
+    { name = "pyyaml" },
 ]
 
 [package.dev-dependencies]
@@ -965,6 +966,7 @@ requires-dist = [
     { name = "openhands-tools", specifier = "~=1.29.3" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pyturso", specifier = ">=0.6.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 
 [package.metadata.requires-dev]
