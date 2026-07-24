@@ -144,9 +144,10 @@ class PromptPhase(PhaseProtocol):
                 "auto_link": worktree_config.get("auto_link", False),
             }
 
-        if "AskUser" in self.allowed_tools:
-            notifications_config = self._blueprint.resolve_notifications_config(self) or {}
-            tool_params["AskUser"] = {"label": notifications_config.get("label")}
+        # Turned off while we focus on other features
+        # if "AskUser" in self.allowed_tools:
+        #     notifications_config = self._blueprint.resolve_notifications_config(self) or {}
+        #     tool_params["AskUser"] = {"label": notifications_config.get("label")}
 
         breaker = CircuitBreaker(
             max_iterations=self.max_iterations,

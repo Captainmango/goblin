@@ -8,6 +8,9 @@ This is a uv-managed Python workspace with three projects:
 
 All projects are workspace members in the root `pyproject.toml` and share a single `uv.lock`.
 
+## IMPORTANT
+- notifications-relay development is frozen. Do not read any of its code or make changes to it. It is safe to run its tests.
+
 ## Tooling
 
 - **Python 3.13+** — specified in `.python-version` and every `pyproject.toml`.
