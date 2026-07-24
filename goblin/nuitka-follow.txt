@@ -30,7 +30,7 @@
 --follow-import-to=yaml
 
 # --- Tests / dev tooling that must never be embedded ---
---nofollow-import-to=*.tests
+# --nofollow-import-to=*.tests
 --nofollow-import-to=goblin.tests
 --nofollow-import-to=goblin_common.tests
 --nofollow-import-to=notifications_relay.tests

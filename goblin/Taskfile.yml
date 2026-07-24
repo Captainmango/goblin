@@ -88,10 +88,9 @@ tasks:
           --mode=standalone
           --main=goblin/__main__.py
           --output-dir=../dist/nuitka
-          --output-filename=goblin
+          --output-filename=goblinctl
           --include-package=goblin
           --include-package-data=goblin
-          "--nofollow-import-to=*.tests"
           --noinclude-default-mode=nofollow
           --noinclude-setuptools-mode=nofollow
           --noinclude-pytest-mode=nofollow

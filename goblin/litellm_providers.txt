@@ -6,7 +6,8 @@
 #   LITELLM_PROVIDERS=openai,anthropic task goblin:build-binary
 # Lines starting with `#` or empty lines are ignored.
 
-anthropic
-gemini
-minimax
 openai
+openai_like
+minimax
+anthropic
+
