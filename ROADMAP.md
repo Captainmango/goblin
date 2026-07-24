@@ -4,10 +4,7 @@ MAKE THE PAIRING STRING SHORTER (LIKE 8 CHAR LONG)
 
 - [ ] Kick the tires on features added
     - [ ] Worktrees
-    - [ ] Notifications 
-        - [ ] Asking and answering questions
-        - [ ] Alerting user to things like circuitbreaker firing
-    - [ ] JSON schema output
+    - [x] JSON schema output
     - [ ] Circuit breaker
     - [ ] Blueprint imports
     - [ ] Browser use???
@@ -23,6 +20,15 @@ MAKE THE PAIRING STRING SHORTER (LIKE 8 CHAR LONG)
 - [x] Skill that knows about all the documentation and is an expert on building blueprints
     - [x] Docs map and docs follow the skill
     - [x] Should be installable via skills.sh or some other repo
+
+- [ ] Use Nuitka to create a binary of the run time so we can just install it
+    - [ ] Should be self contained
+    - [ ] Cover Linux and Mac only for now
+    - [ ] Github actions so I don't have to build it on my potato
+
+- [ ] Agent card generator
+    - [ ] Create agents from a spec and run it against the run time, effectively creating an agent of the type
+    - [ ] Generate an A2A agent card of the agent we just made and compile to a binary for distro
 
 - [ ] Agent Server (Remote runtime with all the GOBLIN stuff)
     - [ ] Should be an ASGI app (Probs just fork the existing server)

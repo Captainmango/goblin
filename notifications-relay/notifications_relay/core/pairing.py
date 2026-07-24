@@ -21,7 +21,7 @@ class PairingService:
         username: str | None = None,
     ) -> PairingResponse:
         """Create a pending pairing token."""
-        token = secrets.token_urlsafe(32)
+        token = secrets.token_urlsafe(6)
         await self.store.create_pairing(token, label, username, self.token_ttl_seconds)
         expires_at = (datetime.now(UTC) + timedelta(seconds=self.token_ttl_seconds)).isoformat()
         return PairingResponse(token=token, expires_at=expires_at)
