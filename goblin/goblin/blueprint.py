@@ -251,6 +251,15 @@ class V1Blueprint(Blueprint):
 
         return walk_strings(obj, lambda s: s.format(**context))
 
+    def resolve_workspace_config(self, context: dict) -> dict:
+        """Return the interpolated blueprint-level workspace config dict.
+
+        This is a pure resolution helper: it does not instantiate a workspace
+        object, so it is safe to call for ACP phases where only the cwd string
+        and workspace type are needed.
+        """
+        return cast(dict, self.interpolate_strings(self._workspace_config or {}, context))
+
     def get_workspace(self, context: dict):
         """Return the workspace for this blueprint, applying context interpolation.
 
@@ -259,7 +268,7 @@ class V1Blueprint(Blueprint):
         """
         from goblin.workspace import build_workspace
 
-        interpolated = self.interpolate_strings(self._workspace_config or {}, context)
+        interpolated = self.resolve_workspace_config(context)
         return build_workspace(interpolated if interpolated else None, self.project_path)
 
     def _jinja_env(self):
@@ -424,6 +433,7 @@ class V1Blueprint(Blueprint):
     _build_hooks = build_hooks
     _build_mcp_servers = build_mcp_servers
     _interpolate_strings = interpolate_strings
+    _resolve_workspace_config = resolve_workspace_config
     _get_workspace = get_workspace
     _evaluate_condition = evaluate_condition
     _resolve = resolve_foreach

@@ -122,6 +122,10 @@ class PromptPhase(PhaseProtocol):
         if history_context:
             prompt = history_context + prompt
 
+        harness = self._blueprint.resolve_harness_config(self, context)
+        if harness is not None and harness.get("type", "openhands") == "acp":
+            return await self._run_acp(context, harness, prompt)
+
         worktree_config = self._blueprint.resolve_worktree_config(self)
         if "Worktree" in self.allowed_tools and worktree_config is None:
             return {
@@ -409,6 +413,160 @@ class PromptPhase(PhaseProtocol):
             return output_model(success=False, message=["Agent produced no structured output"])
         except Exception:
             return output_model.model_construct()
+
+    async def _run_acp(self, context: dict, harness: dict, prompt: str) -> dict:
+        """Execute this prompt phase against a local ACP harness subprocess."""
+        from openhands.sdk import ACPAgentSettings, LocalWorkspace
+        from openhands.sdk.conversation import get_agent_final_response
+
+        from goblin.conversation import run_conversation
+
+        workspace_config = self._blueprint.resolve_workspace_config(context)
+        if workspace_config.get("type") == "remote":
+            return {
+                "success": False,
+                "message": ["ACP harness cannot be used with a remote workspace"],
+                "prompt": prompt,
+                "output": "",
+                "spend": {},
+            }
+
+        working_dir = (
+            harness.get("working_dir") or workspace_config.get("working_dir") or self._blueprint.project_path or "."
+        )
+        server = harness.get("server", "claude-code")
+
+        logger.info(
+            "ACP harness resolved",
+            extra={
+                "event": "phase.harness_resolved",
+                "phase_id": self.id,
+                "server": server,
+                "working_dir": working_dir,
+            },
+        )
+
+        try:
+            settings = ACPAgentSettings(
+                acp_server=server,
+                acp_command=harness.get("command", []),
+                acp_args=harness.get("args", []),
+                acp_model=harness.get("model"),
+                acp_session_mode=harness.get("session_mode"),
+                acp_prompt_timeout=harness.get("prompt_timeout", 1800.0),
+                acp_isolate_data_dir=harness.get("isolate_data_dir", False),
+                mcp_config=self._blueprint.build_mcp_servers(self, context),
+            )
+            agent = settings.create_agent()
+        except Exception as exc:
+            logger.warning(
+                "ACP agent build failed",
+                extra={
+                    "event": "phase.acp_failed",
+                    "phase_id": self.id,
+                    "server": server,
+                    "working_dir": working_dir,
+                    "error": str(exc),
+                },
+            )
+            return {
+                "success": False,
+                "message": [f"Failed to build ACP agent: {exc}"],
+                "prompt": prompt,
+                "output": "",
+                "spend": {},
+            }
+
+        workspace = LocalWorkspace(working_dir=working_dir)
+        breaker = CircuitBreaker(
+            max_iterations=self.max_iterations,
+            max_tokens=self.max_tokens,
+            max_cost=self.max_cost,
+        )
+
+        conversation = None
+        try:
+            logger.info(
+                "ACP harness spawned",
+                extra={
+                    "event": "phase.acp_spawned",
+                    "phase_id": self.id,
+                    "server": server,
+                    "working_dir": working_dir,
+                },
+            )
+            conversation = await run_conversation(
+                agent,
+                workspace,
+                prompt,
+                hook_config=None,
+                max_iterations=self.max_iterations or 500,
+                max_cost=self.max_cost,
+                secrets=harness.get("secrets") or None,
+            )
+            breaker.absorb(conversation)
+        except LimitExceeded as exc:
+            return {
+                "success": False,
+                "message": [f"Circuit breaker: {exc.reason} limit exceeded"],
+                "prompt": prompt,
+                "output": "",
+                "spend": exc.tracker,
+            }
+        except Exception as exc:
+            logger.warning(
+                "ACP harness failed",
+                extra={
+                    "event": "phase.acp_failed",
+                    "phase_id": self.id,
+                    "server": server,
+                    "working_dir": working_dir,
+                    "error": str(exc),
+                },
+            )
+            return {
+                "success": False,
+                "message": [f"ACP harness failed: {exc}"],
+                "prompt": prompt,
+                "output": "",
+                "spend": breaker.tracker,
+            }
+        finally:
+            if conversation is not None:
+                try:
+                    conversation.close()
+                except Exception:
+                    logger.exception(
+                        "Failed to close ACP conversation",
+                        extra={
+                            "event": "phase.acp_close_failed",
+                            "phase_id": self.id,
+                            "server": server,
+                            "working_dir": working_dir,
+                        },
+                    )
+
+        text_output = get_agent_final_response(conversation.state.events) or ""
+
+        if self._structured_output_configured():
+            logger.warning(
+                "ACP structured output deferred",
+                extra={
+                    "event": "phase.acp_structured_deferred",
+                    "phase_id": self.id,
+                },
+            )
+
+        structured = self._wrap_chat_text(text_output)
+        dumped = structured.model_dump()
+        result: dict[str, Any] = {
+            "success": dumped.get("success", False),
+            "message": list(dumped.get("message", []) or []),
+            "prompt": prompt,
+            "output": text_output,
+            "spend": breaker.tracker,
+        }
+        return result
 
 
 class LoadProjectPhase(PhaseProtocol):

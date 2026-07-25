@@ -1,0 +1,555 @@
+"""Tests for the ACP harness execution branch in PromptPhase."""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from goblin.blueprint import V1Blueprint
+from goblin.phase import PromptPhase
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_acp_blueprint(phase_harness: dict | None = None, defaults_harness: dict | None = None) -> V1Blueprint:
+    spec: dict[str, Any] = {"name": "test_bp", "phases": [{"id": "p1", "prompt": "hi"}]}
+    if phase_harness is not None:
+        spec["phases"][0]["harness"] = phase_harness
+    if defaults_harness is not None:
+        spec["defaults"] = {"harness": defaults_harness}
+    return V1Blueprint(spec)
+
+
+def _fake_conversation(final_text: str = "ACP did the thing") -> MagicMock:
+    conversation = MagicMock()
+    conversation.arun = AsyncMock()
+    conversation.state.events = []
+    conversation.conversation_stats = None
+    conversation.close = MagicMock()
+    return conversation
+
+
+def _conversation_with_cost(cost: float) -> MagicMock:
+    """Return a fake conversation whose reported cost trips the circuit breaker."""
+    conversation = _fake_conversation()
+    metrics = MagicMock()
+    metrics.accumulated_cost = cost
+    token_usage = MagicMock()
+    token_usage.prompt_tokens = 0
+    token_usage.completion_tokens = 0
+    metrics.accumulated_token_usage = token_usage
+    conversation.conversation_stats = MagicMock()
+    conversation.conversation_stats.get_combined_metrics.return_value = metrics
+    return conversation
+
+
+def _fake_settings(agent: MagicMock | None = None) -> MagicMock:
+    settings = MagicMock()
+    settings.create_agent.return_value = agent or MagicMock()
+    return settings
+
+
+# ---------------------------------------------------------------------------
+# Branch selection
+# ---------------------------------------------------------------------------
+
+
+class TestHarnessBranchSelection:
+    @pytest.mark.asyncio
+    async def test_no_harness_uses_openhands_path(self):
+        bp = V1Blueprint({"name": "test_bp", "phases": [{"id": "p1", "prompt": "hi"}]})
+        phase = bp.phases[0]
+        assert isinstance(phase, PromptPhase)
+
+        conversation = _fake_conversation()
+        with (
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent") as mock_agent_cls,
+            patch("goblin.conversation.LocalConversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            mock_agent_cls.return_value = MagicMock()
+            result = await phase.run({})
+
+        assert result["success"] is True
+        mock_build_llm.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_openhands_harness_uses_openhands_path(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "openhands"})
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        with (
+            patch("goblin.utils.llm.build_llm") as mock_build_llm,
+            patch("openhands.sdk.Agent") as mock_agent_cls,
+            patch("goblin.conversation.LocalConversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            mock_agent_cls.return_value = MagicMock()
+            result = await phase.run({})
+
+        assert result["success"] is True
+        mock_build_llm.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_acp_harness_uses_acp_path(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "acp"})
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="acp result"),
+        ):
+            result = await phase.run({"task": "do it"})
+
+        assert result["success"] is True
+        assert result["output"] == "acp result"
+        assert "acp result" in result["message"]
+
+
+# ---------------------------------------------------------------------------
+# Settings mapping
+# ---------------------------------------------------------------------------
+
+
+class TestACPSettingsMapping:
+    @pytest.mark.asyncio
+    async def test_all_harness_fields_mapped_to_settings(self):
+        bp = _make_acp_blueprint(
+            phase_harness={
+                "type": "acp",
+                "server": "codex",
+                "command": ["/usr/local/bin/codex"],
+                "args": ["--acp"],
+                "model": "gpt-5.5",
+                "session_mode": "full-access",
+                "prompt_timeout": 300,
+                "isolate_data_dir": True,
+                "working_dir": "/tmp/repo",
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings) as mock_settings_cls,
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+            patch.object(bp, "build_mcp_servers", return_value={"mcpServers": {}}),
+        ):
+            await phase.run({"task": "hi"})
+
+        mock_settings_cls.assert_called_once()
+        kwargs = mock_settings_cls.call_args.kwargs
+        assert kwargs["acp_server"] == "codex"
+        assert kwargs["acp_command"] == ["/usr/local/bin/codex"]
+        assert kwargs["acp_args"] == ["--acp"]
+        assert kwargs["acp_model"] == "gpt-5.5"
+        assert kwargs["acp_session_mode"] == "full-access"
+        assert kwargs["acp_prompt_timeout"] == 300
+        assert kwargs["acp_isolate_data_dir"] is True
+
+    @pytest.mark.asyncio
+    async def test_settings_defaults(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "acp"})
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings) as mock_settings_cls,
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            await phase.run({"task": "hi"})
+
+        kwargs = mock_settings_cls.call_args.kwargs
+        assert kwargs["acp_server"] == "claude-code"
+        assert kwargs["acp_command"] == []
+        assert kwargs["acp_args"] == []
+        assert kwargs["acp_model"] is None
+        assert kwargs["acp_session_mode"] is None
+        assert kwargs["acp_prompt_timeout"] == 1800.0
+        assert kwargs["acp_isolate_data_dir"] is False
+
+    @pytest.mark.asyncio
+    async def test_mcp_config_passed_to_settings(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "acp"})
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        mcp_config = {"mcpServers": {"github": {"command": "npx"}}}
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings) as mock_settings_cls,
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+            patch.object(bp, "build_mcp_servers", return_value=mcp_config),
+        ):
+            await phase.run({"task": "hi"})
+
+        kwargs = mock_settings_cls.call_args.kwargs
+        assert kwargs["mcp_config"] == mcp_config
+
+
+# ---------------------------------------------------------------------------
+# working_dir fallback chain
+# ---------------------------------------------------------------------------
+
+
+class TestACPWorkingDirFallback:
+    @pytest.mark.asyncio
+    async def test_harness_working_dir_wins(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "workspace": {"type": "local", "working_dir": "/workspace"},
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "hi",
+                        "harness": {"type": "acp", "working_dir": "/harness"},
+                    }
+                ],
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+            patch("openhands.sdk.LocalWorkspace") as mock_ws_cls,
+        ):
+            await phase.run({})
+
+        mock_ws_cls.assert_called_once_with(working_dir="/harness")
+
+    @pytest.mark.asyncio
+    async def test_workspace_working_dir_fallback(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "workspace": {"type": "local", "working_dir": "/workspace"},
+                "phases": [{"id": "p1", "prompt": "hi", "harness": {"type": "acp"}}],
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+            patch("openhands.sdk.LocalWorkspace") as mock_ws_cls,
+        ):
+            await phase.run({})
+
+        mock_ws_cls.assert_called_once_with(working_dir="/workspace")
+
+    @pytest.mark.asyncio
+    async def test_project_path_fallback(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "phases": [{"id": "p1", "prompt": "hi", "harness": {"type": "acp"}}],
+            }
+        )
+        bp.project_path = "/project"
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+            patch("openhands.sdk.LocalWorkspace") as mock_ws_cls,
+        ):
+            await phase.run({})
+
+        mock_ws_cls.assert_called_once_with(working_dir="/project")
+
+    @pytest.mark.asyncio
+    async def test_cwd_final_fallback(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "acp"})
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+            patch("openhands.sdk.LocalWorkspace") as mock_ws_cls,
+        ):
+            await phase.run({"task": "hi"})
+
+        mock_ws_cls.assert_called_once_with(working_dir=".")
+
+
+# ---------------------------------------------------------------------------
+# Secrets and remote workspace guard
+# ---------------------------------------------------------------------------
+
+
+class TestACPSecretsAndGuards:
+    @pytest.mark.asyncio
+    async def test_secrets_passed_to_run_conversation(self):
+        bp = _make_acp_blueprint(
+            phase_harness={
+                "type": "acp",
+                "secrets": {"ANTHROPIC_API_KEY": "secret-value"},
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation) as mock_run,
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            await phase.run({"task": "hi"})
+
+        kwargs = mock_run.call_args.kwargs
+        assert kwargs["secrets"] == {"ANTHROPIC_API_KEY": "secret-value"}
+
+    @pytest.mark.asyncio
+    async def test_no_secrets_passes_none(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "acp"})
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation) as mock_run,
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            await phase.run({"task": "hi"})
+
+        kwargs = mock_run.call_args.kwargs
+        assert kwargs["secrets"] is None
+
+    @pytest.mark.asyncio
+    async def test_remote_workspace_rejected(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "workspace": {"type": "remote", "host": "http://example.com"},
+                "phases": [{"id": "p1", "prompt": "hi", "harness": {"type": "acp"}}],
+            }
+        )
+        phase = bp.phases[0]
+
+        result = await phase.run({})
+
+        assert result["success"] is False
+        assert "remote workspace" in result["message"][0].lower()
+
+
+# ---------------------------------------------------------------------------
+# Failure paths and cleanup
+# ---------------------------------------------------------------------------
+
+
+class TestACPFailurePaths:
+    @pytest.mark.asyncio
+    async def test_create_agent_validation_error_returns_failed_result(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "acp", "server": "custom"})
+        phase = bp.phases[0]
+
+        settings = MagicMock()
+        settings.create_agent.side_effect = ValueError("command is required for custom server")
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation") as mock_run,
+        ):
+            result = await phase.run({"task": "hi"})
+
+        assert result["success"] is False
+        assert "command is required" in result["message"][0]
+        mock_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_conversation_closed_on_success(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "acp"})
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            await phase.run({"task": "hi"})
+
+        conversation.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_conversation_exception_returns_failed_result(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "acp"})
+        phase = bp.phases[0]
+
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", side_effect=RuntimeError("boom")),
+        ):
+            result = await phase.run({"task": "hi"})
+
+        assert result["success"] is False
+        assert "boom" in result["message"][0]
+
+    @pytest.mark.asyncio
+    async def test_conversation_closed_on_limit_exceeded(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "acp"})
+        phase = bp.phases[0]
+        phase.max_cost = 0.01
+
+        conversation = _conversation_with_cost(0.02)
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+        ):
+            result = await phase.run({"task": "hi"})
+
+        assert result["success"] is False
+        assert "Circuit breaker" in result["message"][0]
+        conversation.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Structured output deferral
+# ---------------------------------------------------------------------------
+
+
+class TestACPStructuredOutput:
+    @pytest.mark.asyncio
+    async def test_structured_output_declared_logs_deferral_and_returns_chat(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "hi",
+                        "harness": {"type": "acp"},
+                        "output_model": "goblin.output_schema.PhaseResult",
+                    }
+                ],
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="plain text"),
+        ):
+            result = await phase.run({})
+
+        assert result["success"] is True
+        assert result["output"] == "plain text"
+        assert "plain text" in result["message"]
+
+
+# ---------------------------------------------------------------------------
+# Concurrency / foreach
+# ---------------------------------------------------------------------------
+
+
+class TestACPConcurrency:
+    @pytest.mark.asyncio
+    async def test_foreach_acp_runs_fresh_agent_per_item(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "process {index}",
+                        "harness": {"type": "acp"},
+                        "foreach": "2",
+                    }
+                ],
+            }
+        )
+
+        def make_conv(*args, **kwargs):
+            conv = _fake_conversation()
+            return conv
+
+        settings_call_count = 0
+
+        def make_settings(*args, **kwargs):
+            nonlocal settings_call_count
+            settings_call_count += 1
+            return _fake_settings()
+
+        with (
+            patch("openhands.sdk.ACPAgentSettings", side_effect=make_settings),
+            patch("goblin.conversation.run_conversation", side_effect=make_conv),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            result = await bp.run({})
+
+        assert settings_call_count == 2
+        assert result["p1"]["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# Opt-in integration test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    os.environ.get("GOBLIN_RUN_ACP_E2E") != "1" or not os.environ.get("ANTHROPIC_API_KEY"),
+    reason="Set GOBLIN_RUN_ACP_E2E=1 and ANTHROPIC_API_KEY to run live ACP tests",
+)
+@pytest.mark.asyncio
+async def test_acp_phase_runs_real_claude_code(tmp_path):
+    bp = V1Blueprint(
+        {
+            "name": "test_bp",
+            "phases": [
+                {
+                    "id": "p1",
+                    "prompt": "Read README.md and say one sentence about it.",
+                    "harness": {"type": "acp", "server": "claude-code", "prompt_timeout": 300},
+                }
+            ],
+        }
+    )
+    phase = bp.phases[0]
+
+    readme = tmp_path / "README.md"
+    readme.write_text("# Goblin test repo\nThis repo tests the ACP harness.")
+
+    # Override working_dir so the harness sees our temp repo.
+    bp._workspace_config = {"type": "local", "working_dir": str(tmp_path)}
+
+    result = await phase.run({})
+
+    assert result["success"] is True
+    assert result["output"]
+    assert result["message"]
