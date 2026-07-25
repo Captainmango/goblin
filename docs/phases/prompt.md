@@ -24,8 +24,6 @@ The `prompt` phase is the most common phase type. It sends an instruction to an 
     base_dir: .goblin/worktrees
     deps: [node_modules]
     auto_link: true
-  notifications:
-    label: ops-oncall
   hooks:
     pre_tool: [check_prometheus]
     post_tool: [run_tests]
@@ -72,9 +70,6 @@ JSON Schema fragment that the agent's extracted JSON response must conform to. I
 
 ### `worktree`
 Configuration for the `Worktree` tool. Required when `Worktree` is in `allowed_tools`. See [Worktree](../tools/built-in.md#worktree).
-
-### `notifications`
-Configuration for the `AskUser` tool. Optional — falls back to the `default` label when omitted. See [AskUser](../tools/built-in.md#askuser).
 
 ### `hooks`
 Lifecycle hooks that run before or after each tool call. See [Hooks](../configuration/hooks.md).

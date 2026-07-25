@@ -71,10 +71,4 @@ goblin validate blueprints/*.yaml
 
 Exits with code 1 if any blueprint is invalid.
 
-## `goblin notifications`
 
-Subcommands for the notifications relay. See the [Notifications](../notifications/overview.md) section.
-
-```sh
-goblin notifications --help
-```

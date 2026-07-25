@@ -22,11 +22,6 @@ nav = [
       "blueprints/examples/simple-prompt.md"
     ]}
   ]},
-  { "Notifications" = [
-    "notifications/ask-user-tool.md",
-    "notifications/overview.md",
-    "notifications/setup.md"
-  ]},
   { "Phases" = [
     "phases/load-project.md",
     "phases/overview.md",

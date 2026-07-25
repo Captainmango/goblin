@@ -12,9 +12,6 @@ includes:
   goblin-common:
     taskfile: ./goblin-common/Taskfile.yml
     dir: ./goblin-common
-  notifications-relay:
-    taskfile: ./notifications-relay/Taskfile.yml
-    dir: ./notifications-relay
 
 tasks:
   default:
@@ -33,7 +30,6 @@ tasks:
     cmds:
       - task goblin:lint
       - task goblin-common:lint
-      - task notifications-relay:lint
       - task goblin:check-imports
     silent: true
 
@@ -41,21 +37,18 @@ tasks:
     cmds:
       - task goblin:format
       - task goblin-common:format
-      - task notifications-relay:format
     silent: true
 
   typecheck:
     cmds:
       - task goblin:typecheck
       - task goblin-common:typecheck
-      - task notifications-relay:typecheck
     silent: true
 
   test:
     cmds:
       - task goblin:test
       - task goblin-common:test
-      - task notifications-relay:test
       - task goblin:check-imports
     silent: true
 

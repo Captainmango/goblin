@@ -43,8 +43,6 @@ defaults:
     base_dir: .goblin/worktrees
     deps: [node_modules, .venv]
     auto_link: true
-  notifications:
-    label: ops-oncall
 ```
 
 Precedence for any setting is:

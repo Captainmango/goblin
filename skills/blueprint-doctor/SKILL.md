@@ -39,7 +39,6 @@ Read the blueprint in full and work through both checklists. Schema validation o
 4. **`$ENV_VAR` references** — check each one against the environment and `.env`; flag any that are missing. Flag any literal secrets that should be `$ENV_VAR` references instead.
 5. **Tool/config pairing** — a tool that needs config without its block fails at runtime:
    - `Worktree` in `allowed_tools` → `worktree:` block required.
-   - `AskUser` → `notifications:` label and a running relay.
    - `mcp__<server>__<tool>` → an `mcp_servers:` entry named `<server>`.
 6. **`foreach` file paths** — if `foreach` names a file, confirm the path (after interpolation) will exist when the phase runs.
 

@@ -1,15 +1,11 @@
 # Goblin Monorepo Conventions
 
-This is a uv-managed Python workspace with three projects:
+This is a uv-managed Python workspace with two projects:
 
 - `goblin/` — autonomous agent harness that runs YAML **blueprints**.
 - `goblin-common/` — shared config/logging utilities used by the other projects.
-- `notifications-relay/` — FastAPI service and CLI for Telegram notifications.
 
-All projects are workspace members in the root `pyproject.toml` and share a single `uv.lock`.
-
-## IMPORTANT
-- notifications-relay development is frozen. Do not read any of its code or make changes to it. It is safe to run its tests.
+Both projects are workspace members in the root `pyproject.toml` and share a single `uv.lock`.
 
 ## Tooling
 
@@ -39,7 +35,6 @@ task goblin:lint
 task goblin:test
 task goblin:validate
 task goblin-common:test
-task notifications-relay:test
 ```
 
 ## Code Conventions

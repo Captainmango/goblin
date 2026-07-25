@@ -55,15 +55,12 @@ user manual (https://nuitka.net/doc/user-manual.html):
 Entry point and dependency closure:
 
 - Console script: `goblin = "goblin.cli:cli"` (Click group). `cli.py` lazy-imports
-  `goblin.runner` and `goblin.notifications.cli` **inside functions** — statically
-  visible to Nuitka, so they will be followed correctly. (This lazy-loading also
-  exists to keep `goblin.cli` import time < 500 ms; see `scripts/check_import_time.py`.
-  The discipline should be preserved — it also keeps the compiled binary's startup fast.)
-- Workspace dependencies `goblin-common` and `notifications-relay` are regular
-  installed packages in the shared `.venv`; Nuitka will compile them into the
-  distribution automatically. Note: `notifications-relay` development is frozen
-  (AGENTS.md) — compilation does not read or modify its source beyond normal import
-  analysis, so this is compatible with the freeze.
+  `goblin.runner` **inside functions** — statically visible to Nuitka, so it will be
+  followed correctly. (This lazy-loading also exists to keep `goblin.cli` import time
+  < 500 ms; see `scripts/check_import_time.py`. The discipline should be preserved —
+  it also keeps the compiled binary's startup fast.)
+- Workspace dependency `goblin-common` is a regular installed package in the shared
+  `.venv`; Nuitka will compile it into the distribution automatically.
 - Heavy third-party deps: `openhands-sdk` / `openhands-tools` (~=1.29.3), `pydantic`,
   `jinja2`, `jsonschema`, `pyyaml`, `click`, `pyturso`, `json-repair`, `filelock`.
 
@@ -139,8 +136,7 @@ Notes on the flags:
 - `--include-package-data=goblin` pulls in `goblin/spec/v1.json` (concern #1).
 - `--nofollow-import-to='*.tests'` keeps test trees of dependencies out of the binary.
 - `--assume-yes-for-downloads` lets Nuitka fetch its ccache tool non-interactively.
-- The workspace deps (`goblin-common`, `notifications-relay`) are followed
-  automatically because goblin imports them.
+- The workspace dep (`goblin-common`) is followed automatically because goblin imports it.
 
 ### 3.4 Onefile command (second milestone)
 
@@ -193,8 +189,7 @@ The compiled binary gets its own smoke-test ladder, run manually at first:
 3. **Dotted output-model resolution (concern #2)**: run a blueprint that uses a
    registered output model, and one that uses a dotted path into a module we
    explicitly include; confirm both resolve.
-4. **Notifications subcommand**: `goblin notifications --help` loads the lazily
-   imported `goblin.notifications.cli` correctly from the binary.
+4. **CLI smoke test**: `goblin --help` and `goblin run --help` load correctly from the binary.
 5. **Turso backend (concern #3)**: run a swarm blueprint against a local libSQL
    file using the binary.
 6. **LLM end-to-end (concern #4)**: run a minimal real blueprint with
@@ -228,8 +223,6 @@ Only after 1–8 pass on standalone, repeat 1–2 and 6 with the onefile artifac
 
 ## 6. Explicitly out of scope
 
-- Compiling `notifications-relay` as a service (it is a frozen FastAPI app; only its
-  client-facing modules ride along inside the goblin binary as a dependency).
 - Changing any goblin runtime behaviour beyond the `__main__.py` addition.
 - Windows/macOS artifacts in the first iteration (Nuitka supports them; revisit once
   Linux standalone/onefile is proven).

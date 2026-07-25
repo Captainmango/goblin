@@ -12,7 +12,6 @@ Run tests for a single project:
 
 ```sh
 task goblin:test
-task notifications-relay:test
 ```
 
 ## Test Structure
@@ -24,7 +23,6 @@ goblin/tests/
 ├── conftest.py          # Shared fixtures
 ├── tools/               # Tool executors
 ├── utils/               # Utility modules
-├── notifications/       # Notification client/config
 ├── test_validation.py   # Blueprint schema validation
 ├── test_blueprint_run.py  # Blueprint orchestration
 ├── test_swarm.py        # Swarm orchestration

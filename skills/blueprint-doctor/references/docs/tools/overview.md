@@ -11,7 +11,7 @@ phases:
     allowed_tools: [Read, Glob, Grep]
 ```
 
-Only the listed tools are available to the agent. If you list a tool that requires configuration (e.g., `Worktree` or `AskUser`), the phase must also provide the corresponding configuration block.
+Only the listed tools are available to the agent. If you list a tool that requires configuration (e.g., `Worktree`), the phase must also provide the corresponding configuration block.
 
 ## Tool Name Mapping
 
@@ -24,7 +24,6 @@ Goblin maps friendly names to OpenHands SDK tool names:
 | `Glob` | `glob` |
 | `Grep` | `grep` |
 | `Worktree` | `worktree` |
-| `AskUser` | `ask_user` |
 | `SwarmTasks` | `swarm_tasks` |
 | `SwarmAgent` | `swarm_agent` |
 

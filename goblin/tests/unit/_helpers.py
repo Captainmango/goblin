@@ -64,7 +64,6 @@ def _make_prompt_phase(raw: dict[str, Any], *, real_blueprint: bool = False) -> 
         blueprint.build_hooks.return_value = None
         blueprint.build_mcp_servers.return_value = {}
         blueprint.resolve_worktree_config.return_value = None
-        blueprint.resolve_notifications_config.return_value = None
         blueprint.get_workspace.return_value = MagicMock()
         blueprint.project_path = None
         blueprint.project_refs = ""

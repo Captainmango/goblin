@@ -61,7 +61,6 @@ class PromptPhase(PhaseProtocol):
         self.output_model: str | None = raw.get("output_model")
         self.output_schema_format: str | None = raw.get("output_schema_format")
         self.worktree_config: dict | None = raw.get("worktree")
-        self.notifications_config: dict | None = raw.get("notifications")
         self._blueprint = blueprint
 
     def _resolve_output_model(self) -> type[BaseModel]:
@@ -143,11 +142,6 @@ class PromptPhase(PhaseProtocol):
                 "deps": worktree_config.get("deps", []),
                 "auto_link": worktree_config.get("auto_link", False),
             }
-
-        # Turned off while we focus on other features
-        # if "AskUser" in self.allowed_tools:
-        #     notifications_config = self._blueprint.resolve_notifications_config(self) or {}
-        #     tool_params["AskUser"] = {"label": notifications_config.get("label")}
 
         breaker = CircuitBreaker(
             max_iterations=self.max_iterations,

@@ -28,7 +28,6 @@ RUN apt-get update \
 COPY pyproject.toml uv.lock ./
 COPY goblin/pyproject.toml ./goblin/
 COPY goblin-common/pyproject.toml ./goblin-common/
-COPY notifications-relay/pyproject.toml ./notifications-relay/
 
 # Install all third-party dependencies declared across the workspace, but do not
 # build or install the workspace packages themselves. Those will be layered on

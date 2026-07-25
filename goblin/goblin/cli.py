@@ -10,23 +10,7 @@ from goblin.utils.config import get_config, load_dotenv_from_cwd
 from goblin_common.logging import configure_logging
 
 
-class LazyGroup(click.Group):
-    """Click group that lazy-loads the notifications sub-command on first access."""
-
-    def list_commands(self, ctx: click.Context) -> list[str]:
-        rv = super().list_commands(ctx)
-        rv.append("notifications")
-        return rv
-
-    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
-        if cmd_name == "notifications":
-            from goblin.notifications.cli import notifications
-
-            return notifications
-        return super().get_command(ctx, cmd_name)
-
-
-@click.group(cls=LazyGroup)
+@click.group()
 def cli():
     """GOBLIN — autonomous agent harness."""
     pass

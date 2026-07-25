@@ -11,7 +11,6 @@ dependencies = [
     "jinja2>=3.1.6",
     "json-repair>=0.42",
     "jsonschema>=4.0",
-    "notifications-relay",
     "openhands-sdk~=1.29.3",
     "openhands-tools~=1.29.3",
     "pydantic>=2.12.5",
@@ -35,7 +34,6 @@ project-includes = ["goblin/**/*.py"]
 
 [tool.uv.sources]
 goblin-common = { workspace = true }
-notifications-relay = { workspace = true }
 
 [dependency-groups]
 dev = [

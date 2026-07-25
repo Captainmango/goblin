@@ -27,7 +27,7 @@ cd goblin
 uv sync --all-packages --all-groups
 ```
 
-This creates a single virtual environment and installs every workspace package (`goblin`, `goblin-common`, and `notifications-relay`).
+This creates a single virtual environment and installs every workspace package (`goblin` and `goblin-common`).
 
 ## Verifying the Install
 
@@ -35,4 +35,4 @@ This creates a single virtual environment and installs every workspace package (
 goblin --help
 ```
 
-You should see the top-level CLI help with the `run`, `validate`, and `notifications` commands.
+You should see the top-level CLI help with the `run` and `validate` commands.

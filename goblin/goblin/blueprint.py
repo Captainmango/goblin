@@ -141,20 +141,6 @@ class V1Blueprint(Blueprint):
         merged = {**(defaults or {}), **(phase_config or {})}
         return merged
 
-    def resolve_notifications_config(self, phase: PhaseProtocol) -> dict | None:
-        """Return the effective notifications config for a phase.
-
-        Precedence: phase > blueprint defaults > None. Returns None when no
-        notifications configuration is declared anywhere, in which case the
-        AskUser tool falls back to its own default pairing label.
-        """
-        defaults = self.spec.get("defaults", {}).get("notifications")
-        phase_config = getattr(phase, "notifications_config", None)
-        if defaults is None and phase_config is None:
-            return None
-        merged = {**(defaults or {}), **(phase_config or {})}
-        return merged
-
     def build_hooks(self, phase: HookablePhase) -> HookConfig | None:
         from openhands.sdk.hooks import HookConfig, HookDefinition, HookMatcher
 
@@ -414,7 +400,6 @@ class V1Blueprint(Blueprint):
     _resolve_llm_config = resolve_llm_config
     _resolve_model = resolve_model
     _resolve_worktree_config = resolve_worktree_config
-    _resolve_notifications_config = resolve_notifications_config
     _build_hooks = build_hooks
     _build_mcp_servers = build_mcp_servers
     _interpolate_strings = interpolate_strings

@@ -98,22 +98,4 @@ worktree:
 
 ---
 
-## AskUser
 
-**Blueprint name:** `AskUser`
-
-Pause execution to ask a human operator a question and block for a reply. Requires `notifications` configuration or falls back to the `default` label.
-
-```yaml
-allowed_tools: [AskUser]
-notifications:
-  label: ops-oncall
-```
-
-### Behaviour
-
-- Sends the question via the notifications relay (e.g., Telegram).
-- Blocks for up to 15 minutes.
-- If no reply arrives, returns an error.
-
-See the [Notifications](../notifications/overview.md) section for setup instructions.

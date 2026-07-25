@@ -32,7 +32,6 @@ Or for a single project:
 
 ```sh
 task goblin:test
-task notifications-relay:test
 ```
 
 ## PR Workflow

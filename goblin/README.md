@@ -1,6 +1,6 @@
 # G.O.B.L.I.N
 
-**Generative Orchestration of Basic Logic, Instructions, and Notifications**
+**Generative Orchestration of Basic Logic and Instructions**
 
 Goblin is an autonomous coding-agent harness. It runs YAML **blueprints** that describe multi-step agent workflows and executes them via the OpenHands SDK.
 
@@ -42,21 +42,6 @@ Resume from a checkpoint:
 uv run goblin run --resume .goblin/run-<id>.json
 ```
 
-### Notifications subcommand
-
-Goblin can send Telegram messages and ask operators questions through the notifications-relay:
-
-```sh
-# Pair this machine with the relay
-uv run goblin notifications pair --label my-laptop
-
-# Send a message
-uv run goblin notifications send --label my-laptop "Hello operator"
-
-# Ask a question and wait for a reply
-uv run goblin notifications ask --label my-laptop "Approve deployment?" --question-id deploy-123
-```
-
 ## Environment Variables
 
 Create a `.env` file in the working directory where you run commands.
@@ -66,7 +51,6 @@ Create a `.env` file in the working directory where you run commands.
 | Variable | Purpose |
 |----------|---------|
 | `GOBLIN_MODEL_API_KEY` | LLM API key. Falls back to `MODEL_API_KEY` if not set. Required when running blueprints that use an LLM. |
-| `RELAY_API_KEY` | API key for the notifications-relay. Required when using `goblin notifications ...`. |
 
 ### Optional
 
@@ -80,14 +64,11 @@ Create a `.env` file in the working directory where you run commands.
 | `GOBLIN_TURSO_MODE` | — | Turso connection mode. |
 | `GOBLIN_TURSO_LOCAL_PATH` | — | Local libSQL database path. |
 | `GOBLIN_LOG_CONFIG` | — | Path to a YAML logging configuration file. |
-| `RELAY_HOST` | `127.0.0.1` | Host where the relay is running. |
-| `RELAY_PORT` | `8000` | Port where the relay is running. |
 
 ### Example `.env`
 
 ```env
 GOBLIN_MODEL_API_KEY=sk-...
-RELAY_API_KEY=change-me-in-production
 ```
 
 ## Development

@@ -7,8 +7,6 @@ Goblin loads environment variables from a `.env` file in the current working dir
 | Variable | Used By | Purpose |
 |----------|---------|---------|
 | `GOBLIN_MODEL_API_KEY` | goblin | LLM API key. Falls back to `MODEL_API_KEY` if not set. Required when running blueprints that use an LLM. |
-| `RELAY_API_KEY` | notifications-relay, goblin | API key shared between the relay server and its clients. Required for the relay HTTP API and Goblin's notifications commands. |
-| `TELEGRAM_BOT_TOKEN` | notifications-relay | Telegram bot token. Required to send or receive Telegram messages. |
 
 ## Optional Variables
 
@@ -22,23 +20,11 @@ Goblin loads environment variables from a `.env` file in the current working dir
 | `GOBLIN_TURSO_MODE` | goblin | — | Turso connection mode (`local` or `remote`). |
 | `GOBLIN_TURSO_LOCAL_PATH` | goblin | — | Local libSQL database path. |
 | `GOBLIN_LOG_CONFIG` | goblin | — | Path to a YAML logging configuration file. |
-| `RELAY_HOST` | goblin, notifications-relay | `127.0.0.1` | Host where the relay is running. |
-| `RELAY_PORT` | goblin, notifications-relay | `8000` | Port where the relay is running. |
-| `RELAY_DB_PATH` | notifications-relay | `.goblin/relay.db` | SQLite database path for the relay. |
-| `RELAY_PAIRING_TOKEN_TTL_SECONDS` | notifications-relay | `900` | How long pairing tokens remain valid. |
-| `RELAY_QUESTION_MAPPING_TTL_SECONDS` | notifications-relay | `3600` | How long question-to-message mappings are kept. |
-| `RELAY_LOG_LEVEL` | notifications-relay | — | Logging level override. |
-| `RELAY_LOG_FILE` | notifications-relay | — | Log file path override. |
-| `RELAY_LOG_QUIET` | notifications-relay | `false` | Suppress stderr logging when `true`. |
-| `TELEGRAM_ALLOWED_USER_IDS` | notifications-relay | — | Comma-separated list of allowed Telegram user IDs. |
 
 ## Example `.env`
 
 ```env
 GOBLIN_MODEL_API_KEY=sk-...
-RELAY_API_KEY=change-me-in-production
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_ALLOWED_USER_IDS=123456789
 ```
 
 ## Loading Behaviour

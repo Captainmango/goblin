@@ -36,7 +36,6 @@ def _get_tool_name_map() -> dict[str, Tool]:
         "SwarmTasks": Tool(name=SwarmTasksTool.name),
         "SwarmAgent": Tool(name=SwarmAgentTool.name),
         "Worktree": Tool(name=WorktreeTool.name),
-        # "AskUser": Tool(name=AskUserTool.name),
     }
     return _TOOL_NAME_MAP
 

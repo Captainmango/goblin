@@ -2,7 +2,7 @@
 
 Shared utilities for the Goblin monorepo.
 
-This package contains configuration and logging helpers used by `goblin` and `notifications-relay`. Keep shared code here rather than duplicating it across projects.
+This package contains configuration and logging helpers used by `goblin`. Keep shared code here rather than duplicating it across projects.
 
 ## Setup
 

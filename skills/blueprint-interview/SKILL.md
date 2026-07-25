@@ -75,7 +75,7 @@ See "The tool audit" below. This is the longest phase; do not rush it.
 ### Phase 5 — Failure handling and humans
 
 - For each phase: on failure, skip, retry, or abort? How many retries? (→ `on_failure`)
-- Should a human approve anything mid-run — deploys, deletions, anything that spends money? (→ `AskUser` + `notifications.label`; check the relay is actually configured)
+- Should a human approve anything mid-run — deploys, deletions, anything that spends money? (→ handle via `condition`/`on_failure` or external orchestration, not a built-in tool)
 - Any pre/post-tool hooks? (→ `hooks`)
 
 ### Phase 6 — Playback and confirmation
@@ -97,7 +97,7 @@ For each phase, ask:
    - transport: stdio (`command`, `args`, `env`, `cwd`) or remote (`transport`, `url`, `headers`)
    - credentials as `$ENV_VAR` references — check the environment for which already exist
    - the exact tool names to whitelist, or `mcp__<name>__*` only with my explicit approval
-6. **Must a human answer something mid-run?** → `AskUser`, which needs `notifications.label` and a running relay.
+6. **Must a human answer something mid-run?** → handle via `condition`/`on_failure` or external orchestration; there is no built-in human-in-the-loop tool.
 7. **Is it a swarm?** → tools per agent, plus `SwarmTasks` / `SwarmAgent` where needed.
 
 Record the result as a table and confirm it before moving on:
@@ -109,7 +109,7 @@ Audit rules:
 
 - Least privilege: every tool needs a justification from the work itself, never "just in case".
 - A phase that only transforms prior phases' output needs `allowed_tools: []`.
-- Tools with required config (`Worktree` → `worktree:`, `AskUser` → `notifications:`, MCP → `mcp_servers:`) are two decisions, not one — settle both before moving on.
+- Tools with required config (`Worktree` → `worktree:`, MCP → `mcp_servers:`) are two decisions, not one — settle both before moving on.
 - Look up facts before asking: the filesystem for the target project, `.env` for tokens, the repo for existing MCP usage.
 
 ## Blueprint Spec (the confirmation artifact)
