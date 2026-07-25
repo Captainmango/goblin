@@ -550,10 +550,10 @@
         "swarm": { "$ref": "#/definitions/swarm" },
         "hooks": { "$ref": "#/definitions/hooks" },
         "mcp_servers": { "$ref": "#/definitions/mcpServers" },
-            "worktree": { "$ref": "#/definitions/worktree" },
-            "harness": { "$ref": "#/definitions/harness" },
-            "model": {
-              "type": "string",
+        "worktree": { "$ref": "#/definitions/worktree" },
+        "harness": { "$ref": "#/definitions/harness" },
+        "model": {
+          "type": "string",
           "description": "LLM model identifier for this phase. Overrides blueprint defaults. Use 'llm' for full OpenHands LLM configuration including auth.",
           "examples": ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4", "openai/gpt-4o"]
         },

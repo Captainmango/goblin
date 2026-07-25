@@ -40,7 +40,7 @@ async def test_acp_phase_runs_real_opencode(tmp_path):
     cassette_path = CASSETTES_DIR / "test_acp_phase_runs_real_opencode.b64"
 
     with use_cassette(cassette_path, record_mode="once"):
-    # Override working_dir so the harness sees our temp repo.
+        # Override working_dir so the harness sees our temp repo.
         bp._workspace_config = {"type": "local", "working_dir": str(tmp_path)}
 
         result = await phase.run({})

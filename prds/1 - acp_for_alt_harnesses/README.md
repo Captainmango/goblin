@@ -165,7 +165,7 @@ Verified against the installed SDK [L8]:
 | `mcp_servers` | Forwarded to `session/new` by the SDK | Keep |
 | `model` / `llm` | Harness owns its LLM; goblin's `llm` config is only used for the structured-output coercion follow-up (§5.5) | Redefined, documented |
 | `max_cost`, `max_tokens` | Read from ACP usage accounting (§3.3.3) | Keep (spike-verified) |
-| `max_iterations` | Meaningless — a phase is one prompt turn; `harness.prompt_timeout` is the guard | Validation warning, ignored |
+| `max_iterations` | One prompt turn per execution; still bounds executions (e.g. `foreach`, retries) | Validation warning |
 | `allowed_tools`, `hooks` | Harness owns tools/permissions; bridge auto-approves; OpenHands hooks never fire on harness-internal tool calls | Validation error |
 | `worktree` | OpenHands-tool-specific | Validation error |
 | `output_model` / `output_schema` | Via goblin-side coercion after the turn (§5.5) | Keep (new path) |

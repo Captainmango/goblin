@@ -27,7 +27,7 @@ only on errors. Rules (from README §3.5):
 | 4 | ACP + blueprint `workspace.type: remote` | Error — ACP spawns a local subprocess |
 | 6 | `harness.server: custom` without `harness.command` | Error — SDK raises otherwise; catch it at validate time |
 | 7 | `harness.command` set together with a non-`custom` `server` | Warning — overrides the provider's pinned command; intentional but worth surfacing |
-| 8 | ACP + `max_iterations` on the phase | Warning — one prompt turn per execution; `harness.prompt_timeout` is the guard |
+| 8 | ACP + `max_iterations` on the phase | Warning — one prompt turn per execution; `max_iterations` still bounds executions (`foreach`, retries); `harness.prompt_timeout` guards turn duration |
 
 Implementation notes:
 

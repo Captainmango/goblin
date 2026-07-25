@@ -61,9 +61,23 @@ events and logs. Reserved secret names for file-based credentials (e.g. Codex
 `auth.json`, Gemini service-account JSON) are materialised to disk by the SDK with
 restrictive permissions.
 
+Goblin reads the ambient provider key listed above and injects it into the
+conversation secrets channel. This keeps the key masked in events and logs while still
+letting `harness.secrets` override it when you need a per-blueprint key.
+
 For ACP phases that declare `output_model` or `output_schema`, `model` / `llm` (phase
 or defaults) configure the goblin-side structured-output coercion LLM, not the
 harness's model. The harness's model is `harness.model`.
+
+## Structured-output repair
+
+When an ACP phase declares `output_model` or `output_schema` and the harness response
+does not parse or validate, goblin runs a short goblin-side LLM repair to extract the
+required shape. By default this repair uses the phase/default `model` / `llm` config, and
+if that config has no `api_key`, goblin falls back to the ACP provider's API key (so a
+Codex harness will repair via OpenAI unless you explicitly set a different coercion LLM).
+Set an explicit `model` or `llm.api_key` on the phase or blueprint `defaults` to use a
+different provider for repair.
 
 ## Session semantics
 
@@ -75,7 +89,8 @@ keyed by `working_dir`:
 - `load_project` is unnecessary for pure-ACP runs; it is still useful for setting
   `project_path` as the `working_dir` fallback or for mixed blueprints that also run
   OpenHands phases.
-- `foreach` creates one independent session per iteration.
+- `foreach` creates one independent session per iteration. `max_iterations` still
+  limits the total number of executions, not LLM turns.
 
 ## Permission posture
 
@@ -151,7 +166,7 @@ Parallel ACP phases using the same provider can race on the CLI's global config 
 | `mcp_servers` | Forwarded to `session/new` | Keep |
 | `model` / `llm` | Coercion LLM only | Keep |
 | `max_cost`, `max_tokens` | Read from ACP usage accounting | Keep |
-| `max_iterations` | Meaningless (one turn) | Validation warning |
+| `max_iterations` | One prompt turn per execution; still bounds executions (e.g. `foreach`, retries) | Validation warning |
 | `allowed_tools` | Harness owns tools | Validation error |
 | `hooks` | OpenHands hooks don't fire | Validation error |
 | `worktree` | OpenHands tool | Validation error |

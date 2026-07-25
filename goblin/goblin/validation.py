@@ -280,9 +280,10 @@ def _validate_acp_semantics(raw: dict[str, Any]) -> list[dict[str, Any]]:
                 {
                     "path": f"blueprint.phases[{idx}].max_iterations",
                     "message": (
-                        f"Phase '{phase_id}' uses harness.type: acp; max_iterations is "
-                        "ignored because an ACP phase is one prompt turn (use "
-                        "harness.prompt_timeout as the guard)"
+                        f"Phase '{phase_id}' uses harness.type: acp; an ACP phase is "
+                        "one prompt turn, so max_iterations limits executions (e.g. "
+                        "foreach iterations, retries) rather than LLM turns (use "
+                        "harness.prompt_timeout as the turn guard)"
                     ),
                     "validator": "semantic",
                     "severity": "warning",
@@ -296,7 +297,7 @@ def _validate_acp_semantics(raw: dict[str, Any]) -> list[dict[str, Any]]:
                 "path": "blueprint.defaults.hooks",
                 "message": (
                     "defaults.hooks is set and at least one phase uses harness.type: acp; "
-                    "OpenHooks tool hooks do not fire inside an ACP harness"
+                    "OpenHands tool hooks do not fire inside an ACP harness"
                 ),
                 "validator": "semantic",
                 "severity": "error",

@@ -60,6 +60,10 @@ Precedence: phase `llm` > phase `model` > defaults `llm` > defaults `model`.
 ### `max_iterations`
 Maximum LLM turns for this phase. Default: 500.
 
+Under `harness.type: acp` each execution is a single prompt turn, so the limit
+applies to the number of executions (including `foreach` iterations and retries)
+rather than to LLM turns inside the harness.
+
 ### `max_tokens`
 Maximum cumulative prompt + completion tokens. Null means unlimited.
 
@@ -113,6 +117,6 @@ phase fields behave differently:
 | `worktree` | Error | The Worktree tool is OpenHands-specific. |
 | `mcp_servers` | Forwarded | Passed to the ACP session. |
 | `model` / `llm` | Coercion LLM | Used only for structured-output coercion. |
-| `max_iterations` | Warning | An ACP phase is one prompt turn. |
+| `max_iterations` | Warning | One prompt turn per execution; still limits executions (`foreach`, retries). |
 | `output_model` / `output_schema` | Coerced | Parsed from harness output after the turn. |
 | `workspace.type: remote` | Error | ACP requires a local subprocess. |
