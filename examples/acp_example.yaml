@@ -7,7 +7,7 @@ blueprint:
   defaults:
     harness:
       type: acp
-      server: claude-code
+      server: opencode
       session_mode: bypassPermissions
       prompt_timeout: 1800
   phases:

@@ -853,11 +853,11 @@ class TestACPConcurrency:
 
 
 @pytest.mark.skipif(
-    os.environ.get("GOBLIN_RUN_ACP_E2E") != "1" or not os.environ.get("ANTHROPIC_API_KEY"),
-    reason="Set GOBLIN_RUN_ACP_E2E=1 and ANTHROPIC_API_KEY to run live ACP tests",
+    os.environ.get("GOBLIN_RUN_ACP_E2E") != "1",
+    reason="Set GOBLIN_RUN_ACP_E2E=1 to run live ACP tests",
 )
 @pytest.mark.asyncio
-async def test_acp_phase_runs_real_claude_code(tmp_path):
+async def test_acp_phase_runs_real_opencode(tmp_path):
     bp = V1Blueprint(
         {
             "name": "test_bp",
@@ -865,7 +865,7 @@ async def test_acp_phase_runs_real_claude_code(tmp_path):
                 {
                     "id": "p1",
                     "prompt": "Read README.md and say one sentence about it.",
-                    "harness": {"type": "acp", "server": "claude-code", "prompt_timeout": 300},
+                    "harness": {"type": "acp", "server": "opencode", "prompt_timeout": 300},
                 }
             ],
         }
@@ -886,8 +886,8 @@ async def test_acp_phase_runs_real_claude_code(tmp_path):
 
 
 @pytest.mark.skipif(
-    os.environ.get("GOBLIN_RUN_ACP_E2E") != "1" or not os.environ.get("ANTHROPIC_API_KEY"),
-    reason="Set GOBLIN_RUN_ACP_E2E=1 and ANTHROPIC_API_KEY to run live ACP tests",
+    os.environ.get("GOBLIN_RUN_ACP_E2E") != "1",
+    reason="Set GOBLIN_RUN_ACP_E2E=1 to run live ACP tests",
 )
 @pytest.mark.asyncio
 async def test_acp_phase_max_cost_breaker_trips(tmp_path):
@@ -898,7 +898,7 @@ async def test_acp_phase_max_cost_breaker_trips(tmp_path):
                 {
                     "id": "p1",
                     "prompt": "Write a short greeting in README.md.",
-                    "harness": {"type": "acp", "server": "claude-code", "prompt_timeout": 300},
+                    "harness": {"type": "acp", "server": "opencode", "prompt_timeout": 300},
                     "max_cost": 0.0001,
                 }
             ],
@@ -915,8 +915,8 @@ async def test_acp_phase_max_cost_breaker_trips(tmp_path):
 
 
 @pytest.mark.skipif(
-    os.environ.get("GOBLIN_RUN_ACP_E2E") != "1" or not os.environ.get("ANTHROPIC_API_KEY"),
-    reason="Set GOBLIN_RUN_ACP_E2E=1 and ANTHROPIC_API_KEY to run live ACP tests",
+    os.environ.get("GOBLIN_RUN_ACP_E2E") != "1",
+    reason="Set GOBLIN_RUN_ACP_E2E=1 to run live ACP tests",
 )
 @pytest.mark.asyncio
 async def test_acp_phase_uses_forwarded_mcp_server(tmp_path):
