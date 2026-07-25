@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import AgentStatus, CleanupPolicy, SwarmState, TaskStatus
+from goblin.mcp_config import to_native_mcp_servers
 from goblin.output_schema import SwarmCoordinatorResult, coerce_to_model
 from goblin.phase import PhaseProtocol
 from goblin.prompts import BASE_SYSTEM_PROMPT, SWARM_AGENT_PROMPT, SWARM_COORDINATOR_PROMPT
@@ -254,7 +255,7 @@ class SwarmPhase(PhaseProtocol):
         agent = Agent(
             llm=llm,
             tools=coordinator_base_tools,
-            mcp_config=mcp_config,
+            mcp_config=to_native_mcp_servers(mcp_config),
             system_prompt=system_prompt,
             critic=None,
         )
@@ -345,7 +346,7 @@ class SwarmPhase(PhaseProtocol):
                     agent_tools,
                     tool_params={"SwarmAgent": {"db_config": db_config, "agent_name": name}},
                 ),
-                mcp_config=mcp_config,
+                mcp_config=to_native_mcp_servers(mcp_config),
                 system_prompt=system_prompt,
                 critic=None,
             )

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from goblin.blueprint import V1Blueprint
+from goblin.mcp_config import to_native_mcp_servers
 from goblin.output_schema import PhaseResult
 from goblin.phase import PromptPhase
 
@@ -199,7 +200,7 @@ class TestACPSettingsMapping:
             await phase.run({"task": "hi"})
 
         kwargs = mock_settings_cls.call_args.kwargs
-        assert kwargs["mcp_config"] == mcp_config
+        assert kwargs["mcp_config"] == to_native_mcp_servers(mcp_config)
 
 
 # ---------------------------------------------------------------------------
@@ -470,9 +471,9 @@ class TestACPMcpForwarding:
 
         kwargs = mock_settings_cls.call_args.kwargs
         mcp_config = kwargs["mcp_config"]
-        assert "shared" in mcp_config["mcpServers"]
-        assert "local" in mcp_config["mcpServers"]
-        assert mcp_config["mcpServers"]["local"]["command"] == "uvx"
+        assert "shared" in mcp_config
+        assert "local" in mcp_config
+        assert mcp_config["local"].command == "uvx"
 
 
 # ---------------------------------------------------------------------------

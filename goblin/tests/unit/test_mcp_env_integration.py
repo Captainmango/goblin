@@ -15,6 +15,7 @@ from openhands.sdk.mcp import create_mcp_tools
 from openhands.sdk.mcp.tool import MCPToolAction
 
 from goblin.blueprint import V1Blueprint
+from goblin.mcp_config import to_native_mcp_servers
 from goblin.phase import PromptPhase
 from goblin.utils.env import validate_env_var_syntax
 
@@ -147,7 +148,7 @@ class TestMcpEnvVarPropagation:
         assert "mcpServers" in mcp_config
         assert "canary" in mcp_config["mcpServers"]
 
-        client = create_mcp_tools(mcp_config, timeout=30.0)
+        client = create_mcp_tools(to_native_mcp_servers(mcp_config), timeout=30.0)
         try:
             tools = {tool.name: tool for tool in client.tools}
             assert "get_canary" in tools, f"Available tools: {list(tools.keys())}"
@@ -184,7 +185,7 @@ class TestMcpEnvVarPropagation:
         assert isinstance(phase, PromptPhase)
 
         mcp_config = bp._build_mcp_servers(phase, {})
-        client = create_mcp_tools(mcp_config, timeout=30.0)
+        client = create_mcp_tools(to_native_mcp_servers(mcp_config), timeout=30.0)
         try:
             tools = {tool.name: tool for tool in client.tools}
             assert "get_env" in tools

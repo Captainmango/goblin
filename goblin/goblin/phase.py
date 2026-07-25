@@ -9,6 +9,7 @@ from pydantic import BaseModel, SecretStr
 
 from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import LoadProjectStatus
+from goblin.mcp_config import to_native_mcp_servers
 from goblin.output_schema import (
     PhaseResult,
     coerce_to_model,
@@ -258,7 +259,9 @@ class PromptPhase(PhaseProtocol):
         agent_kwargs: dict[str, Any] = {
             "llm": llm,
             "tools": tools,
-            "mcp_config": self._blueprint.build_mcp_servers(self, context),
+            "mcp_config": to_native_mcp_servers(
+                self._blueprint.build_mcp_servers(self, context)
+            ),
             "system_prompt": system_prompt,
             "filter_tools_regex": build_tool_filter_regex(
                 self.allowed_tools,
@@ -538,7 +541,9 @@ class PromptPhase(PhaseProtocol):
                 acp_session_mode=harness.get("session_mode"),
                 acp_prompt_timeout=harness.get("prompt_timeout", 1800.0),
                 acp_isolate_data_dir=harness.get("isolate_data_dir", False),
-                mcp_config=self._blueprint.build_mcp_servers(self, context),
+                mcp_config=to_native_mcp_servers(
+                    self._blueprint.build_mcp_servers(self, context)
+                ),
             )
             agent = settings.create_agent()
         except Exception as exc:
