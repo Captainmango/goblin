@@ -10,8 +10,8 @@ plus server-only capabilities (list/status/cancel/stream).
 
 ## 3.1 Endpoints
 
-All under `/api`, all behind `require_api_key` (Bearer, copied from
-`notifications_relay/api/deps.py` [L9]) except `GET /health`.
+All under `/api`, all behind `require_api_key` (Bearer) per repo conventions [L11]
+except `GET /health`.
 
 | Method & path | Request → Response | Notes |
 |---|---|---|
@@ -35,8 +35,8 @@ existing repo modeling rules (BaseModel for API shapes; ISO-8601 timestamp strin
 
 ## 3.3 Auth & config
 
-- `Authorization: Bearer $GOBLIN_SERVER_API_KEY`; 401 with `detail` on mismatch (constant-time
-  compare, as in the relay).
+- `Authorization: Bearer $GOBLIN_SERVER_API_KEY`; 401 with `detail` on mismatch
+  (constant-time compare).
 - The runtime (step 4) keeps its **own** auth (`X-Session-API-Key`); the two schemes stay
   separate in V1 — document this clearly so operators set both keys.
 

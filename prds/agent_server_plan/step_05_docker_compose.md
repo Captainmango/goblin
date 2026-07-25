@@ -1,7 +1,7 @@
 # Step 5 — Docker image + docker compose (local hosting)
 
-**Goal:** One `docker compose up` brings up the notifications-relay and the Goblin Agent
-Server, satisfying the ROADMAP's "Test with Compose set up" [L7].
+**Goal:** One `docker compose up` brings up the Goblin Agent Server, satisfying the
+ROADMAP's "Test with Compose set up" [L7].
 
 **Depends on:** step 4. **Blocks:** step 6.
 
@@ -10,11 +10,11 @@ Server, satisfying the ROADMAP's "Test with Compose set up" [L7].
 ## 5.1 Image — `infra/docker/agent-server/Dockerfile`
 
 Follow the established two-stage pattern (`jp-goblin` dep base → wheel layer → slim runtime)
-used by `infra/docker/notifications-relay/Dockerfile` [L9]:
+used by the repo's Docker conventions [L11]:
 
-- **Builder** (`FROM jp-goblin:latest`): copy `goblin-common`, `goblin`, `notifications-relay`
-  (goblin depends on it), and `goblin-server` sources + READMEs; `uv build --wheel` each;
-  `uv pip install --no-deps /dist/*.whl` into the prepared venv.
+- **Builder** (`FROM jp-goblin:latest`): copy `goblin-common`, `goblin`, and `goblin-server`
+  sources + READMEs; `uv build --wheel` each; `uv pip install --no-deps /dist/*.whl` into the
+  prepared venv.
 - **Runtime** (`FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim`): copy `.venv`; install
   runtime OS deps — **`tmux` is required** (the embedded agent server's bash service uses the
   libtmux socket [S4]); keep `libffi8`, `libssl3`.
@@ -27,8 +27,7 @@ used by `infra/docker/notifications-relay/Dockerfile` [L9]:
 
 ## 5.2 Compose service — root `docker-compose.yml`
 
-Add (keep the existing relay service; note its name typo `notificiations-relay` — fix or
-leave as-is in a separate cleanup, don't conflate):
+Add the agent-server service:
 
 ```yaml
   agent-server:
@@ -50,9 +49,6 @@ leave as-is in a separate cleanup, don't conflate):
       OH_SECRET_KEY: ${OH_SECRET_KEY}
       GOBLIN_MODEL_API_KEY: ${GOBLIN_MODEL_API_KEY}
       GOBLIN_DEFAULT_MODEL: ${GOBLIN_DEFAULT_MODEL}
-      RELAY_HOST: notificiations-relay      # compose DNS
-      RELAY_PORT: "8000"
-      RELAY_API_KEY: ${RELAY_API_KEY}
     ports:
       - "8100:8100"   # goblin blueprint API (Bearer)
       - "8101:8101"   # runtime (Canvas backend, X-Session-API-Key)
@@ -69,9 +65,8 @@ volumes:
   agent_workspace:
 ```
 
-- Same `goblin` network as the relay so in-run notifications resolve by service name.
 - Document required `.env` additions: `GOBLIN_SERVER_API_KEY`, `OH_SESSION_API_KEYS_0`,
-  `OH_SECRET_KEY` (plus existing model/relay keys).
+  `OH_SECRET_KEY` (plus existing model keys).
 
 ## 5.3 E2E verification (compose)
 
@@ -84,8 +79,7 @@ volumes:
    the step-4 smoke test against the containerized box).
 5. `docker compose restart agent-server` → registry + checkpoints + runtime conversations
    survive (volume-backed).
-6. Relay integration: a blueprint with `on_failure.notify`/AskUser round-trips through the
-   relay.
+6. (No built-in human-in-the-loop tool exists; mid-run approval is out of scope for V1.)
 
 ## Acceptance criteria
 

@@ -139,7 +139,7 @@ This means the Goblin Agent Server can:
 | Status enums | `RunStatus` (incl. unused `INTERRUPTED`), `PhaseStatus` | `goblin/goblin/enums.py` [L4] |
 | Remote workspace | `build_workspace()` → `RemoteWorkspace(host, working_dir, api_key, ...)` | `goblin/goblin/workspace.py` [L3] |
 | Remote conversation | `run_conversation()` picks `RemoteConversation` for remote workspaces | `goblin/goblin/conversation.py` [L2] |
-| Service style template | `create_app(config)` + lifespan + `app.state` + `require_api_key` Bearer auth | `notifications-relay/notifications_relay/main.py`, `api/deps.py` [L9] |
+| Service style template | `create_app(config)` + lifespan + `app.state` + `require_api_key` Bearer auth | Use established repo FastAPI patterns; see `goblin_common` config/logging and prior art in `CLAUDE.md` [L11] |
 | Blueprint schema | JSON Schema draft-07 | `spec/v1.json` |
 
 Gaps the server must fill (none exist today) [L1, L4]:
@@ -161,7 +161,7 @@ Gaps the server must fill (none exist today) [L1, L4]:
 | `goblin run <path> [--context JSON] [--run-dir DIR]` | `POST /api/runs` (blueprint by server path or inline YAML) |
 | `goblin run --resume <checkpoint>` | `POST /api/runs/{id}/resume` |
 | `goblin validate <paths...>` | `POST /api/blueprints/validate` |
-| `goblin notifications <pair/send/ask/list/revoke>` | **Already remote** — talks to the notifications-relay over HTTP [L10]. No server work needed; the agent server simply needs `RELAY_*` env wiring so in-run notifications reach the relay. |
+| `goblin run/validate` | `POST /api/runs`, `POST /api/runs/{id}/resume`, `POST /api/blueprints/validate` |
 
 New capabilities the server adds beyond the CLI: run listing/status, results retrieval,
 cancellation, event streaming, and (V2) scheduling.
@@ -193,8 +193,8 @@ cancellation, event streaming, and (V2) scheduling.
 
 ### Option C — Compose: new `goblin-server` service + embedded stock agent server ✅
 
-- A new workspace member `goblin-server/` (FastAPI, modeled on `notifications-relay`) hosts
-  the blueprint/run API and orchestrates runs with `BlueprintRunner`.
+- A new workspace member `goblin-server/` (FastAPI) hosts the blueprint/run API and
+  orchestrates runs with `BlueprintRunner`.
 - The stock `openhands-agent-server==1.29.3` (locked with the SDK pin) runs **embedded in the
   same container** as the "runtime", exposing the Canvas-facing API.
 - Submitted runs get `workspace: {type: remote, host: <runtime loopback>}` injected so phase
@@ -223,24 +223,21 @@ cancellation, event streaming, and (V2) scheduling.
                         │      WS   /api/runs/{id}/events │                  (injected per run)     │
                         │      POST /api/blueprints/validate                 │                      │
                         │            │                     └─ RemoteConversation per phase ─────────┘
-                        │            ▼ run registry (sqlite) + checkpoints (.goblin/run-<id>.json)
-                        │   shared workspace volume (/workspace)  ◀── both processes read/write
-                        └───────────────────────────────────────────────────────────────────────────┘
-                                            │
-                                            ▼  RELAY_* env
-                              notifications-relay (existing service, :8000)
+                         │            ▼ run registry (sqlite) + checkpoints (.goblin/run-<id>.json)
+                         │   shared workspace volume (/workspace)  ◀── both processes read/write
+                         └───────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **goblin-server** owns: blueprint ingestion + validation, run registry (aiosqlite, mirroring
-  the relay's `store.py` pattern [L9]), background run tasks, cancellation, resume, run event
-  streaming, Bearer auth (`require_api_key` pattern).
+- **goblin-server** owns: blueprint ingestion + validation, run registry (aiosqlite with
+  `_migrate()` pattern), background run tasks, cancellation, resume, run event streaming,
+  Bearer auth (`require_api_key` pattern).
 - **runtime** owns: everything Canvas sees. Conversations created by runs are ordinary
   agent-server conversations; Canvas streams their events over its normal WebSocket [S3, S5].
 - **Shared workspace volume**: both processes must see the same filesystem (phase working
   dirs, `load_project` reading `.claude/settings.json` in the orchestrator process [L1]).
   Single-container-two-process gets this for free; k8s sidecars share an `emptyDir`/PVC.
-- **Notifications**: in-run hooks/`AskUser`/`notify` reach the existing notifications-relay
-  via standard `RELAY_HOST/PORT/RELAY_API_KEY` env [L10] — no new code.
+- **Human-in-the-loop**: V1 has no built-in human-in-the-loop tool; mid-run approval or
+  notification must be handled by external orchestration.
 
 ### Request flow: submit and run a blueprint
 
@@ -271,9 +268,9 @@ cancellation, event streaming, and (V2) scheduling.
 | F5 | Cancel a running run; checkpoint recorded as `interrupted`. |
 | F6 | Stream run lifecycle events (run/phase started/completed/failed) over WebSocket or SSE. |
 | F7 | Server registers with Agent Canvas as a standard backend (URL + session key); phase conversations of a run are visible in Canvas. |
-| F8 | In-run notifications (hooks, `on_failure.notify`, AskUser) reach the notifications-relay. |
+| F8 | (reserved) |
 | F9 | Bearer-key auth on all goblin-server API endpoints; runtime protected by its session key. |
-| F10 | Local hosting: single `docker compose up` brings up relay + agent server (per ROADMAP "Test with Compose set up" [L7]). |
+| F10 | Local hosting: single `docker compose up` brings up the agent server (per ROADMAP "Test with Compose set up" [L7]). |
 | F11 | Remote hosting: k8s manifests (Deployment/Service/Secret/PVC/Ingress) deploy the same image. |
 
 ### 6.2 Non-functional
@@ -403,9 +400,6 @@ remotely"). Step 6 unlocks k8s; step 7 is polish; step 8 is V2.
 - **[L7]** `ROADMAP.md` — Agent Server, k8s, and eventbus line items.
 - **[L8]** `goblin/goblin/blueprint.py`, `spec/v1.json` — blueprint schema; phases
   (prompt/load_project/swarm); `blueprints/` examples.
-- **[L9]** `notifications-relay/` — service template: `main.py:create_app`, `api/deps.py`
-  (`require_api_key`), `store.py` (aiosqlite `_migrate`), `tests/conftest.py` (ASGITransport
-  pattern); `infra/docker/base/Dockerfile`, `infra/docker/notifications-relay/Dockerfile`,
-  root `docker-compose.yml`.
-- **[L10]** `goblin/goblin/notifications/` — relay client usage from the CLI.
-- **[L11]** `CLAUDE.md` — repo conventions (FastAPI, config, logging, testing, errors).
+- **[L9]** `goblin_common` — config/logging; `goblin/goblin/checkpoint.py`, `goblin/goblin/store.py`
+  (if any existing aiosqlite store pattern applies) for `_migrate()` and dict-row conventions.
+- **[L10]** `CLAUDE.md` — repo conventions (FastAPI, config, logging, testing, errors).

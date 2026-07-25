@@ -76,7 +76,7 @@ in its store, which is exactly what Canvas lists and streams [S3, S5, S6].
 4. `POST /api/runs` a cheap blueprint (2 prompt phases).
 5. In Canvas: conversations appear as phases execute; events stream live; run completes;
    `GET /api/runs/{id}` shows `completed` with results.
-6. Verify in-run notifications still land via the relay (`RELAY_*` env on the box).
+6. (No built-in human-in-the-loop tool exists; mid-run approval is out of scope for V1.)
 
 ## 4.5 Cancellation follow-through
 

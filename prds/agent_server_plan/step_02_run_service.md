@@ -24,7 +24,8 @@ execution via `BlueprintRunner`, resume/cancel, and a run-event pub/sub. No HTTP
 
 ## 2.2 Run registry store — `goblin_server/store.py`
 
-Mirror `notifications_relay/store.py` (aiosqlite, `_migrate()`, dict rows) [L9]:
+Use an aiosqlite store with `_migrate()` and dict rows, following the repo's database
+conventions [L11]:
 
 ```sql
 CREATE TABLE IF NOT EXISTS runs (

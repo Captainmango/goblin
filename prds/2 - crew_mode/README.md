@@ -24,8 +24,8 @@ Two hard constraints shape everything below:
 
 - **Crew mode is CLI-only.** The `goblin crew` chat REPL and the `goblin crew sessions`
   views are the entire surface — there is no server, HTTP API, or TUI, and none is planned.
-- **notifications-relay development is frozen.** Per `AGENTS.md`, that project must not be
-  read or changed. Crew mode has **zero** references to it and **zero** dependencies on it.
+- **notifications-relay has been removed from the workspace.** Crew mode has **zero**
+  references to it and **zero** dependencies on it.
 
 The model is lifted from firstmate [S1]:
 
@@ -459,8 +459,8 @@ runtime prerequisite only when `harness: acp` is actually used.
 - **CLI-only.** Crew mode ships exclusively as `goblin` CLI commands (the `goblin crew` chat
   REPL and the `goblin crew sessions` views). No HTTP server, no API, no TUI, no new
   entry-point processes beyond the harness subprocesses ACP spawns.
-- **notifications-relay is frozen** (`AGENTS.md`): crew mode must not import, read,
-  reference, or integrate with that project. Review checklist: zero matches for
+- **notifications-relay has been removed from the workspace**: crew mode must not import,
+  read, reference, or integrate with that project. Review checklist: zero matches for
   `notifications` / `relay` under `goblin/goblin/crew/` and in this PRD's steps.
 - Repo conventions per `AGENTS.md`: `from __future__ import annotations`, type hints, pydantic
   where parsing, structured logging with dot-notation events (`crew.spawned`,
@@ -511,9 +511,9 @@ runtime prerequisite only when `harness: acp` is actually used.
   with phases); V1 crewmates are single-prompt conversations (native or ACP).
 - **Remote ACP** — harness subprocesses on a remote host; same local-only boundary as the
   ACP PRD [L10].
-- **Crewmate → user mid-run questions** — `AskUser` routed up through the lead's chat
-  surface, and richer lead↔crewmate signal channels (the swarm's `signals` table idea [L2])
-  beyond lead-initiated messages.
+- **Crewmate → user mid-run questions** — human-in-the-loop questions routed up through the
+  lead's chat surface, and richer lead↔crewmate signal channels (the swarm's `signals` table
+  idea [L2]) beyond lead-initiated messages.
 - **A dashboard/`--follow` live tailing** for sessions.
 
 ---
@@ -601,7 +601,7 @@ Step 5 adds ACP harness wrapping; step 6 is hardening and polish. All six are V1
   `SWARM_AGENT_PROMPT` (role/roster/board prompt conventions).
 - **[L12]** `AGENTS.md` — repo conventions (typed tools, sync-DB exception, structured
   logging events, unit-over-integration testing, vcr integration rules, no MCP in
-  integration tests; the notifications-relay development freeze).
+  integration tests).
 - **[L13]** `prds/agent_server_plan/README.md` — sibling PRD (composition boundary
   referenced in §6.4; PRD format template).
 - **[L14]** `goblin/VISION.md`, `ROADMAP.md` — project positioning (orchestration between

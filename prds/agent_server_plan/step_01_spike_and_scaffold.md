@@ -36,7 +36,7 @@ re-evaluate Option A/B from `README.md` §4 before proceeding.
 
 ## 1.2 Scaffold the workspace member
 
-Create `goblin-server/` modeled exactly on `notifications-relay/` [L9, L11]:
+Create `goblin-server/` following the repo's FastAPI conventions [L11]:
 
 ```
 goblin-server/
@@ -73,15 +73,15 @@ Config (env-driven, `goblin_common.config.env`/`secret_env`):
 | `GOBLIN_SERVER_RUNTIME_HOST` | `127.0.0.1` | Embedded runtime bind host |
 | `GOBLIN_SERVER_RUNTIME_PORT` | `8101` | Embedded runtime port |
 
-Also required at runtime (existing goblin/relay vars): `GOBLIN_MODEL_API_KEY`,
-`GOBLIN_DEFAULT_MODEL`, `RELAY_HOST/PORT/RELAY_API_KEY`, and for the runtime
-`OH_SESSION_API_KEYS_0`, `OH_SECRET_KEY` [L5, S2].
+Also required at runtime (existing goblin vars): `GOBLIN_MODEL_API_KEY`,
+`GOBLIN_DEFAULT_MODEL`, and for the runtime `OH_SESSION_API_KEYS_0`,
+`OH_SECRET_KEY` [L5, S2].
 
 Wire the member in:
 
 - Root `pyproject.toml`: add `"goblin-server"` to `[tool.uv.workspace] members`.
 - Root `Taskfile.yml`: `goblin-server:lint`, `goblin-server:test`, `goblin-server:typecheck`
-  (copy the `notifications-relay` task shapes).
+  (copy the `goblin-common` task shapes).
 - `infra/docker/base/Dockerfile`: `COPY goblin-server/pyproject.toml ./goblin-server/`.
 - `uv sync` and confirm the lock includes `openhands-agent-server==1.29.3`.
 

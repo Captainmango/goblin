@@ -13,8 +13,8 @@ Plain manifests first (a Helm chart is a later nicety):
 
 - **`namespace.yaml`** — `goblin`.
 - **`secret.yaml`** — `GOBLIN_SERVER_API_KEY`, `OH_SESSION_API_KEYS_0`, `OH_SECRET_KEY`,
-  `GOBLIN_MODEL_API_KEY`, `RELAY_API_KEY` (via `stringData`; document sealing/external-secrets
-  as the production path).
+  `GOBLIN_MODEL_API_KEY` (via `stringData`; document sealing/external-secrets as the
+  production path).
 - **`pvc.yaml`** — `workspace` PVC (RWO is fine: single replica; see §6.3).
 - **`deployment.yaml`** — single replica (stateful, volume-backed; scale-out is V2+):
   - **Pod = one box, two containers** (mirrors the compose box but k8s-native; preferred over
@@ -37,9 +37,7 @@ Plain manifests first (a Helm chart is a later nicety):
   hostnames simplest, e.g. `goblin-api.example.com` → :8100,
   `goblin-runtime.example.com` → :8101); terminate TLS at the ingress (both APIs are
   key-authenticated but transport encryption is on you [S2]).
-- If the relay should also run in-cluster: replicate its compose service as a small
-  Deployment+Service with its own PVC for `RELAY_DB_PATH`, and set
-  `RELAY_HOST: notifications-relay` in the agent-server pod env.
+- Human-in-the-loop notifications are not part of V1; do not deploy a relay sidecar.
 
 ## 6.2 Operate
 

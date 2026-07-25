@@ -24,8 +24,7 @@ only on errors. Rules (from README §3.5):
 | 1 | `harness.type: acp` (phase or inherited from defaults) + `allowed_tools` on the phase | Error — the harness owns its tools; the list would silently do nothing |
 | 2 | ACP + `hooks` (phase or defaults-level with an ACP phase) | Error — OpenHands tool hooks never fire inside the harness |
 | 3 | ACP + `worktree` | Error — the Worktree tool is an OpenHands tool |
-| 4 | ACP + `notifications` / `AskUser` in the phase | Error — AskUser is an OpenHands tool |
-| 5 | ACP + blueprint `workspace.type: remote` | Error — ACP spawns a local subprocess |
+| 4 | ACP + blueprint `workspace.type: remote` | Error — ACP spawns a local subprocess |
 | 6 | `harness.server: custom` without `harness.command` | Error — SDK raises otherwise; catch it at validate time |
 | 7 | `harness.command` set together with a non-`custom` `server` | Warning — overrides the provider's pinned command; intentional but worth surfacing |
 | 8 | ACP + `max_iterations` on the phase | Warning — one prompt turn per execution; `harness.prompt_timeout` is the guard |

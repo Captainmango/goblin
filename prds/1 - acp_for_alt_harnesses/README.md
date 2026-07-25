@@ -167,7 +167,7 @@ Verified against the installed SDK [L8]:
 | `max_cost`, `max_tokens` | Read from ACP usage accounting (§3.3.3) | Keep (spike-verified) |
 | `max_iterations` | Meaningless — a phase is one prompt turn; `harness.prompt_timeout` is the guard | Validation warning, ignored |
 | `allowed_tools`, `hooks` | Harness owns tools/permissions; bridge auto-approves; OpenHands hooks never fire on harness-internal tool calls | Validation error |
-| `worktree`, `notifications`/`AskUser` | OpenHands-tool-specific | Validation error |
+| `worktree` | OpenHands-tool-specific | Validation error |
 | `output_model` / `output_schema` | Via goblin-side coercion after the turn (§5.5) | Keep (new path) |
 | `workspace: {type: remote}` | ACP spawns a **local** subprocess; remote workspaces don't apply | Validation error when combined |
 
@@ -410,8 +410,8 @@ Precedence for the harness subprocess env (SDK behavior [L8]):
 - **Swarm-phase ACP workers** (`swarm.agents[].harness`) — the swarm's coordinator/task
   machinery is OpenHands-native; ACP fan-out needs its own design.
 - **Explicit session resume** (`acp_resume_session_id` plumbing through blueprints),
-  `session/list` browsing, and AskUser-style permission prompts routed to the
-  notifications-relay (V1 auto-approves, matching unattended runs).
+  `session/list` browsing, and human-in-the-loop permission prompts (V1 auto-approves,
+  matching unattended runs).
 - ACP support in the `goblin-server` PRD's remote runtime (compose with
   `prds/agent_server_plan` later; the two PRDs are independent).
 - `isolate_data_dir` for gemini-cli (SDK relocates `HOME` — wide blast radius; document,

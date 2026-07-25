@@ -10,12 +10,10 @@ works through the server), and bring repo docs up to date.
 ## 7.1 `goblin run --server` client
 
 Dependency direction forbids putting the client in `goblin-server` (it will depend on
-`goblin`, and `goblin` must not depend back). Follow the `goblin/notifications/client.py`
-precedent instead: a thin client **inside goblin** [L10]:
+`goblin`, and `goblin` must not depend back). Add a thin client **inside goblin**:
 
 - New module `goblin/goblin/server_client.py` using `httpx` (add `httpx` to
-  `goblin/pyproject.toml` explicitly — it currently only arrives transitively via
-  notifications-relay).
+  `goblin/pyproject.toml` explicitly — it currently arrives transitively).
 - CLI changes in `goblin/goblin/cli.py`:
   - `goblin run --server URL [--api-key KEY] [--detach] <blueprint>`:
     - Local blueprint file → read YAML → `POST /api/runs` (inline source); else submit by
