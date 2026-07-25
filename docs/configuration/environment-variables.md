@@ -13,6 +13,7 @@ Goblin loads environment variables from a `.env` file in the current working dir
 | Variable | Used By | Default | Purpose |
 |----------|---------|---------|---------|
 | `GOBLIN_BASE_URL` | goblin | `OPENHANDS_BASE_URL` | Base URL for the LLM API. |
+| `GOBLIN_DEFAULT_MODEL` | goblin | — | Default model identifier. Also backs the structured-output coercion LLM for ACP phases. |
 | `OPENHANDS_SUPPRESS_BANNER` | goblin | `1` | Suppress the OpenHands startup banner. |
 | `GOBLIN_BACKEND` | goblin | — | Swarm backend selection (`turso` or `sqlite`). |
 | `GOBLIN_TURSO_URL` | goblin | — | Turso/libSQL URL for distributed swarm state. |
@@ -20,6 +21,9 @@ Goblin loads environment variables from a `.env` file in the current working dir
 | `GOBLIN_TURSO_MODE` | goblin | — | Turso connection mode (`local` or `remote`). |
 | `GOBLIN_TURSO_LOCAL_PATH` | goblin | — | Local libSQL database path. |
 | `GOBLIN_LOG_CONFIG` | goblin | — | Path to a YAML logging configuration file. |
+| `ANTHROPIC_API_KEY` | ACP harness (`claude-code`) | Provider API key for the Claude Code ACP harness. |
+| `OPENAI_API_KEY` | ACP harness (`codex`) | Provider API key for the OpenAI Codex ACP harness. |
+| `GEMINI_API_KEY` | ACP harness (`gemini-cli`) | Provider API key for the Gemini CLI ACP harness. |
 
 ## Example `.env`
 

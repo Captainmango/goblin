@@ -24,6 +24,10 @@ The `prompt` phase is the most common phase type. It sends an instruction to an 
     base_dir: .goblin/worktrees
     deps: [node_modules]
     auto_link: true
+  harness:
+    type: acp
+    server: claude-code
+    working_dir: "{api_dir}"
   hooks:
     pre_tool: [check_prometheus]
     post_tool: [run_tests]
@@ -91,3 +95,24 @@ Failure handling configuration:
 
 ### `depends_on`
 Phase IDs that must finish before this phase starts. Omit for sequential execution.
+
+### `harness`
+Execution backend selection. `openhands` (default) runs goblin's native agent loop;
+`acp` delegates to a local ACP-compatible harness subprocess (Claude Code, Codex,
+Gemini CLI, or a custom command). See [Harness configuration](../configuration/harness.md).
+
+## ACP harness field compatibility
+
+When `harness.type` is `acp`, the harness owns its own tools and session state, so some
+phase fields behave differently:
+
+| Field | Under ACP | Notes |
+|---|---|---|
+| `allowed_tools` | Error | The harness owns its tools. |
+| `hooks` | Error | OpenHands hooks do not fire inside the harness. |
+| `worktree` | Error | The Worktree tool is OpenHands-specific. |
+| `mcp_servers` | Forwarded | Passed to the ACP session. |
+| `model` / `llm` | Coercion LLM | Used only for structured-output coercion. |
+| `max_iterations` | Warning | An ACP phase is one prompt turn. |
+| `output_model` / `output_schema` | Coerced | Parsed from harness output after the turn. |
+| `workspace.type: remote` | Error | ACP requires a local subprocess. |

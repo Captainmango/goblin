@@ -33,6 +33,56 @@ blueprint:
 | `isolate_data_dir` | `bool` | `false` | Give the harness a per-conversation config/data root so concurrent phases don't race on shared CLI state. |
 | `secrets` | `map[str, str]` | `{}` | Env vars delivered to the harness subprocess via the conversation secrets channel (masked in events/logs; overrides ambient env). Values support `${VAR}` references. |
 
+## Provider registry and pinned versions
+
+When `type: acp`, goblin uses the OpenHands SDK's provider registry to resolve
+the harness subprocess command. The pinned defaults are:
+
+| `server` | Default command | Auth env var |
+|---|---|---|
+| `claude-code` | `npx -y @agentclientprotocol/claude-agent-acp@0.44.0` | `ANTHROPIC_API_KEY` |
+| `codex` | `npx -y @zed-industries/codex-acp@0.16.0` | `OPENAI_API_KEY` |
+| `gemini-cli` | `npx -y @google/gemini-cli@0.46.0 --acp` | `GEMINI_API_KEY` |
+| `custom` | value of `command` | depends on command |
+
+Use `command` to override the pinned default with a pre-installed binary or a
+different package version.
+
+## Provider credentials
+
+ACP harnesses read provider keys from the ambient environment:
+
+- Claude Code: `ANTHROPIC_API_KEY`
+- Codex: `OPENAI_API_KEY`
+- Gemini CLI: `GEMINI_API_KEY`
+
+You can also pass per-blueprint overrides via `harness.secrets`; values are masked in
+events and logs. Reserved secret names for file-based credentials (e.g. Codex
+`auth.json`, Gemini service-account JSON) are materialised to disk by the SDK with
+restrictive permissions.
+
+For ACP phases that declare `output_model` or `output_schema`, `model` / `llm` (phase
+or defaults) configure the goblin-side structured-output coercion LLM, not the
+harness's model. The harness's model is `harness.model`.
+
+## Session semantics
+
+Each ACP phase execution gets one fresh harness subprocess and one fresh ACP session
+keyed by `working_dir`:
+
+- The harness owns session state, tool execution, and any native project config
+  (`CLAUDE.md` hierarchy, `.claude/settings.json`, `.mcp.json`).
+- `load_project` is unnecessary for pure-ACP runs; it is still useful for setting
+  `project_path` as the `working_dir` fallback or for mixed blueprints that also run
+  OpenHands phases.
+- `foreach` creates one independent session per iteration.
+
+## Permission posture
+
+ACP providers default to unattended modes such as `bypassPermissions` or `full-access`,
+which auto-approve tool calls. Pin `session_mode` to a stricter value if you need
+different behaviour.
+
 ## MCP forwarding
 
 Blueprint `mcp_servers` (defaults + phase) are merged, resolved, and forwarded to the
@@ -93,13 +143,35 @@ Parallel ACP phases using the same provider can race on the CLI's global config 
 | `remote` | `openhands` | Remote OpenHands agent server (today's behavior). |
 | `remote` | `acp` | Validation error; ACP requires a local subprocess. |
 
-## Provider credentials
+## Field compatibility under ACP
 
-ACP harnesses read provider keys from the ambient environment:
+| Phase field | Under ACP | Disposition |
+|---|---|---|
+| `prompt`, `condition`, `foreach`, `depends_on`, `history`, `on_failure`, `vars` | Works unchanged | Keep |
+| `mcp_servers` | Forwarded to `session/new` | Keep |
+| `model` / `llm` | Coercion LLM only | Keep |
+| `max_cost`, `max_tokens` | Read from ACP usage accounting | Keep |
+| `max_iterations` | Meaningless (one turn) | Validation warning |
+| `allowed_tools` | Harness owns tools | Validation error |
+| `hooks` | OpenHands hooks don't fire | Validation error |
+| `worktree` | OpenHands tool | Validation error |
+| `output_model` / `output_schema` | Coerced after the turn | Keep |
+| `workspace: {type: remote}` | ACP needs local subprocess | Validation error |
+| `server: custom` without `command` | SDK raises at runtime | Validation error |
+| `command` with non-`custom` `server` | Overrides pinned command | Validation warning |
 
-- Claude Code: `ANTHROPIC_API_KEY`
-- Codex: `OPENAI_API_KEY`
-- Gemini CLI: `GEMINI_API_KEY`
+## Node / npx prerequisite
 
-You can also pass per-blueprint overrides via `harness.secrets`; values are masked in
-events and logs.
+The default ACP commands use `npx`, which requires Node.js and npm on `PATH`. The first
+download of a pinned package can be slow; use `command` to point at a pre-installed
+binary to avoid `npx` latency.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| "Failed to build ACP agent" | Missing CLI or `server: custom` without `command` | Install Node/npm or set `command`. |
+| "ACP harness failed" / timeout | Harness wedged or `prompt_timeout` exceeded | Increase `prompt_timeout` or check provider status. |
+| MCP server not visible to harness | Transport not advertised or server crashed | Use stdio servers; check harness logs. |
+| `max_cost` / `max_tokens` silently ignored | Provider emits no usage updates | Treat cost limits as best-effort for that provider; rely on `prompt_timeout`. |
+| Concurrent phases corrupt shared config | Race on `~/.claude` / `CODEX_HOME` | Set `isolate_data_dir: true`. |

@@ -92,7 +92,14 @@ class TestValidateBlueprint:
         path = tmp_path / "bad.yaml"
         path.write_text("")
         errors = validate_blueprint(str(path))
-        assert errors == [{"path": "", "message": "File is empty or not valid YAML", "validator": "parse"}]
+        assert errors == [
+            {
+                "path": "",
+                "message": "File is empty or not valid YAML",
+                "validator": "parse",
+                "severity": "error",
+            }
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -106,12 +113,35 @@ class TestFormatErrors:
 
     def test_formats_error_lines(self):
         errors = [
-            {"path": "blueprint.name", "message": "is a required property", "validator": "required"},
-            {"path": "blueprint.phases[0].id", "message": "is not of type 'string'", "validator": "type"},
+            {
+                "path": "blueprint.name",
+                "message": "is a required property",
+                "validator": "required",
+                "severity": "error",
+            },
+            {
+                "path": "blueprint.phases[0].id",
+                "message": "is not of type 'string'",
+                "validator": "type",
+                "severity": "error",
+            },
         ]
         text = format_errors(errors)
         assert "blueprint.name: is a required property" in text
         assert "blueprint.phases[0].id: is not of type 'string'" in text
+
+    def test_formats_warning_lines(self):
+        errors = [
+            {
+                "path": "blueprint.phases[0].harness.command",
+                "message": "overrides the pinned command",
+                "validator": "semantic",
+                "severity": "warning",
+            },
+        ]
+        text = format_errors(errors)
+        assert "(warning)" in text
+        assert "overrides the pinned command" in text
 
 
 # ---------------------------------------------------------------------------

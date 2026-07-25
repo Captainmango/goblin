@@ -6,6 +6,10 @@ Goblin is an autonomous coding-agent harness. It runs YAML **blueprints** that d
 
 Each blueprint step is a self-contained prompt with explicit tool permissions. Steps are isolated: only filesystem changes persist between them. `load_project` steps layer orchestration on top of a target project's existing OpenHands/ Claude Code configuration.
 
+Prompt phases can optionally delegate execution to a local ACP-compatible coding harness
+(Claude Code, Codex, Gemini CLI, or a custom command) via the `harness` block. See the
+[harness configuration docs](../docs/configuration/harness.md) for details.
+
 ## Setup
 
 This project is part of the workspace monorepo. From the repo root:

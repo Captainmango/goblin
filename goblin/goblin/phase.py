@@ -5,7 +5,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from goblin.cost_control import CircuitBreaker, LimitExceeded
 from goblin.enums import LoadProjectStatus
@@ -59,6 +59,24 @@ def _patch_acp_prompt_call() -> None:
 
     ACPAgent._do_acp_prompt = _do_acp_prompt_fixed
     _ACP_PROMPT_PATCHED = True
+
+
+_ACP_PROVIDER_KEYS: dict[str, str] = {
+    "claude-code": "ANTHROPIC_API_KEY",
+    "codex": "OPENAI_API_KEY",
+    "gemini-cli": "GEMINI_API_KEY",
+}
+
+
+def _acp_provider_key(server: str) -> tuple[str, SecretStr] | None:
+    """Return the environment variable name and value for an ACP server's API key."""
+    env_var = _ACP_PROVIDER_KEYS.get(server)
+    if env_var is None:
+        return None
+    value = os.environ.get(env_var)
+    if not value:
+        return None
+    return env_var, SecretStr(value)
 
 
 if TYPE_CHECKING:
@@ -560,6 +578,15 @@ class PromptPhase(PhaseProtocol):
                     "working_dir": working_dir,
                 },
             )
+            secrets: dict[str, str] = {}
+            provider_key = _acp_provider_key(server)
+            if provider_key is not None:
+                env_var, key = provider_key
+                secrets[env_var] = key.get_secret_value()
+            user_secrets = harness.get("secrets")
+            if user_secrets:
+                secrets.update(user_secrets)
+
             conversation = await run_conversation(
                 agent,
                 workspace,
@@ -567,7 +594,7 @@ class PromptPhase(PhaseProtocol):
                 hook_config=None,
                 max_iterations=self.max_iterations or 500,
                 max_cost=self.max_cost,
-                secrets=harness.get("secrets") or None,
+                secrets=secrets or None,
             )
             breaker.absorb(conversation)
         except LimitExceeded as exc:
@@ -616,6 +643,15 @@ class PromptPhase(PhaseProtocol):
         if self._structured_output_configured():
             output_model = self._resolve_output_model()
             llm_config = self._blueprint.resolve_llm_config(self, context)
+            if isinstance(llm_config, dict):
+                if not llm_config.get("api_key"):
+                    provider_key = _acp_provider_key(server)
+                    if provider_key is not None:
+                        llm_config = {**llm_config, "api_key": provider_key[1].get_secret_value()}
+            elif isinstance(llm_config, str):
+                provider_key = _acp_provider_key(server)
+                if provider_key is not None:
+                    llm_config = {"model": llm_config, "api_key": provider_key[1].get_secret_value()}
             try:
                 structured = await self._coerce_structured_output(
                     prompt, text_output, output_model, llm_config=llm_config, breaker=breaker
