@@ -45,7 +45,17 @@ These definitions are available for use in swarm phases.
 
 ## Working Directory
 
-The project path becomes the working directory for subsequent prompt phases (unless overridden by `workspace` configuration).
+The project path becomes the working directory for subsequent prompt phases (unless overridden by `workspace` configuration). It also serves as the fallback `working_dir` for ACP phases that do not declare `harness.working_dir`.
+
+## ACP interaction
+
+ACP harnesses read their own native project config (`CLAUDE.md` hierarchy,
+`.claude/settings.json`, `.mcp.json`) directly from the session `cwd`, so `load_project`
+is unnecessary for pure-ACP blueprints. It remains useful when:
+
+- You want `project_path` to be the default `working_dir` for ACP phases.
+- The blueprint mixes OpenHands phases (which receive `load_project` refs/hooks) with ACP
+  phases.
 
 ## Example
 

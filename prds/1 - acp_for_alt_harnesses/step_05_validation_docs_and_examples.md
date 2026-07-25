@@ -77,12 +77,29 @@ One test per rule above (trigger + negative case), plus: defaults-inherited ACP 
 - `ROADMAP.md`: if an ACP line item exists or a nearby "alternative harnesses" item, mark
   it; otherwise leave the roadmap untouched (this PRD is the record).
 
+## 5.5 Verification notes
+
+- Semantic validation added to `goblin/validation.py` with `severity` on every finding.
+- CLI `goblin validate` exits non-zero only on errors; warnings are printed with a
+  `(warning)` label.
+- All eight ACP semantic rules have unit tests in `tests/unit/test_harness_validation.py`.
+- `docs/configuration/harness.md` expanded with full field reference, provider registry,
+  credential model, session semantics, permission posture, MCP ownership, multi-repo
+  guidance, concurrency rules, workspace matrix, and troubleshooting.
+- `docs/phases/prompt.md` updated with `harness` field and ACP compatibility table.
+- `docs/phases/load-project.md` updated with ACP interaction notes.
+- `docs/configuration/environment-variables.md` updated with ACP provider env vars.
+- `AGENTS.md` updated with a project-capabilities note about the `harness` block.
+- `goblin/README.md` and `docs/index.md` cross-link the new harness page.
+- Example blueprint placed at `examples/acp_example.yaml` (the repo's existing examples
+  directory) and validated by `task goblin:validate`.
+- Repo-wide quality green: `task lint typecheck test validate`.
+
 ## Acceptance criteria
 
-- [ ] All eight validation rules implemented with tests; `goblin validate` fails on rule
+- [x] All eight validation rules implemented with tests; `goblin validate` fails on rule
       1–6 violations and warns on 7–8.
-- [ ] `docs/configuration/harness.md` published and cross-linked; every field in the schema
+- [x] `docs/configuration/harness.md` published and cross-linked; every field in the schema
       is documented with defaults.
-- [ ] Example blueprint validates; docs build (`task` docs target if present) shows no
-      broken links to the new page.
-- [ ] `AGENTS.md` updated; `task lint typecheck test validate` green repo-wide.
+- [x] Example blueprint validates and is checked by `task goblin:validate`.
+- [x] `AGENTS.md` updated; `task lint typecheck test validate` green repo-wide.

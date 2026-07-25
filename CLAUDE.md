@@ -16,6 +16,14 @@ Both projects are workspace members in the root `pyproject.toml` and share a sin
 - **pyrefly** — type checker.
 - **pytest / pytest-asyncio** — test framework.
 
+## Project capabilities
+
+- `goblin/` supports an optional `harness` block on prompt phases that delegates execution
+  to a local ACP-compatible coding harness (Claude Code, Codex, Gemini CLI, or a custom
+  command) instead of the native OpenHands agent loop. ACP harnesses require Node.js / npm
+  on `PATH` for the default `npx` provider commands and read provider API keys from the
+  ambient environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`).
+
 ## Workspace Commands
 
 Run from the repo root:

@@ -110,8 +110,12 @@ def validate(blueprints: tuple[str, ...]):
     for path in blueprints:
         errors = validate_blueprint(path)
         if errors:
-            all_valid = False
-            click.echo(f"{path}: invalid")
+            has_error = any(e.get("severity", "error") == "error" for e in errors)
+            if has_error:
+                all_valid = False
+                click.echo(f"{path}: invalid")
+            else:
+                click.echo(f"{path}: valid (with warnings)")
             click.echo(format_errors(errors))
         else:
             click.echo(f"{path}: valid")

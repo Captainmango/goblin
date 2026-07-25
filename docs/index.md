@@ -21,6 +21,7 @@ Goblin is an agent factory and ensemble programming harness. It runs YAML **blue
 - [Blueprint Reference](blueprints/overview.md)
 - [CLI Reference](cli/goblin.md)
 - [Swarm Guide](swarm/overview.md)
+- [Harness Configuration](configuration/harness.md)
 
 ## Example Blueprint
 

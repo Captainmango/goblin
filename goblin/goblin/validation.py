@@ -28,22 +28,30 @@ def load_schema() -> dict[str, Any]:
 
 
 def validate_blueprint(path: str, raw: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    """Load a blueprint YAML file and validate it against the JSON Schema.
+    """Load a blueprint YAML file and validate it against the JSON Schema plus semantic rules.
 
     If *raw* is provided it is used directly (imports are assumed to already
     be resolved).  Otherwise the file at *path* is loaded and imports are
     resolved inline before schema validation.
 
-    Returns a list of structured error dicts, each with:
+    Returns a list of structured finding dicts, each with:
       - path: JSON path to the offending field (e.g. "blueprint.phases[0].id")
       - message: human-readable error message
-      - validator: the schema keyword that failed (e.g. "required", "type")
+      - validator: the schema keyword or "semantic"
+      - severity: "error" or "warning"
     """
     if raw is None:
         raw = yaml.safe_load(Path(path).read_text())
 
         if raw is None:
-            return [{"path": "", "message": "File is empty or not valid YAML", "validator": "parse"}]
+            return [
+                {
+                    "path": "",
+                    "message": "File is empty or not valid YAML",
+                    "validator": "parse",
+                    "severity": "error",
+                }
+            ]
 
         from goblin.import_resolver import resolve_imports
 
@@ -59,11 +67,13 @@ def validate_blueprint(path: str, raw: dict[str, Any] | None = None) -> list[dic
                 "path": _error_path(err),
                 "message": err.message,
                 "validator": err.validator,
+                "severity": "error",
             }
         )
 
     errors.extend(_validate_output_model_refs(raw))
     errors.extend(_validate_hook_names(raw))
+    errors.extend(_validate_acp_semantics(raw))
     return errors
 
 
@@ -95,6 +105,7 @@ def _validate_hook_names(raw: dict[str, Any]) -> list[dict[str, Any]]:
                     "path": f"blueprint.defaults.hooks.{source}",
                     "message": f"Unknown hook name '{name}'",
                     "validator": "hook_name",
+                    "severity": "error",
                 }
             )
 
@@ -109,6 +120,7 @@ def _validate_hook_names(raw: dict[str, Any]) -> list[dict[str, Any]]:
                         "path": f"blueprint.phases[{idx}].hooks.{source}",
                         "message": f"Unknown hook name '{name}'",
                         "validator": "hook_name",
+                        "severity": "error",
                     }
                 )
         on_failure = phase.get("on_failure", {})
@@ -120,6 +132,7 @@ def _validate_hook_names(raw: dict[str, Any]) -> list[dict[str, Any]]:
                         "path": f"blueprint.phases[{idx}].on_failure.notify",
                         "message": f"Unknown hook name '{notify}'",
                         "validator": "hook_name",
+                        "severity": "error",
                     }
                 )
 
@@ -147,9 +160,163 @@ def _validate_output_model_refs(raw: dict[str, Any]) -> list[dict[str, Any]]:
                     "path": f"blueprint.phases[{idx}].output_model",
                     "message": f"output_model {output_model!r} cannot be resolved: {exc}",
                     "validator": "output_model_resolution",
+                    "severity": "error",
                 }
             )
     return errors
+
+
+def _validate_acp_semantics(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Check conditional ACP harness rules that JSON Schema cannot express."""
+    blueprint = raw.get("blueprint", raw)
+    if not isinstance(blueprint, dict):
+        return []
+
+    defaults = blueprint.get("defaults", {})
+    default_harness = defaults.get("harness") if isinstance(defaults, dict) else None
+    default_hooks = defaults.get("hooks") if isinstance(defaults, dict) else None
+    default_worktree = defaults.get("worktree") if isinstance(defaults, dict) else None
+    workspace = blueprint.get("workspace", {})
+    workspace_type = workspace.get("type") if isinstance(workspace, dict) else None
+
+    findings: list[dict[str, Any]] = []
+    acp_phase_indices: list[int] = []
+
+    for idx, phase in enumerate(blueprint.get("phases", [])):
+        if not isinstance(phase, dict):
+            continue
+
+        # Only prompt phases carry harness semantics; other phase kinds already
+        # reject harness at the schema level via additionalProperties.
+        if "prompt" not in phase:
+            continue
+
+        phase_harness = phase.get("harness")
+        merged_harness = {**(default_harness or {}), **(phase_harness or {})}
+        harness_type = merged_harness.get("type", "openhands")
+        if harness_type != "acp":
+            continue
+
+        acp_phase_indices.append(idx)
+        phase_id = phase.get("id", f"<{idx}>")
+
+        # Rule 1: ACP + phase allowed_tools.
+        allowed_tools = phase.get("allowed_tools")
+        if allowed_tools:
+            findings.append(
+                {
+                    "path": f"blueprint.phases[{idx}].allowed_tools",
+                    "message": (
+                        f"Phase '{phase_id}' uses harness.type: acp; allowed_tools is not "
+                        "supported because the ACP harness owns its own tools"
+                    ),
+                    "validator": "semantic",
+                    "severity": "error",
+                }
+            )
+
+        # Rule 2: ACP + phase-level hooks.
+        phase_hooks = phase.get("hooks")
+        if phase_hooks:
+            findings.append(
+                {
+                    "path": f"blueprint.phases[{idx}].hooks",
+                    "message": (
+                        f"Phase '{phase_id}' uses harness.type: acp; hooks are not "
+                        "supported because OpenHands tool hooks do not fire inside an ACP harness"
+                    ),
+                    "validator": "semantic",
+                    "severity": "error",
+                }
+            )
+
+        # Rule 3: ACP + worktree.
+        phase_worktree = phase.get("worktree")
+        merged_worktree = {**(default_worktree or {}), **(phase_worktree or {})}
+        if merged_worktree:
+            findings.append(
+                {
+                    "path": f"blueprint.phases[{idx}].worktree",
+                    "message": (
+                        f"Phase '{phase_id}' uses harness.type: acp; worktree is an "
+                        "OpenHands tool and is not supported by ACP harnesses"
+                    ),
+                    "validator": "semantic",
+                    "severity": "error",
+                }
+            )
+
+        # Rule 6: custom server requires command.
+        server = merged_harness.get("server", "claude-code")
+        command = merged_harness.get("command")
+        if server == "custom" and not command:
+            findings.append(
+                {
+                    "path": f"blueprint.phases[{idx}].harness.command",
+                    "message": (
+                        f"Phase '{phase_id}' uses harness.server: custom, which requires harness.command to be set"
+                    ),
+                    "validator": "semantic",
+                    "severity": "error",
+                }
+            )
+
+        # Rule 7: command with non-custom server is a warning.
+        if server != "custom" and command:
+            findings.append(
+                {
+                    "path": f"blueprint.phases[{idx}].harness.command",
+                    "message": (
+                        f"Phase '{phase_id}' overrides the pinned {server} command; ensure this is intentional"
+                    ),
+                    "validator": "semantic",
+                    "severity": "warning",
+                }
+            )
+
+        # Rule 8: ACP + max_iterations is a warning.
+        if phase.get("max_iterations") is not None:
+            findings.append(
+                {
+                    "path": f"blueprint.phases[{idx}].max_iterations",
+                    "message": (
+                        f"Phase '{phase_id}' uses harness.type: acp; max_iterations is "
+                        "ignored because an ACP phase is one prompt turn (use "
+                        "harness.prompt_timeout as the guard)"
+                    ),
+                    "validator": "semantic",
+                    "severity": "warning",
+                }
+            )
+
+    # Rule 2: defaults-level hooks + any ACP phase.
+    if default_hooks and acp_phase_indices:
+        findings.append(
+            {
+                "path": "blueprint.defaults.hooks",
+                "message": (
+                    "defaults.hooks is set and at least one phase uses harness.type: acp; "
+                    "OpenHooks tool hooks do not fire inside an ACP harness"
+                ),
+                "validator": "semantic",
+                "severity": "error",
+            }
+        )
+
+    # Rule 4: remote workspace + any ACP phase.
+    if workspace_type == "remote" and acp_phase_indices:
+        findings.append(
+            {
+                "path": "blueprint.workspace.type",
+                "message": (
+                    "workspace.type: remote cannot be combined with harness.type: acp; ACP requires a local subprocess"
+                ),
+                "validator": "semantic",
+                "severity": "error",
+            }
+        )
+
+    return findings
 
 
 def _error_path(error: ValidationError) -> str:
@@ -167,10 +334,17 @@ def _error_path(error: ValidationError) -> str:
 
 
 def format_errors(errors: list[dict[str, Any]]) -> str:
-    """Pretty-print validation errors for CLI output."""
+    """Pretty-print validation findings for CLI output.
+
+    Warnings are labelled but do not cause ``goblin validate`` to exit non-zero.
+    """
     lines: list[str] = []
     for err in errors:
         path = err.get("path") or "<root>"
         message = err.get("message", "Unknown error")
-        lines.append(f"  - {path}: {message}")
+        severity = err.get("severity", "error")
+        prefix = f"  - {path}:"
+        if severity == "warning":
+            prefix = f"  - {path} (warning):"
+        lines.append(f"{prefix} {message}")
     return "\n".join(lines) if lines else ""
