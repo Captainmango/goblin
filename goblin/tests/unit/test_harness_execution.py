@@ -365,6 +365,58 @@ class TestACPSecretsAndGuards:
 
 
 # ---------------------------------------------------------------------------
+# MCP forwarding
+# ---------------------------------------------------------------------------
+
+
+class TestACPMcpForwarding:
+    @pytest.mark.asyncio
+    async def test_defaults_and_phase_mcp_servers_merged(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "defaults": {
+                    "mcp_servers": {
+                        "shared": {
+                            "command": "npx",
+                            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+                        }
+                    }
+                },
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "hi",
+                        "harness": {"type": "acp"},
+                        "mcp_servers": {
+                            "local": {
+                                "command": "uvx",
+                                "args": ["mcp-server-time"],
+                            }
+                        },
+                    }
+                ],
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings) as mock_settings_cls,
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            await phase.run({"task": "hi"})
+
+        kwargs = mock_settings_cls.call_args.kwargs
+        mcp_config = kwargs["mcp_config"]
+        assert "shared" in mcp_config["mcpServers"]
+        assert "local" in mcp_config["mcpServers"]
+        assert mcp_config["mcpServers"]["local"]["command"] == "uvx"
+
+
+# ---------------------------------------------------------------------------
 # Failure paths and cleanup
 # ---------------------------------------------------------------------------
 
@@ -722,6 +774,78 @@ class TestACPConcurrency:
         assert settings_call_count == 2
         assert result["p1"]["success"] is True
 
+    @pytest.mark.asyncio
+    async def test_concurrent_acp_phases_use_distinct_working_dirs(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "phases": [
+                    {
+                        "id": "api",
+                        "prompt": "work in {api_dir}",
+                        "harness": {"type": "acp", "working_dir": "{api_dir}"},
+                    },
+                    {
+                        "id": "ui",
+                        "prompt": "work in {ui_dir}",
+                        "harness": {"type": "acp", "working_dir": "{ui_dir}"},
+                    },
+                ],
+            }
+        )
+
+        seen_working_dirs: list[str] = []
+
+        def capture_conv(*args, **kwargs):
+            seen_working_dirs.append(args[1].working_dir)
+            return _fake_conversation()
+
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=_fake_settings()),
+            patch("goblin.conversation.run_conversation", side_effect=capture_conv),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            result = await bp.run({"api_dir": "/api", "ui_dir": "/ui"})
+
+        assert result["api"]["success"] is True
+        assert result["ui"]["success"] is True
+        assert set(seen_working_dirs) == {"/api", "/ui"}
+
+    @pytest.mark.asyncio
+    async def test_foreach_item_as_working_dir(self, tmp_path):
+        repos_file = tmp_path / "repos.txt"
+        repos_file.write_text("/repo-a\n/repo-b\n")
+
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "phases": [
+                    {
+                        "id": "rollout",
+                        "prompt": "update {item}",
+                        "harness": {"type": "acp", "working_dir": "{item}"},
+                        "foreach": str(repos_file),
+                    }
+                ],
+            }
+        )
+
+        seen_working_dirs: list[str] = []
+
+        def capture_conv(*args, **kwargs):
+            seen_working_dirs.append(args[1].working_dir)
+            return _fake_conversation()
+
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=_fake_settings()),
+            patch("goblin.conversation.run_conversation", side_effect=capture_conv),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            result = await bp.run({})
+
+        assert result["rollout"]["success"] is True
+        assert seen_working_dirs == ["/repo-a", "/repo-b"]
+
 
 # ---------------------------------------------------------------------------
 # Opt-in integration test
@@ -788,3 +912,45 @@ async def test_acp_phase_max_cost_breaker_trips(tmp_path):
 
     assert result["success"] is False
     assert "max_cost" in result["message"][0]
+
+
+@pytest.mark.skipif(
+    os.environ.get("GOBLIN_RUN_ACP_E2E") != "1" or not os.environ.get("ANTHROPIC_API_KEY"),
+    reason="Set GOBLIN_RUN_ACP_E2E=1 and ANTHROPIC_API_KEY to run live ACP tests",
+)
+@pytest.mark.asyncio
+async def test_acp_phase_uses_forwarded_mcp_server(tmp_path):
+
+    facts = tmp_path / "facts.txt"
+    facts.write_text("goblin colour: green")
+
+    bp = V1Blueprint(
+        {
+            "name": "test_bp",
+            "phases": [
+                {
+                    "id": "p1",
+                    "prompt": "Read facts.txt and report the goblin colour.",
+                    "harness": {
+                        "type": "acp",
+                        "server": "claude-code",
+                        "prompt_timeout": 300,
+                    },
+                    "mcp_servers": {
+                        "filesystem": {
+                            "command": "npx",
+                            "args": ["-y", "@modelcontextprotocol/server-filesystem", str(tmp_path)],
+                        }
+                    },
+                }
+            ],
+        }
+    )
+    phase = bp.phases[0]
+
+    bp._workspace_config = {"type": "local", "working_dir": str(tmp_path)}
+
+    result = await phase.run({})
+
+    assert result["success"] is True
+    assert "green" in result["output"].lower()

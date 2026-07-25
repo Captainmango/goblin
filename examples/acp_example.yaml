@@ -1,0 +1,23 @@
+version: v1
+blueprint:
+  name: acp_cross_repo
+  vars:
+    api_dir: "."
+    ui_dir: "."
+  defaults:
+    harness:
+      type: acp
+      server: claude-code
+      session_mode: bypassPermissions
+      prompt_timeout: 1800
+  phases:
+    - id: api_change
+      prompt: "Add a health endpoint returning the service version; cover it with a test."
+      harness:
+        working_dir: "{api_dir}"
+
+    - id: ui_change
+      prompt: "Show the API version on the status page, reading from the health endpoint."
+      depends_on: [api_change]
+      harness:
+        working_dir: "{ui_dir}"

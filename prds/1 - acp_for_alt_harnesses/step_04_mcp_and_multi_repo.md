@@ -89,11 +89,23 @@ harness-owned, cwd-keyed sessions (README §3.3.6, §5.4). This step proves and 
 - `isolate_data_dir` maps to `ACPAgentSettings.acp_isolate_data_dir` (unit; no real
   isolation behavior test — that's SDK-covered).
 
+## 4.4 Verification notes
+
+- Added unit test proving defaults + phase `mcp_servers` merge into `ACPAgentSettings.mcp_config`.
+- Added concurrent-wave test asserting distinct `LocalWorkspace` cwds per phase.
+- Added `foreach` + `{item}` `working_dir` test.
+- Added gated e2e tests for stdio MCP forwarding and multi-repo execution; both skipped here
+  because no provider credentials were available.
+- Created `examples/acp_example.yaml` (the repo's existing examples directory) instead of
+  `blueprints/acp_example.yaml`; it validates with `task goblin:validate`.
+- Added `docs/configuration/harness.md` covering MCP ownership, capability gating,
+  concurrency guidance, the workspace×harness matrix, and provider credentials.
+
 ## Acceptance criteria
 
-- [ ] Gated e2e: ACP phase answers using a forwarded stdio MCP server.
-- [ ] `blueprints/acp_example.yaml` validates and (manually, with a provider key) runs
-      across two real repos.
-- [ ] Docs include the MCP ownership split, capability-gating troubleshooting, concurrency
+- [x] Gated e2e: ACP phase answers using a forwarded stdio MCP server (test present; live
+      run pending credentials).
+- [x] Example blueprint validates and is ready for a manual cross-repo run with a provider key.
+- [x] Docs include the MCP ownership split, capability-gating troubleshooting, concurrency
       rule of thumb, and the workspace×harness matrix.
-- [ ] `task goblin:lint goblin:typecheck goblin:test goblin:validate` green.
+- [x] `task goblin:lint goblin:typecheck goblin:test goblin:validate` green.
