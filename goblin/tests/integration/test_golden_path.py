@@ -2,13 +2,11 @@
 
 These tests exercise the full :class:`BlueprintRunner` stack including blueprint
 loading, validation, orchestration, and phase execution.  LLM calls are recorded
-with :mod:`vcr` so the suite remains deterministic and does not require API keys,
-except for live ACP tests which are gated behind ``GOBLIN_RUN_ACP_E2E``.
+with :mod:`vcr` so the suite remains deterministic and does not require API keys.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -56,10 +54,6 @@ class TestBasicExamplesGoldenPath:
 
 
 class TestAcpExampleGoldenPath:
-    @pytest.mark.skipif(
-        os.environ.get("GOBLIN_RUN_ACP_E2E") != "1",
-        reason="Set GOBLIN_RUN_ACP_E2E=1 to run live ACP tests",
-    )
     @pytest.mark.asyncio
     async def test_runs_acp_example_end_to_end(self, tmp_path):
         """The ACP example blueprint loads and runs both phases against opencode."""

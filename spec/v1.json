@@ -129,7 +129,7 @@
         },
         "server": {
           "type": "string",
-          "enum": ["claude-code", "codex", "gemini-cli", "opencode", "custom"],
+          "enum": ["claude-code", "codex", "gemini-cli", "custom"],
           "default": "claude-code",
           "description": "ACP provider. Each maps to a pinned default command in the SDK's ACP_PROVIDERS registry; 'custom' requires 'command'."
         },
