@@ -36,6 +36,7 @@
             "hooks": { "$ref": "#/definitions/hooks" },
             "mcp_servers": { "$ref": "#/definitions/mcpServers" },
             "worktree": { "$ref": "#/definitions/worktree" },
+            "harness": { "$ref": "#/definitions/harness" },
             "model": {
               "type": "string",
               "description": "Default LLM model identifier for all phases in this blueprint. Phase-level model overrides this. Use 'llm' for full OpenHands LLM configuration including auth.",
@@ -112,6 +113,63 @@
           "type": "integer",
           "description": "Maximum HTTP connections for remote workspace client. Null means unlimited.",
           "examples": [10, 100]
+        }
+      }
+    },
+    "harness": {
+      "type": "object",
+      "description": "Execution backend for prompt phases. 'openhands' (default) runs goblin's OpenHands agent loop; 'acp' delegates the phase to a local ACP-compatible coding harness (claude-code, codex, gemini-cli) which owns its own tools, config, and session state.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["openhands", "acp"],
+          "default": "openhands",
+          "description": "Execution backend. 'openhands' is today's OpenHands agent loop; 'acp' spawns a local ACP harness subprocess."
+        },
+        "server": {
+          "type": "string",
+          "enum": ["claude-code", "codex", "gemini-cli", "custom"],
+          "default": "claude-code",
+          "description": "ACP provider. Each maps to a pinned default command in the SDK's ACP_PROVIDERS registry; 'custom' requires 'command'."
+        },
+        "command": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Explicit ACP server launch command. Required when server is 'custom'. Overrides the provider's pinned npx default."
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Extra args appended to the command. Supports {variable} interpolation."
+        },
+        "model": {
+          "type": "string",
+          "description": "Model identity inside the harness (e.g. 'sonnet', 'gpt-5.5'). Applied via the ACP protocol; omit to use the server's default."
+        },
+        "session_mode": {
+          "type": "string",
+          "description": "ACP session mode ID (e.g. 'bypassPermissions'). Defaults to the provider's unattended default."
+        },
+        "prompt_timeout": {
+          "type": "number",
+          "minimum": 1,
+          "default": 1800,
+          "description": "Seconds of turn inactivity before the prompt is aborted. Resets on every session update."
+        },
+        "working_dir": {
+          "type": "string",
+          "description": "Working directory that becomes the ACP session cwd. Falls back to the blueprint workspace working_dir, then load_project's path, then cwd. Supports {variable} interpolation."
+        },
+        "isolate_data_dir": {
+          "type": "boolean",
+          "default": false,
+          "description": "Give the harness a per-conversation config/data root (CLAUDE_CONFIG_DIR / CODEX_HOME) so concurrent phases don't race on shared CLI state."
+        },
+        "secrets": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Env vars delivered to the harness subprocess via the conversation secrets channel (masked in events/logs; overrides ambient env). Values support $VAR references."
         }
       }
     },
@@ -493,6 +551,7 @@
         "hooks": { "$ref": "#/definitions/hooks" },
         "mcp_servers": { "$ref": "#/definitions/mcpServers" },
             "worktree": { "$ref": "#/definitions/worktree" },
+            "harness": { "$ref": "#/definitions/harness" },
             "model": {
               "type": "string",
           "description": "LLM model identifier for this phase. Overrides blueprint defaults. Use 'llm' for full OpenHands LLM configuration including auth.",
