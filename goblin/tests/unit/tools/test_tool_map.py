@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from openhands.sdk import Tool
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.glob import GlobTool
@@ -12,7 +13,6 @@ from goblin.tools.ask_user_tool import AskUserTool
 from goblin.tools.swarm_agent_tool import SwarmAgentTool
 from goblin.tools.swarmdb_tool import SwarmTasksTool
 from goblin.tools.tool_map import _get_tool_name_map, build_tool_filter_regex, resolve_tools
-import pytest
 
 
 class TestToolNameMap:

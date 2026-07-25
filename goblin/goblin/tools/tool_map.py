@@ -20,7 +20,6 @@ def _get_tool_name_map() -> dict[str, Tool]:
     from openhands.tools.grep import GrepTool
     from openhands.tools.terminal import TerminalTool
 
-    from goblin.tools.ask_user_tool import AskUserTool
     from goblin.tools.swarm_agent_tool import SwarmAgentTool
     from goblin.tools.swarmdb_tool import SwarmTasksTool
     from goblin.tools.worktree_tool import WorktreeTool
