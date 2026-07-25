@@ -85,6 +85,7 @@ tasks:
           --flags-file "$LITELLM_FLAGS_FILE"
         NUITKA_JOBS="${NUITKA_JOBS:-$(nproc)}"
         NUITKA_FLAGS=(
+          --debug
           --mode=standalone
           --main=goblin/__main__.py
           --output-dir=../dist/nuitka
@@ -104,10 +105,6 @@ tasks:
         )
         if [ "${NUITKA_VERBOSE:-0}" = "1" ]; then
           NUITKA_FLAGS+=(--show-scons)
-        fi
-        if [ "${NUITKA_DEBUG_BUILD:-0}" = "1" ]; then
-          echo "Debug build requested: using -Og instead of -O3/-O2"
-          NUITKA_FLAGS+=(--debug)
         fi
         if [ -s "$LITELLM_FLAGS_FILE" ]; then
           while IFS= read -r flag; do
