@@ -933,7 +933,7 @@ async def test_acp_phase_uses_forwarded_mcp_server(tmp_path):
                     "prompt": "Read facts.txt and report the goblin colour.",
                     "harness": {
                         "type": "acp",
-                        "server": "claude-code",
+                        "server": "opencode",
                         "prompt_timeout": 300,
                     },
                     "mcp_servers": {
