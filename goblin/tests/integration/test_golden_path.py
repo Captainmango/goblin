@@ -73,3 +73,8 @@ class TestAcpExampleGoldenPath:
         assert result["api_change"]["success"] is True
         assert result["ui_change"]["success"] is True
         assert len(result) == 2
+
+        version_file = api_dir / "version.txt"
+        status_file = ui_dir / "status.txt"
+        assert version_file.read_text().strip() == "1.0.0"
+        assert "1.0.0" in status_file.read_text()

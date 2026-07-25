@@ -11,16 +11,15 @@ blueprint:
       command:
         - opencode
         - acp
-      session_mode: bypassPermissions
       prompt_timeout: 1800
   phases:
     - id: api_change
-      prompt: "Add a health endpoint returning the service version; cover it with a test."
+      prompt: "Create a file called version.txt containing the version number 1.0.0."
       harness:
         working_dir: "{api_dir}"
 
     - id: ui_change
-      prompt: "Show the API version on the status page, reading from the health endpoint."
+      prompt: "Read {api_dir}/version.txt and create status.txt containing the text 'Status: version <version>'."
       depends_on: [api_change]
       harness:
         working_dir: "{ui_dir}"

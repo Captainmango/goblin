@@ -44,7 +44,7 @@ async def test_acp_phase_runs_real_opencode(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_acp_phase_max_cost_breaker_trips(tmp_path):
+async def test_acp_phase_max_iterations_breaker_trips(tmp_path):
     bp = V1Blueprint(
         {
             "name": "test_bp",
@@ -53,7 +53,7 @@ async def test_acp_phase_max_cost_breaker_trips(tmp_path):
                     "id": "p1",
                     "prompt": "Write a short greeting in README.md.",
                     "harness": OPENCODE_ACP_HARNESS,
-                    "max_cost": 0.0001,
+                    "max_iterations": 1,
                 }
             ],
         }
@@ -65,7 +65,7 @@ async def test_acp_phase_max_cost_breaker_trips(tmp_path):
     result = await phase.run({})
 
     assert result["success"] is False
-    assert "max_cost" in result["message"][0]
+    assert "max_iterations" in result["message"][0]
 
 
 @pytest.mark.asyncio
