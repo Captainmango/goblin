@@ -308,6 +308,66 @@ class TestACPWorkingDirFallback:
 
 class TestACPSecretsAndGuards:
     @pytest.mark.asyncio
+    async def test_provider_key_forwarded_to_run_conversation(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-secret")
+        bp = _make_acp_blueprint(phase_harness={"type": "acp", "server": "claude-code"})
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation) as mock_run,
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            await phase.run({"task": "hi"})
+
+        kwargs = mock_run.call_args.kwargs
+        assert kwargs["secrets"] == {"ANTHROPIC_API_KEY": "anthropic-secret"}
+
+    @pytest.mark.asyncio
+    async def test_user_secrets_override_provider_key(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-secret")
+        bp = _make_acp_blueprint(
+            phase_harness={
+                "type": "acp",
+                "server": "claude-code",
+                "secrets": {"ANTHROPIC_API_KEY": "user-secret"},
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation) as mock_run,
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            await phase.run({"task": "hi"})
+
+        kwargs = mock_run.call_args.kwargs
+        assert kwargs["secrets"] == {"ANTHROPIC_API_KEY": "user-secret"}
+
+    @pytest.mark.asyncio
+    async def test_provider_key_not_forwarded_for_unset_provider(self, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        bp = _make_acp_blueprint(phase_harness={"type": "acp", "server": "claude-code"})
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation) as mock_run,
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            await phase.run({"task": "hi"})
+
+        kwargs = mock_run.call_args.kwargs
+        assert kwargs["secrets"] is None
+
+    @pytest.mark.asyncio
     async def test_secrets_passed_to_run_conversation(self):
         bp = _make_acp_blueprint(
             phase_harness={
@@ -633,6 +693,78 @@ class TestACPStructuredOutput:
 
         assert result["success"] is False
         assert any("Output schema validation failed" in m for m in result["message"])
+
+    @pytest.mark.asyncio
+    async def test_structured_repair_uses_provider_api_key(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-secret")
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "defaults": {"model": "anthropic/claude-sonnet-4-6"},
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "hi",
+                        "harness": {"type": "acp", "server": "claude-code"},
+                        "output_model": "goblin.output_schema.PhaseResult",
+                    }
+                ],
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        repaired = PhaseResult(success=True, message=["repaired"])
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="plain prose"),
+            patch(
+                "goblin.phase.PromptPhase._request_structured_output",
+                return_value=repaired,
+            ) as mock_repair,
+        ):
+            await phase.run({})
+
+        repaired_llm_config = mock_repair.call_args.kwargs["llm_config"]
+        assert repaired_llm_config["api_key"] == "anthropic-secret"
+
+    @pytest.mark.asyncio
+    async def test_structured_repair_preserves_existing_api_key(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-secret")
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "hi",
+                        "harness": {"type": "acp", "server": "claude-code"},
+                        "output_model": "goblin.output_schema.PhaseResult",
+                        "llm": {"model": "anthropic/claude-sonnet-4-6", "api_key": "existing-secret"},
+                    }
+                ],
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        repaired = PhaseResult(success=True, message=["repaired"])
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="plain prose"),
+            patch(
+                "goblin.phase.PromptPhase._request_structured_output",
+                return_value=repaired,
+            ) as mock_repair,
+        ):
+            await phase.run({})
+
+        repaired_llm_config = mock_repair.call_args.kwargs["llm_config"]
+        assert repaired_llm_config["api_key"] == "existing-secret"
 
     @pytest.mark.asyncio
     async def test_extra_model_fields_surface_in_result(self):

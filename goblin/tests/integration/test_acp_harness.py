@@ -6,12 +6,13 @@ require external tooling.
 """
 
 from __future__ import annotations
+
 from pathlib import Path
 
-from goblin_common.testing.vcr import use_cassette
 import pytest
 
 from goblin.blueprint import V1Blueprint
+from goblin_common.testing.vcr import use_cassette
 
 OPENCODE_ACP_HARNESS = {"type": "acp", "server": "custom", "command": ["opencode", "acp"], "prompt_timeout": 300}
 

@@ -193,6 +193,31 @@ class TestACPCommandOverride:
 
 
 # ---------------------------------------------------------------------------
+# Step 4 compatibility: ACP + MCP servers
+# ---------------------------------------------------------------------------
+
+
+class TestACPMcpServers:
+    def test_acp_plus_mcp_servers_passes_validation(self, tmp_path):
+        bp = _make_bp(
+            {
+                "id": "p1",
+                "prompt": "hi",
+                "harness": {"type": "acp"},
+                "mcp_servers": {
+                    "filesystem": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+                    }
+                },
+            }
+        )
+        path = _write_blueprint(tmp_path, bp)
+        errors = validate_blueprint(path)
+        assert not any("mcp" in e.get("message", "").lower() for e in errors)
+
+
+# ---------------------------------------------------------------------------
 # Rule 8: ACP + max_iterations is a warning
 # ---------------------------------------------------------------------------
 
