@@ -61,6 +61,7 @@ class PromptPhase(PhaseProtocol):
         self.output_model: str | None = raw.get("output_model")
         self.output_schema_format: str | None = raw.get("output_schema_format")
         self.worktree_config: dict | None = raw.get("worktree")
+        self.harness_config: dict | None = raw.get("harness")
         self._blueprint = blueprint
 
     def _resolve_output_model(self) -> type[BaseModel]:

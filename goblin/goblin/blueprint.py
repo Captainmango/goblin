@@ -141,6 +141,26 @@ class V1Blueprint(Blueprint):
         merged = {**(defaults or {}), **(phase_config or {})}
         return merged
 
+    def resolve_harness_config(self, phase: PhaseProtocol, context: dict) -> dict | None:
+        """Return the effective harness config for a phase.
+
+        Precedence: phase.harness > blueprint.defaults.harness > None.
+        Returns None when no harness configuration is declared anywhere.
+        Resolves environment variables and applies {variable} interpolation
+        using the run context.
+        """
+        from goblin.utils.env import resolve_env_vars, validate_env_var_syntax
+
+        defaults = self.spec.get("defaults", {}).get("harness")
+        phase_config = getattr(phase, "harness_config", None)
+        if defaults is None and phase_config is None:
+            return None
+
+        merged = {**(defaults or {}), **(phase_config or {})}
+        validate_env_var_syntax(merged)
+        resolved = resolve_env_vars(merged)
+        return cast(dict, self.interpolate_strings(resolved, context))
+
     def build_hooks(self, phase: HookablePhase) -> HookConfig | None:
         from openhands.sdk.hooks import HookConfig, HookDefinition, HookMatcher
 
@@ -400,6 +420,7 @@ class V1Blueprint(Blueprint):
     _resolve_llm_config = resolve_llm_config
     _resolve_model = resolve_model
     _resolve_worktree_config = resolve_worktree_config
+    _resolve_harness_config = resolve_harness_config
     _build_hooks = build_hooks
     _build_mcp_servers = build_mcp_servers
     _interpolate_strings = interpolate_strings

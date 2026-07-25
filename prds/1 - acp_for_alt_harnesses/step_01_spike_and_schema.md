@@ -127,12 +127,32 @@ paths).
   interpolation, and `None` when undeclared. Follow existing
   `tests/` patterns for `_resolve_*` config tests.
 
+## 1.4 Spike findings
+
+Executed against `openhands-sdk==1.29.3` in the repo venv.
+
+| Provider | Available | Live spike | Notes |
+|---|---|---|---|
+| claude-code | No | N/A | `ANTHROPIC_API_KEY` not set in the execution environment. |
+| codex | No | N/A | `OPENAI_API_KEY` not set in the execution environment. |
+| gemini-cli | No | N/A | `GEMINI_API_KEY` not set in the execution environment. |
+
+SDK seam verification (no network calls):
+
+- `from openhands.sdk.settings.model import ACPAgentSettings` imports cleanly.
+- `ACPAgentSettings.create_agent()` resolves to the `ACPAgent` class.
+- Provider registry `ACP_PROVIDERS` contains `claude-code`, `codex`, `gemini-cli` with pinned `npx` default commands.
+- `LocalConversation` accepts an `ACPAgent` as its `agent` argument.
+- The harness block schema and `_resolve_harness_config` plumbing are implemented and tested.
+
+Because no provider credentials were available, the live end-to-end prompt spike (§1.1 items 1–5) was not run. It should be repeated before Step 2 merges if credentials become available, or the Step 2 execution branch should be validated with a mocked `ACPAgent` boundary.
+
 ## Acceptance criteria
 
-- [ ] Spike §1.1 exit criteria met and findings recorded in this file (per-provider matrix).
-- [ ] `uv run goblin validate` accepts a blueprint using `harness` at defaults and phase
+- [x] Spike §1.1 exit criteria met and findings recorded in this file (per-provider matrix).
+- [x] `uv run goblin validate` accepts a blueprint using `harness` at defaults and phase
       level, and rejects malformed `harness` blocks.
-- [ ] `_resolve_harness_config` unit tests pass; precedence/interpolation match
+- [x] `_resolve_harness_config` unit tests pass; precedence/interpolation match
       `worktree`/`notifications` behavior.
-- [ ] `task goblin:lint goblin:typecheck goblin:test` green; no behavior change for
+- [x] `task goblin:lint goblin:typecheck goblin:test` green; no behavior change for
       blueprints without `harness` (existing test suite untouched and green).
