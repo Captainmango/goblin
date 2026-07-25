@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from goblin.blueprint import V1Blueprint
+from goblin.output_schema import PhaseResult
 from goblin.phase import PromptPhase
 
 # ---------------------------------------------------------------------------
@@ -437,16 +438,17 @@ class TestACPFailurePaths:
 
 
 # ---------------------------------------------------------------------------
-# Structured output deferral
+# Structured output
 # ---------------------------------------------------------------------------
 
 
 class TestACPStructuredOutput:
     @pytest.mark.asyncio
-    async def test_structured_output_declared_logs_deferral_and_returns_chat(self):
+    async def test_valid_json_coerced_without_llm_repair(self):
         bp = V1Blueprint(
             {
                 "name": "test_bp",
+                "defaults": {"model": "openai/gpt-4o"},
                 "phases": [
                     {
                         "id": "p1",
@@ -464,13 +466,217 @@ class TestACPStructuredOutput:
         with (
             patch("openhands.sdk.ACPAgentSettings", return_value=settings),
             patch("goblin.conversation.run_conversation", return_value=conversation),
-            patch("openhands.sdk.conversation.get_agent_final_response", return_value="plain text"),
+            patch(
+                "openhands.sdk.conversation.get_agent_final_response",
+                return_value='{"success": true, "message": ["from acp"]}',
+            ),
+            patch("goblin.phase.PromptPhase._request_structured_output") as mock_repair,
         ):
             result = await phase.run({})
 
         assert result["success"] is True
-        assert result["output"] == "plain text"
-        assert "plain text" in result["message"]
+        assert result["message"] == ["from acp"]
+        mock_repair.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_prose_repaired_by_llm_follow_up(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "defaults": {"model": "openai/gpt-4o"},
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "hi",
+                        "harness": {"type": "acp"},
+                        "output_model": "goblin.output_schema.PhaseResult",
+                    }
+                ],
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        repaired = PhaseResult(success=True, message=["repaired"])
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="plain prose"),
+            patch(
+                "goblin.phase.PromptPhase._request_structured_output",
+                return_value=repaired,
+            ) as mock_repair,
+        ):
+            result = await phase.run({})
+
+        assert result["success"] is True
+        assert result["message"] == ["repaired"]
+        mock_repair.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_total_failure_returns_synthetic_failure(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "defaults": {"model": "openai/gpt-4o"},
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "hi",
+                        "harness": {"type": "acp"},
+                        "output_model": "goblin.output_schema.PhaseResult",
+                    }
+                ],
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="garbage"),
+            patch("goblin.phase.PromptPhase._request_structured_output", return_value=None),
+        ):
+            result = await phase.run({})
+
+        assert result["success"] is False
+        assert any("Agent produced no structured output" in m for m in result["message"])
+
+    @pytest.mark.asyncio
+    async def test_output_schema_validation_failure(self):
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "defaults": {"model": "openai/gpt-4o"},
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "hi",
+                        "harness": {"type": "acp"},
+                        "output_model": "goblin.output_schema.PhaseResult",
+                        "output_schema": {
+                            "type": "object",
+                            "properties": {"status": {"type": "string"}},
+                            "required": ["status"],
+                        },
+                    }
+                ],
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch(
+                "openhands.sdk.conversation.get_agent_final_response",
+                return_value='{"success": true, "message": ["ok"]}',
+            ),
+        ):
+            result = await phase.run({})
+
+        assert result["success"] is False
+        assert any("Output schema validation failed" in m for m in result["message"])
+
+    @pytest.mark.asyncio
+    async def test_extra_model_fields_surface_in_result(self):
+        from pydantic import BaseModel
+
+        class SummaryResult(BaseModel):
+            success: bool
+            message: list[str]
+            summary: str
+
+        from goblin.output_schema import register_output_model
+
+        register_output_model("tests.unit.test_harness_execution.SummaryResult", SummaryResult)
+
+        bp = V1Blueprint(
+            {
+                "name": "test_bp",
+                "defaults": {"model": "openai/gpt-4o"},
+                "phases": [
+                    {
+                        "id": "p1",
+                        "prompt": "hi",
+                        "harness": {"type": "acp"},
+                        "output_model": "tests.unit.test_harness_execution.SummaryResult",
+                    }
+                ],
+            }
+        )
+        phase = bp.phases[0]
+
+        conversation = _fake_conversation()
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch(
+                "openhands.sdk.conversation.get_agent_final_response",
+                return_value='{"success": true, "message": ["ok"], "summary": "short"}',
+            ),
+        ):
+            result = await phase.run({})
+
+        assert result["success"] is True
+        assert result["summary"] == "short"
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker against ACP usage
+# ---------------------------------------------------------------------------
+
+
+class TestACPCircuitBreaker:
+    @pytest.mark.asyncio
+    async def test_breaker_trips_on_max_cost(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "acp"})
+        phase = bp.phases[0]
+        phase.max_cost = 0.01
+
+        conversation = _conversation_with_cost(0.02)
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+        ):
+            result = await phase.run({"task": "hi"})
+
+        assert result["success"] is False
+        assert "max_cost" in result["message"][0]
+
+    @pytest.mark.asyncio
+    async def test_breaker_trips_on_max_tokens(self):
+        bp = _make_acp_blueprint(phase_harness={"type": "acp"})
+        phase = bp.phases[0]
+        phase.max_tokens = 10
+
+        conversation = _fake_conversation()
+        metrics = MagicMock()
+        metrics.accumulated_cost = 0.0
+        token_usage = MagicMock()
+        token_usage.prompt_tokens = 7
+        token_usage.completion_tokens = 4
+        metrics.accumulated_token_usage = token_usage
+        conversation.conversation_stats = MagicMock()
+        conversation.conversation_stats.get_combined_metrics.return_value = metrics
+
+        settings = _fake_settings()
+        with (
+            patch("openhands.sdk.ACPAgentSettings", return_value=settings),
+            patch("goblin.conversation.run_conversation", return_value=conversation),
+            patch("openhands.sdk.conversation.get_agent_final_response", return_value="done"),
+        ):
+            result = await phase.run({"task": "hi"})
+
+        assert result["success"] is False
+        assert "max_tokens" in result["message"][0]
 
 
 # ---------------------------------------------------------------------------
@@ -553,3 +759,32 @@ async def test_acp_phase_runs_real_claude_code(tmp_path):
     assert result["success"] is True
     assert result["output"]
     assert result["message"]
+
+
+@pytest.mark.skipif(
+    os.environ.get("GOBLIN_RUN_ACP_E2E") != "1" or not os.environ.get("ANTHROPIC_API_KEY"),
+    reason="Set GOBLIN_RUN_ACP_E2E=1 and ANTHROPIC_API_KEY to run live ACP tests",
+)
+@pytest.mark.asyncio
+async def test_acp_phase_max_cost_breaker_trips(tmp_path):
+    bp = V1Blueprint(
+        {
+            "name": "test_bp",
+            "phases": [
+                {
+                    "id": "p1",
+                    "prompt": "Write a short greeting in README.md.",
+                    "harness": {"type": "acp", "server": "claude-code", "prompt_timeout": 300},
+                    "max_cost": 0.0001,
+                }
+            ],
+        }
+    )
+    phase = bp.phases[0]
+
+    bp._workspace_config = {"type": "local", "working_dir": str(tmp_path)}
+
+    result = await phase.run({})
+
+    assert result["success"] is False
+    assert "max_cost" in result["message"][0]

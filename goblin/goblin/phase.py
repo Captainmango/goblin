@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol
 
 from pydantic import BaseModel
 
@@ -246,7 +246,7 @@ class PromptPhase(PhaseProtocol):
             structured: BaseModel | None = extract_structured_result(conversation.state.events, output_model)
             if structured is None:
                 try:
-                    structured = await self._request_structured_output(
+                    structured = await self._coerce_structured_output(
                         prompt, text_output, output_model, llm_config=llm_config, breaker=breaker
                     )
                 except LimitExceeded as exc:
@@ -257,56 +257,16 @@ class PromptPhase(PhaseProtocol):
                         "output": text_output,
                         "spend": exc.tracker,
                     }
-            if structured is None:
-                structured = self._fallback_result(text_output, output_model)
         else:
             structured = self._wrap_chat_text(text_output)
 
-        # At this point structured is guaranteed to be an instance of
-        # output_model (every code path that creates it does so via that
-        # class), but pyrefly doesn't track the runtime invariant. Cast
-        # to the concrete type so the field accesses below type-check.
         assert structured is not None
-        typed_result = cast(output_model, structured)  # type: ignore[valid-type]
 
-        # Optional defence-in-depth: when a blueprint still declares an inline
-        # JSON Schema alongside the Pydantic model, validate against it.
-        if self.output_schema is not None:
-            schema_errors = validate_against_schema(typed_result.model_dump(), self.output_schema)
-            if schema_errors:
-                logger.warning(
-                    "Output schema validation failed",
-                    extra={
-                        "event": "phase.output_schema_failed",
-                        "phase_id": self.id,
-                        "errors": schema_errors,
-                    },
-                )
-                return {
-                    "success": False,
-                    "message": [f"Output schema validation failed: {e}" for e in schema_errors],
-                    "prompt": prompt,
-                    "output": text_output,
-                    "spend": breaker.tracker,
-                }
+        schema_failure = self._validate_output_schema(structured, text_output, prompt, breaker)
+        if schema_failure is not None:
+            return schema_failure
 
-        # Dump to a dict so we don't need to know the model's concrete field
-        # names at this call site — downstream phases consume whatever the
-        # output_model declared, not just ``success``/``message``.
-        dumped = typed_result.model_dump()
-        result: dict[str, Any] = {
-            "success": dumped.get("success", False),
-            "message": list(dumped.get("message", []) or []),
-            "prompt": prompt,
-            "output": text_output,
-            "spend": breaker.tracker,
-        }
-        # Surface any extra fields the output model carries so downstream
-        # phases can reference them via Jinja (`steps.<id>.extra_field`).
-        for key, value in dumped.items():
-            if key not in result:
-                result[key] = value
-        return result
+        return self._assemble_result(structured, prompt, text_output, breaker)
 
     async def _request_structured_output(
         self,
@@ -413,6 +373,74 @@ class PromptPhase(PhaseProtocol):
             return output_model(success=False, message=["Agent produced no structured output"])
         except Exception:
             return output_model.model_construct()
+
+    def _assemble_result(self, structured: BaseModel, prompt: str, text_output: str, breaker: CircuitBreaker) -> dict:
+        """Build the canonical phase result dict from a structured model instance.
+
+        Shared by the OpenHands and ACP execution paths so extra-field surfacing
+        for downstream Jinja (``steps.<id>.<field>``) behaves identically.
+        """
+        dumped = structured.model_dump()
+        result: dict[str, Any] = {
+            "success": dumped.get("success", False),
+            "message": list(dumped.get("message", []) or []),
+            "prompt": prompt,
+            "output": text_output,
+            "spend": breaker.tracker,
+        }
+        for key, value in dumped.items():
+            if key not in result:
+                result[key] = value
+        return result
+
+    def _validate_output_schema(
+        self, structured: BaseModel, text_output: str, prompt: str, breaker: CircuitBreaker
+    ) -> dict | None:
+        """Defence-in-depth JSON Schema check for blueprints that declare one."""
+        if self.output_schema is None:
+            return None
+        schema_errors = validate_against_schema(structured.model_dump(), self.output_schema)
+        if schema_errors:
+            logger.warning(
+                "Output schema validation failed",
+                extra={
+                    "event": "phase.output_schema_failed",
+                    "phase_id": self.id,
+                    "errors": schema_errors,
+                },
+            )
+            return {
+                "success": False,
+                "message": [f"Output schema validation failed: {e}" for e in schema_errors],
+                "prompt": prompt,
+                "output": text_output,
+                "spend": breaker.tracker,
+            }
+        return None
+
+    async def _coerce_structured_output(
+        self,
+        original_prompt: str,
+        text_output: str,
+        output_model: type[BaseModel],
+        *,
+        llm_config,
+        breaker: CircuitBreaker,
+    ) -> BaseModel:
+        """Text-based structured-output coercion chain.
+
+        1. Try a cheap JSON parse of the harness/agent text.
+        2. Fall back to a tool-less LLM repair call.
+        3. Fall back to a synthetic failure instance.
+        """
+        structured = coerce_to_model(text_output, output_model)
+        if structured is None:
+            structured = await self._request_structured_output(
+                original_prompt, text_output, output_model, llm_config=llm_config, breaker=breaker
+            )
+        if structured is None:
+            structured = self._fallback_result(text_output, output_model)
+        return structured
 
     async def _run_acp(self, context: dict, harness: dict, prompt: str) -> dict:
         """Execute this prompt phase against a local ACP harness subprocess."""
@@ -549,24 +577,28 @@ class PromptPhase(PhaseProtocol):
         text_output = get_agent_final_response(conversation.state.events) or ""
 
         if self._structured_output_configured():
-            logger.warning(
-                "ACP structured output deferred",
-                extra={
-                    "event": "phase.acp_structured_deferred",
-                    "phase_id": self.id,
-                },
-            )
+            output_model = self._resolve_output_model()
+            llm_config = self._blueprint.resolve_llm_config(self, context)
+            try:
+                structured = await self._coerce_structured_output(
+                    prompt, text_output, output_model, llm_config=llm_config, breaker=breaker
+                )
+            except LimitExceeded as exc:
+                return {
+                    "success": False,
+                    "message": [f"Circuit breaker: {exc.reason} limit exceeded"],
+                    "prompt": prompt,
+                    "output": text_output,
+                    "spend": exc.tracker,
+                }
+        else:
+            structured = self._wrap_chat_text(text_output)
 
-        structured = self._wrap_chat_text(text_output)
-        dumped = structured.model_dump()
-        result: dict[str, Any] = {
-            "success": dumped.get("success", False),
-            "message": list(dumped.get("message", []) or []),
-            "prompt": prompt,
-            "output": text_output,
-            "spend": breaker.tracker,
-        }
-        return result
+        schema_failure = self._validate_output_schema(structured, text_output, prompt, breaker)
+        if schema_failure is not None:
+            return schema_failure
+
+        return self._assemble_result(structured, prompt, text_output, breaker)
 
 
 class LoadProjectPhase(PhaseProtocol):

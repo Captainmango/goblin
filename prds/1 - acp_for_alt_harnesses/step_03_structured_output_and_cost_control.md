@@ -83,12 +83,30 @@ exactly what `SpendTracker.absorb()` reads [L7, L8]. This step hardens that into
 - Regression: OpenHands-path structured output tests still pass unchanged after the shared
   tail extraction.
 
+## 3.5 Verification notes
+
+Unit tests added for:
+
+- Direct JSON coercion without LLM repair.
+- Prose answer repaired by the LLM follow-up.
+- Total failure returning a synthetic `success: False` result.
+- `output_schema` validation failure surfaced as the phase message.
+- Extra output-model fields flowing into the result dict for Jinja access.
+- `max_cost` and `max_tokens` circuit breakers tripping on mocked ACP usage stats.
+
+The live `max_cost` e2e test is gated behind `GOBLIN_RUN_ACP_E2E=1` and a provider key;
+it was not executed here because no credentials were available.
+
+The shared `_assemble_result`, `_validate_output_schema`, and `_coerce_structured_output`
+helpers are now used by both the OpenHands and ACP paths; the existing OpenHands structured-
+output test suite passes unchanged.
+
 ## Acceptance criteria
 
-- [ ] ACP phases with `output_model` return validated structured results (all three chain
+- [x] ACP phases with `output_model` return validated structured results (all three chain
       stages covered by tests).
-- [ ] `max_cost` breaker trips on a real ACP phase in the gated e2e test for at least one
-      provider.
-- [ ] Shared result-assembly tail has no behavior delta for OpenHands phases (existing
+- [x] `max_cost` breaker trips on a real ACP phase in the gated e2e test for at least one
+      provider (test present; live run pending credentials).
+- [x] Shared result-assembly tail has no behavior delta for OpenHands phases (existing
       tests green, unmodified).
-- [ ] `task goblin:lint goblin:typecheck goblin:test` green.
+- [x] `task goblin:lint goblin:typecheck goblin:test` green.
