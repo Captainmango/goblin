@@ -85,7 +85,6 @@ tasks:
           --flags-file "$LITELLM_FLAGS_FILE"
         NUITKA_JOBS="${NUITKA_JOBS:-$(nproc)}"
         NUITKA_FLAGS=(
-          --debug
           --mode=standalone
           --main=goblin/__main__.py
           --output-dir=../dist/nuitka
@@ -110,6 +109,10 @@ tasks:
           while IFS= read -r flag; do
             NUITKA_FLAGS+=("$flag")
           done < "$LITELLM_FLAGS_FILE"
+        fi
+        if [ "${NUITKA_DEBUG_BUILD:-0}" = "1" ]; then
+          echo "Debug build requested: using -Og instead of -O3/-O2"
+          NUITKA_FLAGS+=(--debug)
         fi
         if [ -f "nuitka-follow.txt" ]; then
           while IFS= read -r flag; do
