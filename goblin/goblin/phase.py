@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from typing import TYPE_CHECKING, Any, Protocol
@@ -26,40 +25,6 @@ __all__ = [
     "LoadProjectPhase",
     "PhaseResult",
 ]
-
-
-# openhands-sdk 1.29.3 calls ``_conn.prompt(prompt_blocks, session_id)`` but the
-# ``acp`` package expects ``_conn.prompt(session_id, prompt_blocks)``.  Patch the
-# agent to pass keyword arguments so the call works regardless of positional order.
-_ACP_PROMPT_PATCHED = False
-
-
-def _patch_acp_prompt_call() -> None:
-    global _ACP_PROMPT_PATCHED
-    if _ACP_PROMPT_PATCHED:
-        return
-
-    try:
-        from openhands.sdk.agent.acp_agent import _USAGE_UPDATE_TIMEOUT, ACPAgent
-    except Exception:
-        return
-
-    async def _do_acp_prompt_fixed(self, prompt_blocks: list[Any]) -> Any:
-        usage_sync = self._client.prepare_usage_sync(self._session_id or "")
-        response = await self._conn.prompt(session_id=self._session_id, prompt=prompt_blocks)
-        if self._client.get_turn_usage_update(self._session_id or "") is None:
-            try:
-                await asyncio.wait_for(usage_sync.wait(), timeout=_USAGE_UPDATE_TIMEOUT)
-            except TimeoutError:
-                logger.warning(
-                    "UsageUpdate not received within %.1fs for session %s",
-                    _USAGE_UPDATE_TIMEOUT,
-                    self._session_id,
-                )
-        return response
-
-    ACPAgent._do_acp_prompt = _do_acp_prompt_fixed
-    _ACP_PROMPT_PATCHED = True
 
 
 _ACP_PROVIDER_KEYS: dict[str, str] = {
@@ -504,8 +469,6 @@ class PromptPhase(PhaseProtocol):
         from openhands.sdk.conversation import get_agent_final_response
 
         from goblin.conversation import run_conversation
-
-        _patch_acp_prompt_call()
 
         workspace_config = self._blueprint.resolve_workspace_config(context)
         if workspace_config.get("type") == "remote":

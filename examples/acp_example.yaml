@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../spec/v1.json
 version: v1
 blueprint:
   name: acp_cross_repo
@@ -11,6 +12,7 @@ blueprint:
       command:
         - opencode
         - acp
+      isolate_data_dir: true
       prompt_timeout: 1800
   phases:
     - id: api_change
